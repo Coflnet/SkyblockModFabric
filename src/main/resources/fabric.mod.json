@@ -15,9 +15,6 @@
 	"icon": "assets/coflmod/icon.png",
 	"environment": "*",
 	"entrypoints": {
-		"main": [
-			"com.coflnet.CoflMod"
-		],
 		"client": [
 			"com.coflnet.CoflModClient"
 		]
