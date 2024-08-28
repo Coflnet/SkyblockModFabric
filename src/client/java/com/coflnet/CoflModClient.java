@@ -1,74 +1,66 @@
 package com.coflnet;
 
-import CoflCore.CoflCore;
-import CoflCore.events.SocketOpen;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.coflnet.CoflCore.CoflCore;
+import com.coflnet.CoflCore.events.ReceiveCommand;
+import com.coflnet.CoflCore.events.SocketClose;
+import com.coflnet.CoflCore.events.SocketError;
+import com.coflnet.CoflCore.events.SocketOpen;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.*;
 import net.minecraft.client.session.Session;
+import net.minecraft.text.Text;
 import org.greenrobot.eventbus.Subscribe;
-import org.joml.Matrix4f;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
+import java.util.Objects;
 
 public class CoflModClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
-		// This entrypoint is suitable for setting up client-specific logic, such as rendering.
 
-		HudRenderCallback.EVENT.register((drawContext, tickDeltaManager) -> {
-			// Get the transformation matrix from the matrix stack, alongside the tessellator instance and a new buffer builder.
-			Matrix4f transformationMatrix = drawContext.getMatrices().peek().getPositionMatrix();
-			Tessellator tessellator = Tessellator.getInstance();
+		ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
+				System.out.println("Connected to Hypixel");
+				CoflCore cofl = new CoflCore();
+				try {
+					Path configDir = FabricLoader.getInstance().getConfigDir();
 
-			// Begin a triangle strip buffer using the POSITION_COLOR vertex format.
-			BufferBuilder buffer = tessellator.begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR);
+					Path p = configDir.resolve("CoflSky");
+					if (!p.toFile().exists()) {
+						p.toFile().mkdir();
+					}
+					File configFile = new File(p.toFile(), "config.json");
 
-			// Write our vertices, Z doesn't really matter since it's on the HUD.
-			buffer.vertex(transformationMatrix, 60, 20, 5).color(0xFF414141);
-			buffer.vertex(transformationMatrix, 50, 40, 5).color(0xFF000000);
-			buffer.vertex(transformationMatrix, 355, 40, 5).color(0xFF000000);
-			buffer.vertex(transformationMatrix, 205, 60, 5).color(0xFF414141);
-
-			// We'll get to this bit in the next section.
-			RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-			RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-
-			// Draw the buffer onto the screen.
-			BufferRenderer.drawWithGlobalProgram(buffer.end());
+					cofl.setupSocket(MinecraftClient.getInstance().getSession().getUsername(), configFile.toPath());
+					cofl.registerEventFile(this);
+				} catch (IOException e) {
+					throw new RuntimeException(e);
+				} catch (URISyntaxException e) {
+					throw new RuntimeException(e);
+				}
+			}
 		});
 
-		CoflCore cofl = new CoflCore();
-		try {
-			Session s = MinecraftClient.getInstance().getSession();
-			String username = s.getUsername();
-			Path configDir = FabricLoader.getInstance().getConfigDir();;
+		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> dispatcher.register(ClientCommandManager.literal("cofl")
+				.executes(context -> {
+							context.getSource().sendFeedback(Text.literal("The command is executed in the client!"));
+							return 1;
+						})));
 
-			// Create folder "CoflSky" in the config directory if it doesnt exist yet
-			Path p = configDir.resolve("CoflSky");
-			if (!p.toFile().exists()) {
-				p.toFile().mkdir();
-			}
-
-			File configFile = new File(p.toFile(), "config.json");
-
-			cofl.setupSocket(username, configFile.toPath());
-			cofl.registerEventFile(this);
-		} catch (IOException e) {
-			throw new RuntimeException(e);
-		} catch (URISyntaxException e) {
-			throw new RuntimeException(e);
-		}
 	}
 
 	@Subscribe
-	public void onMessage(SocketOpen event){
-		System.out.println("Socket Opened");
+	public void onMessage(ReceiveCommand event){
+		System.out.println("Command received");
 	}
+
 }
