@@ -1,19 +1,13 @@
 package com.coflnet;
 
-import com.coflnet.CoflCore.CoflCore;
-import com.coflnet.CoflCore.events.ReceiveCommand;
-import com.coflnet.CoflCore.events.SocketClose;
-import com.coflnet.CoflCore.events.SocketError;
-import com.coflnet.CoflCore.events.SocketOpen;
+import CoflCore.CoflCore;
+import CoflCore.events.ReceiveCommand;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerLoginConnectionEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.session.Session;
 import net.minecraft.text.Text;
 import org.greenrobot.eventbus.Subscribe;
 
@@ -21,7 +15,6 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.util.Objects;
 
 public class CoflModClient implements ClientModInitializer {
 	@Override
