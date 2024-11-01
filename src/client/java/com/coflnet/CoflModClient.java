@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
+import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 
 import java.io.File;
@@ -24,22 +25,9 @@ public class CoflModClient implements ClientModInitializer {
 			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
 				System.out.println("Connected to Hypixel");
 				CoflCore cofl = new CoflCore();
-				try {
-					Path configDir = FabricLoader.getInstance().getConfigDir();
-
-					Path p = configDir.resolve("CoflSky");
-					if (!p.toFile().exists()) {
-						p.toFile().mkdir();
-					}
-					File configFile = new File(p.toFile(), "config.json");
-
-					cofl.setupSocket(MinecraftClient.getInstance().getSession().getUsername(), configFile.toPath());
-					cofl.registerEventFile(this);
-				} catch (IOException e) {
-					throw new RuntimeException(e);
-				} catch (URISyntaxException e) {
-					throw new RuntimeException(e);
-				}
+				Path configDir = FabricLoader.getInstance().getConfigDir();
+				EventBus.getDefault().register(cofl);
+				cofl.init(configDir);
 			}
 		});
 
