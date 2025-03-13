@@ -6,7 +6,7 @@ import net.minecraft.text.HoverEvent;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 
-public class utils {
+public class Utils {
     public static  MutableText ChatComponent(ChatMessage cmd) {
         MutableText message = Text.literal(cmd.getText());
         if (cmd.getOnClick() != null) {

@@ -6,21 +6,29 @@ import CoflCore.CoflSkyCommand;
 import CoflCore.events.OnChatMessageReceive;
 import CoflCore.events.OnModChatMessage;
 import CoflCore.events.OnWriteToChatReceive;
+import com.coflnet.gui.RenderUtils;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
 import org.greenrobot.eventbus.Subscribe;
+import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Path;
 
-import static com.coflnet.utils.ChatComponent;
+import static com.coflnet.Utils.ChatComponent;
 
 public class CoflModClient implements ClientModInitializer {
+    private  KeyBinding bestflipsKeyBinding;
 	@Override
 	public void onInitializeClient() {
         String username = MinecraftClient.getInstance().getSession().getUsername();
@@ -28,6 +36,24 @@ public class CoflModClient implements ClientModInitializer {
         CoflCore cofl = new CoflCore();
         cofl.init(configDir);
         cofl.registerEventFile(this);
+
+        ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
+            RenderUtils.init();
+        });
+
+        bestflipsKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "keybinding.coflmod.bestflips",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_B,
+                ""
+        ));
+
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (bestflipsKeyBinding.wasPressed()) {
+                //client.player.sendMessage(Text.literal(), false);
+                client.getServer().getCommandManager().executeWithPrefix(client.getServer().getCommandSource(), "cofl bestflips");
+            }
+        });
 
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
