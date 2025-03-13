@@ -1,5 +1,6 @@
 package com.coflnet.gui.cofl;
 
+import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
 import net.minecraft.client.MinecraftClient;
@@ -20,6 +21,12 @@ import net.minecraft.screen.ScreenHandlerListener;
 import net.minecraft.text.Text;
 
 public class CoflBinGUI extends Screen implements InventoryChangedListener {
+    private TextWidget titleTextWidget;
+    private ItemWidget itemWidget;
+    private ScrollableTextWidget loreScrollableTextWidget;
+    private ClickableWidget rightClickableWidget;
+    private ClickableWidget leftClickableWidget;
+
     private int width;
     private int height;
     private int p;
@@ -28,13 +35,8 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
     public Item item = Items.AIR;
     public String title = "";
     public String lore = RenderUtils.lorem();
-    public String buttonRText = "";
-
-    private TextWidget titleTextWidget;
-    private ItemWidget itemWidget;
-    private ScrollableTextWidget loreScrollableTextWidget;
-    private ClickableWidget rightClickableWidget;
-    private ClickableWidget leftClickableWidget;
+    public String rightButtonText = "";
+    public int rightButtonCol = 0x00000000;
 
     public CoflBinGUI(Item item, GenericContainerScreenHandler gcsh){
         super(Text.literal("Cofl Bin Gui"));
@@ -53,25 +55,6 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
 
         this.p = 5;
         this.r = 4;
-
-        gcsh.addListener(new ScreenHandlerListener() {
-            @Override
-            public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
-                if (stack.getItem() != Items.AIR) System.out.println("slotid: "+slotId);
-                switch (slotId){
-                    case 13:
-                        setItem(stack.getItem());
-                        break;
-                    case 31:
-                        break;
-                    case 41:
-                        break;
-                }
-            }
-
-            @Override
-            public void onPropertyUpdate(ScreenHandler handler, int property, int value) {}
-        });
 
         leftClickableWidget = new ClickableWidget(
                 screenWidth / 2 - width / 2 + p,
@@ -98,7 +81,7 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
                 screenHeight / 2 - height / 2, //screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15,
                 width, //width / 5 * 3 - p*2,
                 height, //225 - 150 - 12 - p*5 + screenHeight / 15,
-                Text.of(buttonRText)
+                Text.of(rightButtonText)
         ){
             @Override
             protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
@@ -161,6 +144,56 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
         this.addDrawableChild(itemWidget);
         this.addDrawableChild(rightClickableWidget);
         this.addDrawableChild(leftClickableWidget);
+
+        gcsh.addListener(new ScreenHandlerListener() {
+            @Override
+            public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
+                if (stack.getItem() != Items.AIR) System.out.println("slotid: "+slotId);
+                switch (slotId){
+                    case 13:
+                        setItem(stack.getItem());
+                        break;
+                    case 31:
+                        switch (getAuctionStatus(stack.getItem())){
+                            case WAITING -> setRightButtonConfig(AuctionStatus.WAITING);
+                            case BUYING -> setRightButtonConfig(AuctionStatus.BUYING);
+                            case SOLD -> setRightButtonConfig(AuctionStatus.SOLD);
+                            case null, default -> System.out.println("Slot 31 empty");
+                        }
+                        break;
+                    case 41:
+                        break;
+                }
+            }
+
+            @Override
+            public void onPropertyUpdate(ScreenHandler handler, int property, int value) {}
+        });
+    }
+
+    private AuctionStatus getAuctionStatus(Item item){
+        if (item == Items.GOLD_NUGGET) return AuctionStatus.BUYING;
+        if (item == Items.RED_BED) return AuctionStatus.WAITING;
+        if (item == Items.POTATO) return AuctionStatus.SOLD;
+        return null;
+    }
+
+    private void setRightButtonConfig(AuctionStatus auctionStatus){
+        switch (auctionStatus){
+            case BUYING:
+                rightButtonCol = CoflColConfig.CONFIRM;
+                rightButtonText = "BUY ITEM";
+                break;
+            case SOLD:
+                rightButtonCol = CoflColConfig.UNAVAILABLE;
+                rightButtonText = "SOLD";
+                break;
+            case WAITING:
+                rightButtonCol = CoflColConfig.UNAVAILABLE;
+                rightButtonText = "WAITING";
+                break;
+
+        }
     }
 
     public void setItem(Item item) {
