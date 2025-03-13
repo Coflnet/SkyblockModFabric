@@ -11,17 +11,14 @@ public class Utils {
         MutableText message = Text.literal(cmd.getText());
         if (cmd.getOnClick() != null) {
             if (cmd.getOnClick().startsWith("http")) {
-                message
-                        .styled((style) -> style.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, cmd.getOnClick())));
+                message.styled((style) -> style.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, cmd.getOnClick())));
             } else {
-                message
-                        .styled((style) -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd.getOnClick())));
+                message.styled((style) -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd.getOnClick())));
             }
         }
 
         if (cmd.getHover() != null && !cmd.getHover().isEmpty()) {
-            message.copy()
-                    .styled((style) -> style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.of(cmd.getHover()))));
+            message.styled((style) -> style.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.of(cmd.getHover()))));
         }
         return message;
     }
