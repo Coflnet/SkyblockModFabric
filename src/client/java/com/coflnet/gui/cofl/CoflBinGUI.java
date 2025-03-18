@@ -3,27 +3,30 @@ package com.coflnet.gui.cofl;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
+import com.coflnet.gui.widget.ScrollableDynamicTextWidget;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.ScrollableTextWidget;
-import net.minecraft.client.gui.widget.TextWidget;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.inventory.InventoryChangedListener;
+import net.minecraft.client.gui.widget.*;
+import net.minecraft.client.render.item.ItemRenderer;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.ScreenHandlerListener;
+import net.minecraft.screen.ScreenHandlerType;
+import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
 
-public class CoflBinGUI extends Screen implements InventoryChangedListener {
+public class CoflBinGUI extends Screen {
     private TextWidget titleTextWidget;
     private ItemWidget itemWidget;
-    private ScrollableTextWidget loreScrollableTextWidget;
+    private ScrollableDynamicTextWidget loreScrollableTextWidget;
     private ClickableWidget rightClickableWidget;
     private ClickableWidget leftClickableWidget;
 
@@ -31,21 +34,31 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
     private int height;
     private int p;
     private int r;
+    private final int ITEM_SLOT = 13;
+    private final int BUY_SLOT = 31;
+    private final int AUCTION_CANCEL_SLOT = 49;
+    private final int CONFIRM_SLOT = 11;
+    private final int CONFIRMATION_CANCEL_SLOT = 15;
+    private AuctionStatus auctionStatus;
     public GenericContainerScreenHandler gcsh;
-    public Item item = Items.AIR;
+    public GenericContainerScreen gcs;
     public String title = "";
-    public String lore = RenderUtils.lorem();
+    public Text lore = Text.of(RenderUtils.lorem());
     public String rightButtonText = "";
     public int rightButtonCol = 0x00000000;
 
-    public CoflBinGUI(Item item, GenericContainerScreenHandler gcsh){
+    public CoflBinGUI(Item item, GenericContainerScreen gcs){
         super(Text.literal("Cofl Bin Gui"));
 
         int screenWidth = MinecraftClient.getInstance().currentScreen.width;
         int screenHeight = MinecraftClient.getInstance().currentScreen.height;
 
-        this.item = item;
-        this.gcsh = gcsh;
+        this.gcs = gcs;
+        this.gcsh = gcs.getScreenHandler();
+
+        if (gcsh.getType() == ScreenHandlerType.GENERIC_9X3){
+            this.auctionStatus = AuctionStatus.CONFIRMING;
+        } else this.auctionStatus = AuctionStatus.INIT;
 
         this.width = screenWidth / 2;
         if (width < 300) this.width = 300;
@@ -73,7 +86,11 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
             protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
 
             @Override
-            public void onClick(double mouseX, double mouseY) {close();}
+            public void onClick(double mouseX, double mouseY) {
+                System.out.println(auctionStatus.name());
+                if (auctionStatus != AuctionStatus.CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
+                else clickSlot(CONFIRMATION_CANCEL_SLOT);
+            }
         };
 
         rightClickableWidget = new ClickableWidget(
@@ -81,7 +98,7 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
                 screenHeight / 2 - height / 2, //screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15,
                 width, //width / 5 * 3 - p*2,
                 height, //225 - 150 - 12 - p*5 + screenHeight / 15,
-                Text.of(rightButtonText)
+                Text.of("")
         ){
             @Override
             protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
@@ -90,7 +107,7 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
                         screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15,
                         width / 5 * 3 - p*2,
                         225 - 150 - 12 - p*5 + screenHeight / 15,
-                        r, CoflColConfig.CONFIRM
+                        r, rightButtonCol
                 );
                 RenderUtils.drawString(context,
                         this.getMessage().getString(),
@@ -99,6 +116,7 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
                         0xFFEEEEEE
                 );
             }
+
             @Override
             protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
 
@@ -106,7 +124,10 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
             public void onClick(double mouseX, double mouseY) {
                 if (leftClickableWidget.isMouseOver(mouseX, mouseY)) {
                     leftClickableWidget.onClick(mouseX, mouseY);
-                } else MinecraftClient.getInstance().player.sendMessage(Text.of("Confim clicked"));
+                } else {
+                    if(auctionStatus != AuctionStatus.CONFIRMING) clickSlot(BUY_SLOT);
+                    else clickSlot(CONFIRM_SLOT);
+                }
             }
         };
 
@@ -118,25 +139,30 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
                 MinecraftClient.getInstance().textRenderer
         ).alignLeft();
 
-        loreScrollableTextWidget = new ScrollableTextWidget(
+        loreScrollableTextWidget = new ScrollableDynamicTextWidget(
                 screenWidth / 2 - width / 2 + p + 20 + p + 4,
                 screenHeight / 2 - height / 2 + p + 12 + p + 2,
                 width - 20 - p*4 - 4, height - 75 - 2 - screenHeight / 15,
-                Text.of(lore), MinecraftClient.getInstance().textRenderer
+                lore, MinecraftClient.getInstance().textRenderer
         ){
             @Override
             protected void drawBox(DrawContext context) {}
 
             @Override
-            public void onClick(double mouseX, double mouseY) {
-                super.onClick(mouseX, mouseY);
+            public boolean mouseReleased(double mouseX, double mouseY, int button) {
+                if(super.mouseReleased(mouseX, mouseY, button) && isMouseOver(mouseX,mouseY) && button == 0){
+                    rightClickableWidget.onClick(mouseX,mouseY);
+                }
+                return super.mouseReleased(mouseX, mouseY, button);
             }
         };
+        //loreScrollableTextWidget.updateText(Text.of("AAAAAAAAAAAAAa"));
+
 
         itemWidget = new ItemWidget(
                 screenWidth / 2 - width / 2 + p + 2,
                 screenHeight / 2 - height / 2 + p + 12 + p + 2,
-                this.item.getDefaultStack()
+                Items.AIR.getDefaultStack()
         );
 
         this.addDrawableChild(titleTextWidget);
@@ -148,22 +174,11 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
         gcsh.addListener(new ScreenHandlerListener() {
             @Override
             public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
-                if (stack.getItem() != Items.AIR) System.out.println("slotid: "+slotId);
-                switch (slotId){
-                    case 13:
-                        setItem(stack.getItem());
-                        break;
-                    case 31:
-                        switch (getAuctionStatus(stack.getItem())){
-                            case WAITING -> setRightButtonConfig(AuctionStatus.WAITING);
-                            case BUYING -> setRightButtonConfig(AuctionStatus.BUYING);
-                            case SOLD -> setRightButtonConfig(AuctionStatus.SOLD);
-                            case null, default -> System.out.println("Slot 31 empty");
-                        }
-                        break;
-                    case 41:
-                        break;
-                }
+                //if (stack.getItem() != Items.AIR) System.out.println("slotid: "+slotId);
+                if (slotId == ITEM_SLOT) setItem(stack);
+                if (auctionStatus != AuctionStatus.CONFIRMING){
+                    if(slotId == BUY_SLOT) setRightButtonConfig(setAuctionStatus(stack.getItem()));
+                } else if (auctionStatus == AuctionStatus.CONFIRMING && slotId == CONFIRM_SLOT) setRightButtonConfig(AuctionStatus.CONFIRMING);
             }
 
             @Override
@@ -171,43 +186,63 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
         });
     }
 
-    private AuctionStatus getAuctionStatus(Item item){
-        if (item == Items.GOLD_NUGGET) return AuctionStatus.BUYING;
-        if (item == Items.RED_BED) return AuctionStatus.WAITING;
-        if (item == Items.POTATO) return AuctionStatus.SOLD;
-        return null;
+    private void clickSlot(int slotId) {
+        PlayerEntity player = client.player;
+
+        client.interactionManager.clickSlot(
+                gcsh.syncId,
+                slotId,
+                0,
+                SlotActionType.PICKUP,
+                player
+        );
+    }
+
+    private AuctionStatus setAuctionStatus(Item item){
+        if (item == Items.GOLD_NUGGET) auctionStatus = AuctionStatus.BUYING;
+        if (item == Items.RED_BED) auctionStatus = AuctionStatus.WAITING;
+        if (item == Items.POTATO) auctionStatus = AuctionStatus.SOLD;
+        return auctionStatus;
     }
 
     private void setRightButtonConfig(AuctionStatus auctionStatus){
         switch (auctionStatus){
+            case INIT:
+                rightButtonCol = CoflColConfig.CONFIRM;
+                rightClickableWidget.setMessage(Text.of("INIT"));
+                break;
             case BUYING:
                 rightButtonCol = CoflColConfig.CONFIRM;
-                rightButtonText = "BUY ITEM";
+                rightClickableWidget.setMessage(Text.of("BUY ITEM"));
                 break;
             case SOLD:
                 rightButtonCol = CoflColConfig.UNAVAILABLE;
-                rightButtonText = "SOLD";
+                rightClickableWidget.setMessage(Text.of("SOLD"));
                 break;
             case WAITING:
                 rightButtonCol = CoflColConfig.UNAVAILABLE;
-                rightButtonText = "WAITING";
+                rightClickableWidget.setMessage(Text.of("WAITING"));
                 break;
-
+            case CONFIRMING:
+                rightButtonCol = CoflColConfig.CONFIRM;
+                rightClickableWidget.setMessage(Text.of("CONFIRM"));
+                break;
         }
     }
 
-    public void setItem(Item item) {
-        this.item = item;
+    public void setItem(ItemStack item) {
+        lore = Text.empty();
+        titleTextWidget.setMessage(item.getName());
+        Text firstEntry = getTooltipFromItem(MinecraftClient.getInstance(), item).getFirst();
+        lore = firstEntry.getWithStyle(firstEntry.getStyle()).getLast();
+
+        loreScrollableTextWidget.updateText(lore);
+        this.itemWidget.item = item;
     }
 
     @Override
     public boolean shouldPause() {
         return false;
-    }
-
-    @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        super.render(context, mouseX, mouseY, delta);
     }
 
     @Override
@@ -217,19 +252,17 @@ public class CoflBinGUI extends Screen implements InventoryChangedListener {
 
         // Background
         RenderUtils.drawRoundedRect(drawContext, screenWidth / 2 - width / 2,screenHeight / 2 - height / 2, width, height, r, CoflColConfig.BACKGROUND_PRIMARY);
-
         // Title Background
         RenderUtils.drawRoundedRect(drawContext, screenWidth / 2 - width / 2 + p,screenHeight / 2 - height / 2 + p, width - p*2, 12, r, CoflColConfig.BACKGROUND_SECONDARY);
-
         // Item Background
         RenderUtils.drawRoundedRect(drawContext, screenWidth / 2 - width / 2 + p,screenHeight / 2 - height / 2 + p + 12 + p, 20, 20, r, CoflColConfig.BACKGROUND_SECONDARY);
-
         // Description Background
         RenderUtils.drawRoundedRect(drawContext,screenWidth / 2 - width / 2 + p + 20 + p, screenHeight / 2 - height / 2 + p + 12+ p, width - 20 - p*3, height - 75 - screenHeight / 15, r, CoflColConfig.BACKGROUND_SECONDARY);
     }
 
     @Override
-    public void onInventoryChanged(Inventory sender) {
-        System.out.println("Inv changed");
+    public void close() {
+        gcs.close();
+        super.close();
     }
 }

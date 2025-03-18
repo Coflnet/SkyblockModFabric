@@ -80,15 +80,17 @@ public class CoflModClient implements ClientModInitializer {
                 ScreenEvents.beforeRender(gcs).register((screen1, drawContext, mouseX, mouseY, tickDelta) -> {
                     GenericContainerScreen gcs1 = (GenericContainerScreen) screen1;
                     if (CoflCore.config.purchaseOverlay != null
-                            && gcs.getTitle().getLiteralString().contains("BIN Auction View")
-                            && gcs.getScreenHandler().getInventory().size() == 9 * 6) {
+                            && (gcs.getTitle().getLiteralString().contains("BIN Auction View")
+                                && gcs.getScreenHandler().getInventory().size() == 9 * 6
+                            || gcs.getTitle().getLiteralString().contains("Confirm Purchase")
+                                && gcs.getScreenHandler().getInventory().size() == 9 * 3)
+                    ) {
                         if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
                             switch (CoflCore.config.purchaseOverlay) {
-                                case COFL: client.setScreen(new CoflBinGUI(Items.BREAD, gcs1.getScreenHandler()));break;
+                                case COFL: client.setScreen(new CoflBinGUI(Items.BREAD, gcs1));break;
                                 case TFM: client.setScreen(new TfmBinGUI(Items.BREAD));break;
                                 case null: default: break;
                             }
-                            System.out.println("Empty?: " + gcs.getScreenHandler().getInventory().isEmpty());
                         }
                     }
                 });
