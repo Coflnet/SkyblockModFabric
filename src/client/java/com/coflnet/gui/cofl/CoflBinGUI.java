@@ -5,6 +5,7 @@ import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
 import com.coflnet.gui.widget.ScrollableDynamicTextWidget;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.MultilineText;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
@@ -21,7 +22,15 @@ import net.minecraft.screen.ScreenHandlerListener;
 import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.text.HoverEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFWWindowRefreshCallback;
+import org.lwjgl.glfw.GLFWWindowSizeCallback;
+import oshi.util.tuples.Pair;
+
+import java.awt.event.WindowEvent;
+import java.awt.event.WindowStateListener;
+import java.util.List;
 
 public class CoflBinGUI extends Screen {
     private TextWidget titleTextWidget;
@@ -44,8 +53,7 @@ public class CoflBinGUI extends Screen {
     public GenericContainerScreen gcs;
     public String title = "";
     public Text lore = Text.of(RenderUtils.lorem());
-    public String rightButtonText = "";
-    public int rightButtonCol = 0x00000000;
+    public Pair<Integer, Integer> rightButtonCol = new Pair<>(CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.BACKGROUND_SECONDARY);
 
     public CoflBinGUI(Item item, GenericContainerScreen gcs){
         super(Text.literal("Cofl Bin Gui"));
@@ -78,7 +86,7 @@ public class CoflBinGUI extends Screen {
         ){
             @Override
             protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
-                RenderUtils.drawRoundedRect(context, getX(), getY(), getWidth(), getHeight(), r, CoflColConfig.CANCEL);
+                RenderUtils.drawRoundedRect(context, getX(), getY(), getWidth(), getHeight(), r, this.isMouseOver(mouseX,mouseY) ? CoflColConfig.CANCEL_HOVER : CoflColConfig.CANCEL);
                 RenderUtils.drawString(context, this.getMessage().getLiteralString(), getX() + 6, getY() + 4, 0xFFEEEEEE);
             }
 
@@ -87,32 +95,39 @@ public class CoflBinGUI extends Screen {
 
             @Override
             public void onClick(double mouseX, double mouseY) {
-                System.out.println(auctionStatus.name());
                 if (auctionStatus != AuctionStatus.CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
                 else clickSlot(CONFIRMATION_CANCEL_SLOT);
             }
         };
 
+        int tempWidth = width;
+        int tempHeight = height;
         rightClickableWidget = new ClickableWidget(
-                screenWidth / 2 - width / 2, //screenWidth / 2 - width / 2 + p + width / 5 * 2,
-                screenHeight / 2 - height / 2, //screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15,
-                width, //width / 5 * 3 - p*2,
-                height, //225 - 150 - 12 - p*5 + screenHeight / 15,
+                0, //screenWidth / 2 - width / 2, //screenWidth / 2 - width / 2 + p + width / 5 * 2,
+                0, //screenHeight / 2 - height / 2, //screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15,
+                screenWidth, //width, //width / 5 * 3 - p*2,
+                screenHeight, //height, //225 - 150 - 12 - p*5 + screenHeight / 15,
                 Text.of("")
         ){
             @Override
             protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+                boolean mouseOver = mouseX >= (double)(screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2)
+                                 && mouseY >= (double)(screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15)
+                                 && mouseX < (double)((screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2) + (tempWidth / 5 * 3 - p*2))
+                                 && mouseY < (double)((screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15) + (225 - 150 - 12 - p*5 + screenHeight / 15));
+
                 RenderUtils.drawRoundedRect(context,
-                        screenWidth / 2 - width / 2 + p + width / 5 * 2,
-                        screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15,
-                        width / 5 * 3 - p*2,
+                        screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2,
+                        screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15,
+                        tempWidth / 5 * 3 - p*2,
                         225 - 150 - 12 - p*5 + screenHeight / 15,
-                        r, rightButtonCol
+                        r, mouseOver ? rightButtonCol.getB() : rightButtonCol.getA()
                 );
+
                 RenderUtils.drawString(context,
                         this.getMessage().getString(),
-                        screenWidth / 2 - width / 2 + p + width / 5 * 2 + 6,
-                        screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15 + 4,
+                        screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2 + 6,
+                        screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15 + 4,
                         0xFFEEEEEE
                 );
             }
@@ -208,36 +223,41 @@ public class CoflBinGUI extends Screen {
     private void setRightButtonConfig(AuctionStatus auctionStatus){
         switch (auctionStatus){
             case INIT:
-                rightButtonCol = CoflColConfig.CONFIRM;
-                rightClickableWidget.setMessage(Text.of("INIT"));
-                break;
             case BUYING:
-                rightButtonCol = CoflColConfig.CONFIRM;
-                rightClickableWidget.setMessage(Text.of("BUY ITEM"));
+            case WAITING:
+                System.out.println("CASE ENTERED");
+                rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
+                rightClickableWidget.setMessage(Text.of("Buy (You can click anywhere)"));
                 break;
             case SOLD:
-                rightButtonCol = CoflColConfig.UNAVAILABLE;
-                rightClickableWidget.setMessage(Text.of("SOLD"));
-                break;
-            case WAITING:
-                rightButtonCol = CoflColConfig.UNAVAILABLE;
-                rightClickableWidget.setMessage(Text.of("WAITING"));
+                rightButtonCol = new Pair<>(CoflColConfig.UNAVAILABLE, CoflColConfig.UNAVAILABLE);
+                rightClickableWidget.setMessage(Text.of("Bought by "));
                 break;
             case CONFIRMING:
-                rightButtonCol = CoflColConfig.CONFIRM;
-                rightClickableWidget.setMessage(Text.of("CONFIRM"));
+                rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
+                rightClickableWidget.setMessage(Text.of("Confirm purchase"));
                 break;
         }
     }
 
     public void setItem(ItemStack item) {
-        lore = Text.empty();
-        titleTextWidget.setMessage(item.getName());
-        Text firstEntry = getTooltipFromItem(MinecraftClient.getInstance(), item).getFirst();
-        lore = firstEntry.getWithStyle(firstEntry.getStyle()).getLast();
-
+        lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), item));
         loreScrollableTextWidget.updateText(lore);
         this.itemWidget.item = item;
+    }
+
+    public MutableText convertTextList(List<Text> collection){
+        MutableText res = Text.empty();
+        if (collection == null || collection.isEmpty()) return res;
+
+        res = Text.literal(collection.getFirst().getString()).setStyle(collection.getFirst().getStyle());
+        collection.removeFirst();
+
+        for (Text text : collection) {
+            MutableText toAppend = Text.literal("\n"+text.getString()).setStyle(text.getStyle());
+            res.append(toAppend);
+        }
+        return res;
     }
 
     @Override

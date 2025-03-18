@@ -20,6 +20,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.WindowEventHandler;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -28,6 +29,7 @@ import net.minecraft.text.Text;
 import org.greenrobot.eventbus.Subscribe;
 import org.lwjgl.glfw.GLFW;
 
+import java.awt.event.WindowEvent;
 import java.nio.file.Path;
 
 import static com.coflnet.Utils.ChatComponent;
