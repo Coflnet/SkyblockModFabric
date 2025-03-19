@@ -20,7 +20,6 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.WindowEventHandler;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -28,8 +27,6 @@ import net.minecraft.item.Items;
 import net.minecraft.text.Text;
 import org.greenrobot.eventbus.Subscribe;
 import org.lwjgl.glfw.GLFW;
-
-import java.awt.event.WindowEvent;
 import java.nio.file.Path;
 
 import static com.coflnet.Utils.ChatComponent;
@@ -58,7 +55,7 @@ public class CoflModClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             while (bestflipsKeyBinding.wasPressed()) {
                 //client.player.sendMessage(Text.literal(), false);
-                client.getServer().getCommandManager().executeWithPrefix(client.getServer().getCommandSource(), "cofl bestflips");
+                CoflCore.flipHandler.fds.CurrentFlips();
             }
         });
 
@@ -79,12 +76,13 @@ public class CoflModClient implements ClientModInitializer {
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof GenericContainerScreen gcs) {
-                ScreenEvents.beforeRender(gcs).register((screen1, drawContext, mouseX, mouseY, tickDelta) -> {
+                System.out.println(gcs.getTitle().getString());
+                ScreenEvents.beforeRender(screen).register((screen1, drawContext, a, b, c) -> {
                     GenericContainerScreen gcs1 = (GenericContainerScreen) screen1;
-                    if (CoflCore.config.purchaseOverlay != null
-                            && (gcs.getTitle().getLiteralString().contains("BIN Auction View")
+                    if (CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null
+                            && (gcs.getTitle().getString().contains("BIN Auction View")
                                 && gcs.getScreenHandler().getInventory().size() == 9 * 6
-                            || gcs.getTitle().getLiteralString().contains("Confirm Purchase")
+                            || gcs.getTitle().getString().contains("Confirm Purchase")
                                 && gcs.getScreenHandler().getInventory().size() == 9 * 3)
                     ) {
                         if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
