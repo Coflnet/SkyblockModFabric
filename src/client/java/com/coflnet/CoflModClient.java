@@ -1,14 +1,28 @@
 package com.coflnet;
 
 import CoflCore.CoflCore;
+import CoflCore.classes.AuctionItem;
 import CoflCore.classes.ChatMessage;
 import CoflCore.CoflSkyCommand;
-import CoflCore.events.OnChatMessageReceive;
-import CoflCore.events.OnModChatMessage;
-import CoflCore.events.OnWriteToChatReceive;
+import CoflCore.classes.Flip;
+import CoflCore.classes.Sound;
+import CoflCore.commands.CommandType;
+import CoflCore.commands.JsonStringCommand;
+import CoflCore.commands.models.ChatMessageData;
+import CoflCore.commands.models.FlipData;
+import CoflCore.commands.models.SoundData;
+import CoflCore.events.*;
+import CoflCore.handlers.EventRegistry;
+import CoflCore.network.WSClient;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.tfm.TfmBinGUI;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.google.gson.reflect.TypeToken;
+import com.mojang.authlib.minecraft.client.ObjectMapper;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
@@ -18,24 +32,50 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.ingame.BookScreen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.item.Items;
+import net.minecraft.text.ClickEvent;
 import net.minecraft.text.Text;
+import org.apache.logging.log4j.core.jackson.Log4jJsonObjectMapper;
+import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.lwjgl.glfw.GLFW;
+
+import java.awt.event.KeyEvent;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.regex.Pattern;
 
 import static com.coflnet.Utils.ChatComponent;
 
 public class CoflModClient implements ClientModInitializer {
     private  KeyBinding bestflipsKeyBinding;
+
+    public static long LastClick = System.currentTimeMillis();
+    public static final ExecutorService chatThreadPool = Executors.newFixedThreadPool(2);
+    public static final ExecutorService tickThreadPool = Executors.newFixedThreadPool(2);
+    public static long LastViewAuctionInvocation = Long.MIN_VALUE;
+    public static String LastViewAuctionUUID = null;
+    public static Pattern chatpattern = Pattern.compile("a^", 2);
+    private static LinkedBlockingQueue<String> chatBatch = new LinkedBlockingQueue();
+    private static LocalDateTime lastBatchStart = LocalDateTime.now();
+
+    private String username = "";
+    private static String flipId = "";
+    private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 	@Override
 	public void onInitializeClient() {
-        String username = MinecraftClient.getInstance().getSession().getUsername();
+        username = MinecraftClient.getInstance().getSession().getUsername();
         Path configDir = FabricLoader.getInstance().getConfigDir();
         CoflCore cofl = new CoflCore();
         cofl.init(configDir);
@@ -53,15 +93,16 @@ public class CoflModClient implements ClientModInitializer {
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (bestflipsKeyBinding.wasPressed()) {
-                //client.player.sendMessage(Text.literal(), false);
-                CoflCore.flipHandler.fds.CurrentFlips();
+            if(bestflipsKeyBinding.wasPressed()) {
+                System.out.println("Anz Flips: "+CoflCore.flipHandler.fds.CurrentFlips());
+                onOpenBestFlip(username, true);
             }
         });
 
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
 				System.out.println("Connected to Hypixel");
+                username = MinecraftClient.getInstance().getSession().getUsername();
 			}
 		});
 
@@ -69,6 +110,9 @@ public class CoflModClient implements ClientModInitializer {
             dispatcher.register(ClientCommandManager.literal("cofl")
                     .then(ClientCommandManager.argument("args", StringArgumentType.greedyString()).executes(context -> {
                         String[] args = context.getArgument("args", String.class).split(" ");
+                        if (args[0].compareToIgnoreCase("openauctiongui") == 0){
+                            flipId = args[1];
+                        } else flipId = "";
                         CoflSkyCommand.processCommand(args,username);
                         return 1;
                     })));
@@ -77,27 +121,41 @@ public class CoflModClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof GenericContainerScreen gcs) {
                 System.out.println(gcs.getTitle().getString());
-                ScreenEvents.beforeRender(screen).register((screen1, drawContext, a, b, c) -> {
-                    GenericContainerScreen gcs1 = (GenericContainerScreen) screen1;
-                    if (CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null
-                            && (gcs.getTitle().getString().contains("BIN Auction View")
-                                && gcs.getScreenHandler().getInventory().size() == 9 * 6
-                            || gcs.getTitle().getString().contains("Confirm Purchase")
-                                && gcs.getScreenHandler().getInventory().size() == 9 * 3)
-                    ) {
-                        if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
-                            switch (CoflCore.config.purchaseOverlay) {
-                                case COFL: client.setScreen(new CoflBinGUI(Items.BREAD, gcs1));break;
-                                case TFM: client.setScreen(new TfmBinGUI(Items.BREAD));break;
-                                case null: default: break;
-                            }
+                if (CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null
+                        && (gcs.getTitle().getString().contains("BIN Auction View")
+                        && gcs.getScreenHandler().getInventory().size() == 9 * 6
+                        || gcs.getTitle().getString().contains("Confirm Purchase")
+                        && gcs.getScreenHandler().getInventory().size() == 9 * 3)
+                ) {
+                    if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
+                        switch (CoflCore.config.purchaseOverlay) {
+                            case COFL: client.setScreen(new CoflBinGUI(gcs, flipId));break;
+                            case TFM: client.setScreen(new TfmBinGUI(Items.BREAD));break;
+                            case null: default: break;
                         }
                     }
-                });
+                }
             }
         });
-
 	}
+
+    public static void onOpenBestFlip(String username, boolean isInitialKeypress) {
+        if (System.currentTimeMillis() - LastClick >= 300L) {
+            FlipData f = CoflCore.flipHandler.fds.GetHighestFlip();
+            System.out.println(f);
+            if (f != null) {
+                CoflSkyCommand.processCommand(new String[]{"openauctiongui", f.Id, "true"}, username);
+                LastViewAuctionUUID = f.Id;
+                LastViewAuctionInvocation = System.currentTimeMillis();
+                LastClick = System.currentTimeMillis();
+                String command = (new Gson()).toJson("/viewauction " + f.Id);
+                CoflCore.Wrapper.SendMessage(new JsonStringCommand(CommandType.Clicked, command));
+                CoflSkyCommand.processCommand(new String[]{"track", "besthotkey", f.Id, username}, username);
+            } else if (isInitialKeypress) {
+                CoflSkyCommand.processCommand(new String[]{"dialog", "nobestflip", username}, username);
+            }
+        }
+    }
 
     @Subscribe
     public void WriteToChat(OnWriteToChatReceive command){
@@ -114,5 +172,41 @@ public class CoflModClient implements ClientModInitializer {
     @Subscribe
     public void onModChatMessage(OnModChatMessage event){
         MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(event.message));
+    }
+
+    @Subscribe
+    public void onCountdownReceive(OnCountdownReceive event){
+        //MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of("COUNTDOWN RECEIVED: "+event.CountdownData.getDuration()));
+    }
+
+    @Subscribe
+    public void onOpenAuctionGUI(OnOpenAuctionGUI event){
+        MinecraftClient.getInstance().setScreen(new BookScreen());
+    }
+
+    @Subscribe
+    public void onFlipReceive(OnFlipReceive event){
+        System.out.println("FLIP RECEIVED");
+    }
+
+    @Subscribe
+    public void onReceiveCommand(ReceiveCommand event){
+        if (event.command.getType() == CommandType.Flip){
+            System.out.println("onReceiveCommand: "+event.command.getData());
+//            JsonObject jsonObject = JsonParser.parseString(event.command.getData()).getAsJsonObject();
+//            EventBus.getDefault().post(new OnFlipReceive(new Flip(
+//                    new ChatMessage[]{},//jsonObject.get("messages"),
+//                    jsonObject.get("id").getAsString(),
+//                    jsonObject.get("worth").getAsInt(),
+//                    new Sound(),//jsonObject.get("sound"),
+//                    new AuctionItem(),//jsonObject.get("auction"),
+//                    jsonObject.get("render").getAsString(),
+//                    jsonObject.get("target").getAsString()
+//            )));
+
+//            Flip f = new ObjectMapper(gson).readValue(event.command.getData(), Flip.class);
+//            System.out.println("res: "+f.getId());
+//            //EventBus.getDefault().post(new OnFlipReceive(f));
+        }
     }
 }

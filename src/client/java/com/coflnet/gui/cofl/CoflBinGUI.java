@@ -1,6 +1,8 @@
 package com.coflnet.gui.cofl;
 
+import CoflCore.CoflCore;
 import CoflCore.CoflSkyCommand;
+import CoflCore.commands.models.FlipData;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
@@ -59,8 +61,13 @@ public class CoflBinGUI extends Screen {
     public Text lore = Text.of(RenderUtils.lorem());
     public Pair<Integer, Integer> rightButtonCol = new Pair<>(CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.BACKGROUND_SECONDARY);
 
-    public CoflBinGUI(Item item, GenericContainerScreen gcs){
+    public CoflBinGUI(GenericContainerScreen gcs, String flipId){
         super(Text.literal("Cofl Bin Gui"));
+
+        FlipData f = CoflCore.flipHandler.fds.getFlipById(flipId);
+        if(f == null){
+            System.out.println("NO FLIP FOUND");
+        } else System.out.println("FLIP FOUND WTF");
 
         int screenWidth = MinecraftClient.getInstance().currentScreen.width;
         int screenHeight = MinecraftClient.getInstance().currentScreen.height;
@@ -162,7 +169,7 @@ public class CoflBinGUI extends Screen {
         loreScrollableTextWidget = new ScrollableDynamicTextWidget(
                 screenWidth / 2 - width / 2 + p + 20 + p + 4,
                 screenHeight / 2 - height / 2 + p + 12 + p + 2,
-                width - 20 - p*4 - 4, height - 75 - 2 - screenHeight / 15,
+                width - 20 - p*4 - 4, height - 75 - 2 - screenHeight / 15 - 2,
                 lore, MinecraftClient.getInstance().textRenderer
         ){
             @Override
@@ -180,17 +187,8 @@ public class CoflBinGUI extends Screen {
                 Items.AIR.getDefaultStack()
         );
 
-        gcsh.addListener(new ScreenHandlerListener() {
-            @Override
-            public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
-                //if (stack.getItem() != Items.AIR) System.out.println("slotid: "+slotId);
-//                if (slotId == ITEM_SLOT) setItem(stack);
-                if (auctionStatus == AuctionStatus.CONFIRMING && slotId == CONFIRM_SLOT) setRightButtonConfig(AuctionStatus.CONFIRMING);
-            }
 
-            @Override
-            public void onPropertyUpdate(ScreenHandler handler, int property, int value) {}
-        });
+        if (auctionStatus == AuctionStatus.CONFIRMING) setRightButtonConfig(AuctionStatus.CONFIRMING);
 
         this.addDrawableChild(titleTextWidget);
         this.addDrawableChild(loreScrollableTextWidget);
