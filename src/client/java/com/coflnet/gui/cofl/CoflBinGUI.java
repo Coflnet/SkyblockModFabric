@@ -1,85 +1,43 @@
 package com.coflnet.gui.cofl;
 
 import CoflCore.CoflCore;
-import CoflCore.CoflSkyCommand;
 import CoflCore.commands.models.FlipData;
 import com.coflnet.gui.AuctionStatus;
+import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
 import com.coflnet.gui.widget.ScrollableDynamicTextWidget;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.MultilineText;
 import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
 import net.minecraft.client.gui.widget.*;
-import net.minecraft.client.render.item.ItemRenderer;
-import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.ScreenHandlerListener;
 import net.minecraft.screen.ScreenHandlerType;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.text.HoverEvent;
 import net.minecraft.text.MutableText;
-import net.minecraft.text.Style;
 import net.minecraft.text.Text;
-import org.lwjgl.glfw.GLFWWindowRefreshCallback;
-import org.lwjgl.glfw.GLFWWindowSizeCallback;
 import oshi.util.tuples.Pair;
 
-import java.awt.event.WindowEvent;
-import java.awt.event.WindowStateListener;
 import java.util.List;
 
-import static com.coflnet.Utils.ChatComponent;
-
-public class CoflBinGUI extends Screen {
+public class CoflBinGUI extends BinGUI {
     private TextWidget titleTextWidget;
-    private ItemWidget itemWidget;
     private ScrollableDynamicTextWidget loreScrollableTextWidget;
     private ClickableWidget rightClickableWidget;
     private ClickableWidget leftClickableWidget;
 
-    private int width;
-    private int height;
-    private int p;
-    private int r;
-    private final int ITEM_SLOT = 13;
-    private final int BUY_SLOT = 31;
-    private final int AUCTION_CANCEL_SLOT = 49;
-    private final int CONFIRM_SLOT = 11;
-    private final int CONFIRMATION_CANCEL_SLOT = 15;
-    private AuctionStatus auctionStatus;
-    public GenericContainerScreenHandler gcsh;
-    public GenericContainerScreen gcs;
     public String title = "";
     public Text lore = Text.of(RenderUtils.lorem());
     public Pair<Integer, Integer> rightButtonCol = new Pair<>(CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.BACKGROUND_SECONDARY);
 
     public CoflBinGUI(GenericContainerScreen gcs, String flipId){
-        super(Text.literal("Cofl Bin Gui"));
+        super(Text.literal("Cofl Bin Gui"), gcs);
 
         FlipData f = CoflCore.flipHandler.fds.getFlipById(flipId);
         if(f == null){
             System.out.println("NO FLIP FOUND");
         } else System.out.println("FLIP FOUND WTF");
-
-        int screenWidth = MinecraftClient.getInstance().currentScreen.width;
-        int screenHeight = MinecraftClient.getInstance().currentScreen.height;
-
-        this.gcs = gcs;
-        this.gcsh = gcs.getScreenHandler();
-
-        this.width = screenWidth / 2;
-        if (width < 300) this.width = 300;
-
-        this.height = screenHeight / 3 * 2;
-        if (height < 225) this.height = 225;
 
         this.p = 5;
         this.r = 4;
@@ -88,6 +46,12 @@ public class CoflBinGUI extends Screen {
             this.auctionStatus = AuctionStatus.CONFIRMING;
         } else this.auctionStatus = AuctionStatus.INIT;
 
+        clearAndInitWidgets(screenWidth, screenHeight);
+    }
+
+    @Override
+    protected void clearAndInitWidgets(int screenWidth, int screenHeight) {
+        this.clearChildren();
         leftClickableWidget = new ClickableWidget(
                 screenWidth / 2 - width / 2 + p,
                 screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p * 5) - screenHeight / 15,
@@ -123,9 +87,9 @@ public class CoflBinGUI extends Screen {
             @Override
             protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
                 boolean mouseOver = mouseX >= (double)(screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2)
-                                 && mouseY >= (double)(screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15)
-                                 && mouseX < (double)((screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2) + (tempWidth / 5 * 3 - p*2))
-                                 && mouseY < (double)((screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15) + (225 - 150 - 12 - p*5 + screenHeight / 15));
+                        && mouseY >= (double)(screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15)
+                        && mouseX < (double)((screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2) + (tempWidth / 5 * 3 - p*2))
+                        && mouseY < (double)((screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15) + (225 - 150 - 12 - p*5 + screenHeight / 15));
 
                 RenderUtils.drawRoundedRect(context,
                         screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2,
@@ -187,7 +151,6 @@ public class CoflBinGUI extends Screen {
                 Items.AIR.getDefaultStack()
         );
 
-
         if (auctionStatus == AuctionStatus.CONFIRMING) setRightButtonConfig(AuctionStatus.CONFIRMING);
 
         this.addDrawableChild(titleTextWidget);
@@ -195,18 +158,6 @@ public class CoflBinGUI extends Screen {
         this.addDrawableChild(itemWidget);
         this.addDrawableChild(rightClickableWidget);
         this.addDrawableChild(leftClickableWidget);
-    }
-
-    private void clickSlot(int slotId) {
-        PlayerEntity player = client.player;
-
-        client.interactionManager.clickSlot(
-                gcsh.syncId,
-                slotId,
-                0,
-                SlotActionType.PICKUP,
-                player
-        );
     }
 
     private AuctionStatus setAuctionStatus(Item item){
@@ -235,12 +186,6 @@ public class CoflBinGUI extends Screen {
         }
     }
 
-    public void setItem(ItemStack item) {
-        lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), item));
-        loreScrollableTextWidget.updateText(lore);
-        this.itemWidget.item = item;
-    }
-
     public MutableText convertTextList(List<Text> collection){
         MutableText res = Text.empty();
         if (collection == null || collection.isEmpty()) return res;
@@ -255,17 +200,17 @@ public class CoflBinGUI extends Screen {
         return res;
     }
 
-    @Override
-    public boolean shouldPause() {
-        return false;
-    }
 
     @Override
     public void renderBackground(DrawContext drawContext, int mouseX, int mouseY, float delta) {
-        int screenWidth = MinecraftClient.getInstance().currentScreen.width;
-        int screenHeight = MinecraftClient.getInstance().currentScreen.height;
+        super.renderBackground(drawContext, mouseX, mouseY, delta);
+
         if(!gcsh.getInventory().isEmpty()){
-            if (gcsh.getInventory().getStack(ITEM_SLOT).getItem() != Items.AIR) setItem(gcsh.getInventory().getStack(ITEM_SLOT));
+            if (gcsh.getInventory().getStack(ITEM_SLOT).getItem() != Items.AIR) {
+                setItem(gcsh.getInventory().getStack(ITEM_SLOT));
+                lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), currentItem));
+                loreScrollableTextWidget.updateText(lore);
+            }
             if (gcsh.getInventory().getStack(BUY_SLOT).getItem() != Items.AIR) setRightButtonConfig(setAuctionStatus(gcsh.getInventory().getStack(ITEM_SLOT).getItem()));
         }
 
@@ -279,10 +224,4 @@ public class CoflBinGUI extends Screen {
         RenderUtils.drawRoundedRect(drawContext,screenWidth / 2 - width / 2 + p + 20 + p, screenHeight / 2 - height / 2 + p + 12+ p, width - 20 - p*3, height - 75 - screenHeight / 15, r, CoflColConfig.BACKGROUND_SECONDARY);
     }
 
-    @Override
-    public void close() {
-        auctionStatus = AuctionStatus.INIT;
-        gcs.close();
-        super.close();
-    }
 }

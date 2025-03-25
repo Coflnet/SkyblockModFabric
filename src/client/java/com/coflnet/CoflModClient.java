@@ -1,28 +1,17 @@
 package com.coflnet;
 
 import CoflCore.CoflCore;
-import CoflCore.classes.AuctionItem;
 import CoflCore.classes.ChatMessage;
 import CoflCore.CoflSkyCommand;
-import CoflCore.classes.Flip;
-import CoflCore.classes.Sound;
 import CoflCore.commands.CommandType;
 import CoflCore.commands.JsonStringCommand;
-import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
-import CoflCore.commands.models.SoundData;
 import CoflCore.events.*;
-import CoflCore.handlers.EventRegistry;
-import CoflCore.network.WSClient;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.tfm.TfmBinGUI;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.google.gson.reflect.TypeToken;
-import com.mojang.authlib.minecraft.client.ObjectMapper;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
@@ -32,7 +21,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.BookScreen;
@@ -40,17 +28,12 @@ import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.item.Items;
-import net.minecraft.text.ClickEvent;
 import net.minecraft.text.Text;
-import org.apache.logging.log4j.core.jackson.Log4jJsonObjectMapper;
-import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.lwjgl.glfw.GLFW;
 
-import java.awt.event.KeyEvent;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -130,7 +113,7 @@ public class CoflModClient implements ClientModInitializer {
                     if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
                         switch (CoflCore.config.purchaseOverlay) {
                             case COFL: client.setScreen(new CoflBinGUI(gcs, flipId));break;
-                            case TFM: client.setScreen(new TfmBinGUI(Items.BREAD));break;
+                            case TFM: client.setScreen(new TfmBinGUI(gcs));break;
                             case null: default: break;
                         }
                     }
@@ -185,14 +168,17 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     @Subscribe
-    public void onFlipReceive(OnFlipReceive event){
+    public void onFlipMessage(OnFlipReceive event){
         System.out.println("FLIP RECEIVED");
     }
 
     @Subscribe
     public void onReceiveCommand(ReceiveCommand event){
-        if (event.command.getType() == CommandType.Flip){
+        if (event.command.getType() == CommandType.ChatMessage){
             System.out.println("onReceiveCommand: "+event.command.getData());
+
+//            EventBus.getDefault().post(new OnFlipReceive((Flip)event.command.GetAs(new TypeToken<Flip>() {
+//            }).getData()));
 //            JsonObject jsonObject = JsonParser.parseString(event.command.getData()).getAsJsonObject();
 //            EventBus.getDefault().post(new OnFlipReceive(new Flip(
 //                    new ChatMessage[]{},//jsonObject.get("messages"),
