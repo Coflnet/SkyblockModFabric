@@ -1,8 +1,11 @@
 package com.coflnet;
 
 import CoflCore.CoflCore;
+import CoflCore.classes.AuctionItem;
 import CoflCore.classes.ChatMessage;
 import CoflCore.CoflSkyCommand;
+import CoflCore.classes.Flip;
+import CoflCore.classes.Sound;
 import CoflCore.commands.CommandType;
 import CoflCore.commands.JsonStringCommand;
 import CoflCore.commands.models.FlipData;
@@ -12,6 +15,8 @@ import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.tfm.TfmBinGUI;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.reflect.TypeToken;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
@@ -29,11 +34,15 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.item.Items;
 import net.minecraft.text.Text;
+import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -174,25 +183,26 @@ public class CoflModClient implements ClientModInitializer {
 
     @Subscribe
     public void onReceiveCommand(ReceiveCommand event){
-        if (event.command.getType() == CommandType.ChatMessage){
-            System.out.println("onReceiveCommand: "+event.command.getData());
-
-//            EventBus.getDefault().post(new OnFlipReceive((Flip)event.command.GetAs(new TypeToken<Flip>() {
-//            }).getData()));
-//            JsonObject jsonObject = JsonParser.parseString(event.command.getData()).getAsJsonObject();
-//            EventBus.getDefault().post(new OnFlipReceive(new Flip(
-//                    new ChatMessage[]{},//jsonObject.get("messages"),
-//                    jsonObject.get("id").getAsString(),
-//                    jsonObject.get("worth").getAsInt(),
-//                    new Sound(),//jsonObject.get("sound"),
-//                    new AuctionItem(),//jsonObject.get("auction"),
-//                    jsonObject.get("render").getAsString(),
-//                    jsonObject.get("target").getAsString()
-//            )));
-
-//            Flip f = new ObjectMapper(gson).readValue(event.command.getData(), Flip.class);
-//            System.out.println("res: "+f.getId());
-//            //EventBus.getDefault().post(new OnFlipReceive(f));
+        if (event.command.getType() == CommandType.Flip){
+            JsonObject jo = gson.fromJson(event.command.getData(), JsonObject.class);
+            EventBus.getDefault().post(new OnFlipReceive(jsonObjToFlip(jo)));
         }
+    }
+
+    public static Flip jsonObjToFlip(JsonObject jsonObj){
+        JsonObject[] chatMessagesObj = gson.fromJson(jsonObj.get("messages"), JsonObject[].class);
+        ChatMessage[] chatMessages = Arrays.stream(chatMessagesObj).map(jsonObject -> new ChatMessage(
+                jsonObject.get("text").getAsString(),
+                jsonObject.get("onClick").getAsString(),
+                ""//jsonObject.get("hover").getAsString()
+        )).toArray(ChatMessage[]::new);
+
+        String id = gson.fromJson(jsonObj.get("id"), String.class);
+        int worth = gson.fromJson(jsonObj.get("worth"), Integer.class);
+        Sound sound = gson.fromJson(jsonObj.get("sound"), Sound.class);
+        AuctionItem auction = gson.fromJson(jsonObj.get("auction"), AuctionItem.class);
+        String render = gson.fromJson(jsonObj.get("render"), String.class);
+        String target = gson.fromJson(jsonObj.get("target"), String.class);
+        return new Flip(chatMessages, id, worth, sound, auction, render, target);
     }
 }

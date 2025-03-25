@@ -42,7 +42,7 @@ public class TfmBinGUI extends BinGUI {
                 Text.of("Cofl - Auction View"),
                 MinecraftClient.getInstance().textRenderer
         ).alignLeft();
-        
+
         loreMultilineTextWidget = new MultilineTextWidget(
                 screenWidth / 2 - width / 2 + 12,
                 screenHeight / 2 - height / 2 + 8 + 8 + 6,
