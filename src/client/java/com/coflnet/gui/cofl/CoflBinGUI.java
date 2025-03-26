@@ -2,6 +2,7 @@ package com.coflnet.gui.cofl;
 
 import CoflCore.CoflCore;
 import CoflCore.commands.models.FlipData;
+import com.coflnet.CoflModClient;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
@@ -28,16 +29,14 @@ public class CoflBinGUI extends BinGUI {
     private ClickableWidget leftClickableWidget;
 
     public String title = "";
-    public Text lore = Text.of(RenderUtils.lorem());
+    public Text lore = Text.of("");
     public Pair<Integer, Integer> rightButtonCol = new Pair<>(CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.BACKGROUND_SECONDARY);
 
-    public CoflBinGUI(GenericContainerScreen gcs, String flipId){
+    public CoflBinGUI(GenericContainerScreen gcs, FlipData flipData){
         super(Text.literal("Cofl Bin Gui"), gcs);
 
-        FlipData f = CoflCore.flipHandler.fds.getFlipById(flipId);
-        if(f == null){
-            System.out.println("NO FLIP FOUND");
-        } else System.out.println("FLIP FOUND WTF");
+        title = flipData == null ? "" : flipData.getMessageAsString();
+        CoflModClient.flip = null;
 
         this.p = 5;
         this.r = 4;

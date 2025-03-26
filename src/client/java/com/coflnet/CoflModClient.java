@@ -8,7 +8,9 @@ import CoflCore.classes.Flip;
 import CoflCore.classes.Sound;
 import CoflCore.commands.CommandType;
 import CoflCore.commands.JsonStringCommand;
+import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
+import CoflCore.commands.models.SoundData;
 import CoflCore.events.*;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
@@ -17,10 +19,14 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
+import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -32,7 +38,14 @@ import net.minecraft.client.gui.screen.ingame.BookScreen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.command.CommandSource;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Items;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.command.CommandManager;
+import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.ClickEvent;
 import net.minecraft.text.Text;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -43,6 +56,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -63,7 +77,7 @@ public class CoflModClient implements ClientModInitializer {
     private static LocalDateTime lastBatchStart = LocalDateTime.now();
 
     private String username = "";
-    private static String flipId = "";
+    public static FlipData flip = null;
     private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 	@Override
 	public void onInitializeClient() {
@@ -86,7 +100,6 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if(bestflipsKeyBinding.wasPressed()) {
-                System.out.println("Anz Flips: "+CoflCore.flipHandler.fds.CurrentFlips());
                 onOpenBestFlip(username, true);
             }
         });
@@ -102,9 +115,9 @@ public class CoflModClient implements ClientModInitializer {
             dispatcher.register(ClientCommandManager.literal("cofl")
                     .then(ClientCommandManager.argument("args", StringArgumentType.greedyString()).executes(context -> {
                         String[] args = context.getArgument("args", String.class).split(" ");
-                        if (args[0].compareToIgnoreCase("openauctiongui") == 0){
-                            flipId = args[1];
-                        } else flipId = "";
+//                        if (args[0].compareToIgnoreCase("openauctiongui") == 0){
+//                            flipId = args[1];
+//                        } else flipId = "";
                         CoflSkyCommand.processCommand(args,username);
                         return 1;
                     })));
@@ -121,7 +134,7 @@ public class CoflModClient implements ClientModInitializer {
                 ) {
                     if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
                         switch (CoflCore.config.purchaseOverlay) {
-                            case COFL: client.setScreen(new CoflBinGUI(gcs, flipId));break;
+                            case COFL: client.setScreen(new CoflBinGUI(gcs, flip));break;
                             case TFM: client.setScreen(new TfmBinGUI(gcs));break;
                             case null: default: break;
                         }
@@ -173,12 +186,26 @@ public class CoflModClient implements ClientModInitializer {
 
     @Subscribe
     public void onOpenAuctionGUI(OnOpenAuctionGUI event){
-        MinecraftClient.getInstance().setScreen(new BookScreen());
+        flip = event.flip;
+        MinecraftClient.getInstance().getNetworkHandler().sendChatMessage(event.openAuctionCommand);
     }
 
     @Subscribe
-    public void onFlipMessage(OnFlipReceive event){
-        System.out.println("FLIP RECEIVED");
+    public void onFlipReceive(OnFlipReceive event){
+        Flip f = event.FlipData;
+        EventBus.getDefault().post(new OnChatMessageReceive(f.getMessages()));
+        CoflCore.flipHandler.fds.Insert(new FlipData(
+                Arrays.stream(f.getMessages())
+                        .map(cm -> new ChatMessageData(cm.getText(), cm.getOnClick(), cm.getHover()))
+                        .toArray(ChatMessageData[]::new),
+                f.getId(),
+                f.getWorth(),
+                new SoundData(
+                        f.getSound().getSoundName(),
+                        f.getSound().getSoundPitch() == null ? 0 : f.getSound().getSoundPitch()
+                ),
+                f.getRender()
+        ));
     }
 
     @Subscribe
@@ -194,7 +221,7 @@ public class CoflModClient implements ClientModInitializer {
         ChatMessage[] chatMessages = Arrays.stream(chatMessagesObj).map(jsonObject -> new ChatMessage(
                 jsonObject.get("text").getAsString(),
                 jsonObject.get("onClick").getAsString(),
-                ""//jsonObject.get("hover").getAsString()
+                jsonObject.get("hover").isJsonNull() ? null : jsonObject.get("hover").getAsString()
         )).toArray(ChatMessage[]::new);
 
         String id = gson.fromJson(jsonObj.get("id"), String.class);

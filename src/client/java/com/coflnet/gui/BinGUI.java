@@ -1,5 +1,6 @@
 package com.coflnet.gui;
 
+import com.coflnet.CoflModClient;
 import com.coflnet.gui.widget.ItemWidget;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
