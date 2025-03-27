@@ -211,5 +211,4 @@ public class CoflBinGUI extends BinGUI {
         // Description Background
         RenderUtils.drawRoundedRect(drawContext,screenWidth / 2 - width / 2 + p + 20 + p, screenHeight / 2 - height / 2 + p + 12+ p, width - 20 - p*3, height - 75 - screenHeight / 15, r, CoflColConfig.BACKGROUND_SECONDARY);
     }
-
 }

@@ -1,5 +1,6 @@
 package com.coflnet.gui;
 
+import CoflCore.commands.models.FlipData;
 import com.coflnet.CoflModClient;
 import com.coflnet.gui.widget.ItemWidget;
 import net.minecraft.client.MinecraftClient;
@@ -27,23 +28,31 @@ public abstract class BinGUI extends Screen {
     protected final int CONFIRMATION_CANCEL_SLOT = 15;
     protected ItemWidget itemWidget;
     protected ItemStack currentItem;
+    protected FlipData flipData = null;
 
     protected AuctionStatus auctionStatus;
     protected GenericContainerScreenHandler gcsh;
     protected GenericContainerScreen gcs;
-    protected BinGUI(Text title, GenericContainerScreen gcs) {
+    protected BinGUI(Text title, GenericContainerScreen gcs, int p, int r) {
         super(title);
-        screenWidth = MinecraftClient.getInstance().currentScreen.width;
-        screenHeight = MinecraftClient.getInstance().currentScreen.height;
-
         this.gcs = gcs;
         this.gcsh = gcs.getScreenHandler();
+        this.p = p;
+        this.r = r;
 
         if (gcsh.getType() == ScreenHandlerType.GENERIC_9X3){
             this.auctionStatus = AuctionStatus.CONFIRMING;
         } else this.auctionStatus = AuctionStatus.INIT;
 
+        flipData = CoflModClient.popFlipData();
 
+        screenWidth = MinecraftClient.getInstance().currentScreen.width;
+        screenHeight = MinecraftClient.getInstance().currentScreen.height;
+        initSize(screenWidth, screenHeight);
+        clearAndInitWidgets(screenWidth, screenHeight);
+    }
+
+    private void initSize(int screenWidth, int screenHeight){
         this.width = MinecraftClient.getInstance().currentScreen.width / 2;
         if (width < 300) this.width = 300;
 
@@ -88,6 +97,7 @@ public abstract class BinGUI extends Screen {
             || screenHeight != MinecraftClient.getInstance().currentScreen.height){
             screenWidth = MinecraftClient.getInstance().currentScreen.width;
             screenHeight = MinecraftClient.getInstance().currentScreen.height;
+            initSize(screenWidth, screenHeight);
             clearAndInitWidgets(screenWidth, screenHeight);
         }
     }

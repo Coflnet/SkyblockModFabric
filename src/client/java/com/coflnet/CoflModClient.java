@@ -106,6 +106,10 @@ public class CoflModClient implements ClientModInitializer {
                     })));
         });
 
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+
+        });
+
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof GenericContainerScreen gcs) {
                 System.out.println(gcs.getTitle().getString());

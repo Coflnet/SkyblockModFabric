@@ -10,3 +10,4 @@ public abstract class CoflColConfig {
     public static final int UNAVAILABLE = 0xFFD07916;
     public static final int TEXT_PRIMARY = 0xFFEEEEEE;
 }
+
