@@ -1,6 +1,8 @@
 package com.coflnet.gui.tfm;
 
 import CoflCore.commands.models.ChatMessageData;
+import CoflCore.commands.models.FlipData;
+import com.coflnet.CoflModClient;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
@@ -15,6 +17,9 @@ import net.minecraft.client.gui.widget.TextWidget;
 import net.minecraft.item.Items;
 import net.minecraft.text.Text;
 
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 public class TfmBinGUI extends BinGUI {
     public String lore = "";
 
@@ -24,17 +29,26 @@ public class TfmBinGUI extends BinGUI {
     public ClickableWidget cancelClickableWidget;
 
     public TfmBinGUI(GenericContainerScreen gcs){
-        super(Text.of("Tfm Bin Gui"), gcs);
+        super(Text.of("Tfm Bin Gui"), gcs, 1, 4);
 
-        this.p = 1;
-        this.r = 4;
-
-        clearAndInitWidgets(screenWidth, screenHeight);
+        lore = "";
+        if (flipData != null) {
+            for (ChatMessageData message : flipData.Messages) {
+                if (message.Text.contains("sellers ah")) break;
+                lore += message.Text+"\n";
+            };
+        }
     }
 
     @Override
     protected void clearAndInitWidgets(int screenWidth, int screenHeight) {
         clearChildren();
+        itemWidget = new ItemWidget(
+                screenWidth / 2 - 8,
+                screenHeight / 2 - 8,
+                Items.AIR.getDefaultStack()
+        );
+
         titleTextWidget = new TextWidget(
                 screenWidth / 2 - width / 2 + 12,
                 screenHeight / 2 - height / 2 + 8,
@@ -49,12 +63,6 @@ public class TfmBinGUI extends BinGUI {
                 Text.of(lore),
                 MinecraftClient.getInstance().textRenderer
         ).setCentered(false);
-
-        itemWidget = new ItemWidget(
-                screenWidth / 2 - 8,
-                screenHeight / 2 - 8,
-                Items.AIR.getDefaultStack()
-        );
 
         confirmClickableWidget = new ClickableWidget(
                 0, 0, screenWidth, screenHeight, Text.empty()
@@ -110,9 +118,9 @@ public class TfmBinGUI extends BinGUI {
 
         this.addDrawableChild(titleTextWidget);
         this.addDrawableChild(loreMultilineTextWidget);
-        this.addDrawableChild(itemWidget);
         this.addDrawableChild(confirmClickableWidget);
         this.addDrawableChild(cancelClickableWidget);
+        this.addDrawableChild(itemWidget);
     }
 
     @Override

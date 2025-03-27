@@ -32,25 +32,20 @@ public class CoflBinGUI extends BinGUI {
     public Text lore = Text.of("");
     public Pair<Integer, Integer> rightButtonCol = new Pair<>(CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.BACKGROUND_SECONDARY);
 
-    public CoflBinGUI(GenericContainerScreen gcs, FlipData flipData){
-        super(Text.literal("Cofl Bin Gui"), gcs);
-
+    public CoflBinGUI(GenericContainerScreen gcs){
+        super(Text.literal("Cofl Bin Gui"), gcs, 5, 4);
         title = flipData == null ? "" : flipData.getMessageAsString();
-        CoflModClient.flip = null;
-
-        this.p = 5;
-        this.r = 4;
-
-        if (gcsh.getType() == ScreenHandlerType.GENERIC_9X3){
-            this.auctionStatus = AuctionStatus.CONFIRMING;
-        } else this.auctionStatus = AuctionStatus.INIT;
-
-        clearAndInitWidgets(screenWidth, screenHeight);
     }
 
     @Override
     protected void clearAndInitWidgets(int screenWidth, int screenHeight) {
         this.clearChildren();
+        itemWidget = new ItemWidget(
+                screenWidth / 2 - width / 2 + p + 2,
+                screenHeight / 2 - height / 2 + p + 12 + p + 2,
+                Items.AIR.getDefaultStack()
+        );
+
         leftClickableWidget = new ClickableWidget(
                 screenWidth / 2 - width / 2 + p,
                 screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p * 5) - screenHeight / 15,
@@ -144,19 +139,13 @@ public class CoflBinGUI extends BinGUI {
             }
         };
 
-        itemWidget = new ItemWidget(
-                screenWidth / 2 - width / 2 + p + 2,
-                screenHeight / 2 - height / 2 + p + 12 + p + 2,
-                Items.AIR.getDefaultStack()
-        );
-
         if (auctionStatus == AuctionStatus.CONFIRMING) setRightButtonConfig(AuctionStatus.CONFIRMING);
 
         this.addDrawableChild(titleTextWidget);
         this.addDrawableChild(loreScrollableTextWidget);
-        this.addDrawableChild(itemWidget);
         this.addDrawableChild(rightClickableWidget);
         this.addDrawableChild(leftClickableWidget);
+        this.addDrawableChild(itemWidget);
     }
 
     private AuctionStatus setAuctionStatus(Item item){

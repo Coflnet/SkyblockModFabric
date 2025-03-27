@@ -18,15 +18,10 @@ import com.coflnet.gui.tfm.TfmBinGUI;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import com.google.gson.reflect.TypeToken;
-import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.brigadier.context.CommandContext;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
-import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -34,18 +29,9 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ingame.BookScreen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
-import net.minecraft.command.CommandSource;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Items;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.server.command.ServerCommandSource;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.ClickEvent;
 import net.minecraft.text.Text;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -53,10 +39,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -77,7 +60,7 @@ public class CoflModClient implements ClientModInitializer {
     private static LocalDateTime lastBatchStart = LocalDateTime.now();
 
     private String username = "";
-    public static FlipData flip = null;
+    private static FlipData flipData = null;
     private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
 	@Override
 	public void onInitializeClient() {
@@ -116,8 +99,8 @@ public class CoflModClient implements ClientModInitializer {
                     .then(ClientCommandManager.argument("args", StringArgumentType.greedyString()).executes(context -> {
                         String[] args = context.getArgument("args", String.class).split(" ");
 //                        if (args[0].compareToIgnoreCase("openauctiongui") == 0){
-//                            flipId = args[1];
-//                        } else flipId = "";
+//                            flip = CoflCore.flipHandler.fds.getFlipById(args[1]);
+//                        } else flip = null;
                         CoflSkyCommand.processCommand(args,username);
                         return 1;
                     })));
@@ -134,7 +117,7 @@ public class CoflModClient implements ClientModInitializer {
                 ) {
                     if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
                         switch (CoflCore.config.purchaseOverlay) {
-                            case COFL: client.setScreen(new CoflBinGUI(gcs, flip));break;
+                            case COFL: client.setScreen(new CoflBinGUI(gcs));break;
                             case TFM: client.setScreen(new TfmBinGUI(gcs));break;
                             case null: default: break;
                         }
@@ -143,6 +126,12 @@ public class CoflModClient implements ClientModInitializer {
             }
         });
 	}
+
+    public static FlipData popFlipData(){
+        FlipData fd = flipData;
+        flipData = null;
+        return fd;
+    }
 
     public static void onOpenBestFlip(String username, boolean isInitialKeypress) {
         if (System.currentTimeMillis() - LastClick >= 300L) {
@@ -186,7 +175,7 @@ public class CoflModClient implements ClientModInitializer {
 
     @Subscribe
     public void onOpenAuctionGUI(OnOpenAuctionGUI event){
-        flip = event.flip;
+        flipData = event.flip;
         MinecraftClient.getInstance().getNetworkHandler().sendChatMessage(event.openAuctionCommand);
     }
 
@@ -196,7 +185,7 @@ public class CoflModClient implements ClientModInitializer {
         EventBus.getDefault().post(new OnChatMessageReceive(f.getMessages()));
         CoflCore.flipHandler.fds.Insert(new FlipData(
                 Arrays.stream(f.getMessages())
-                        .map(cm -> new ChatMessageData(cm.getText(), cm.getOnClick(), cm.getHover()))
+                         .map(cm -> new ChatMessageData(cm.getText(), cm.getOnClick(), cm.getHover()))
                         .toArray(ChatMessageData[]::new),
                 f.getId(),
                 f.getWorth(),
