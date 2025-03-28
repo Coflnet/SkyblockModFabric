@@ -30,14 +30,6 @@ public class TfmBinGUI extends BinGUI {
 
     public TfmBinGUI(GenericContainerScreen gcs){
         super(Text.of("Tfm Bin Gui"), gcs, 1, 4);
-
-        lore = "";
-        if (flipData != null) {
-            for (ChatMessageData message : flipData.Messages) {
-                if (message.Text.contains("sellers ah")) break;
-                lore += message.Text+"\n";
-            };
-        }
     }
 
     @Override
@@ -60,7 +52,7 @@ public class TfmBinGUI extends BinGUI {
         loreMultilineTextWidget = new MultilineTextWidget(
                 screenWidth / 2 - width / 2 + 12,
                 screenHeight / 2 - height / 2 + 8 + 8 + 6,
-                Text.of(lore),
+                Text.of(flipData.getMessageAsString().replace("sellers ah", "")),
                 MinecraftClient.getInstance().textRenderer
         ).setCentered(false);
 

@@ -13,7 +13,7 @@ public class Utils {
             if (cmd.getOnClick().startsWith("http")) {
                 message.styled((style) -> style.withClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, cmd.getOnClick())));
             } else {
-                message.styled((style) -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd.getOnClick())));
+                message.styled((style) -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd.getOnClick().replace("viewauction", "cofl openauctiongui"))));
             }
         }
 

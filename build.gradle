@@ -35,7 +35,7 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-	implementation 'com.github.Coflnet:CoflSkyCore:main'
+	implementation 'com.github.Coflnet:CoflSkyCore:main-SNAPSHOT'
 	implementation "org.greenrobot:eventbus-java:3.3.1"
 	implementation "org.java-websocket:Java-WebSocket:1.5.2"
 }

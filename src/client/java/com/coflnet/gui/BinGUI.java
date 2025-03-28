@@ -28,7 +28,7 @@ public abstract class BinGUI extends Screen {
     protected final int CONFIRMATION_CANCEL_SLOT = 15;
     protected ItemWidget itemWidget;
     protected ItemStack currentItem;
-    protected FlipData flipData = null;
+    protected FlipData flipData;
 
     protected AuctionStatus auctionStatus;
     protected GenericContainerScreenHandler gcsh;

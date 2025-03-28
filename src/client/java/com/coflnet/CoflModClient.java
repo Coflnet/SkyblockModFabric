@@ -12,6 +12,7 @@ import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
 import CoflCore.commands.models.SoundData;
 import CoflCore.events.*;
+import CoflCore.handlers.EventRegistry;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.tfm.TfmBinGUI;
@@ -50,15 +51,6 @@ import static com.coflnet.Utils.ChatComponent;
 public class CoflModClient implements ClientModInitializer {
     private  KeyBinding bestflipsKeyBinding;
 
-    public static long LastClick = System.currentTimeMillis();
-    public static final ExecutorService chatThreadPool = Executors.newFixedThreadPool(2);
-    public static final ExecutorService tickThreadPool = Executors.newFixedThreadPool(2);
-    public static long LastViewAuctionInvocation = Long.MIN_VALUE;
-    public static String LastViewAuctionUUID = null;
-    public static Pattern chatpattern = Pattern.compile("a^", 2);
-    private static LinkedBlockingQueue<String> chatBatch = new LinkedBlockingQueue();
-    private static LocalDateTime lastBatchStart = LocalDateTime.now();
-
     private String username = "";
     private static FlipData flipData = null;
     private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
@@ -83,7 +75,7 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if(bestflipsKeyBinding.wasPressed()) {
-                onOpenBestFlip(username, true);
+                EventRegistry.onOpenBestFlip(username, true);
             }
         });
 
@@ -104,10 +96,6 @@ public class CoflModClient implements ClientModInitializer {
                         CoflSkyCommand.processCommand(args,username);
                         return 1;
                     })));
-        });
-
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
-
         });
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
@@ -135,24 +123,6 @@ public class CoflModClient implements ClientModInitializer {
         FlipData fd = flipData;
         flipData = null;
         return fd;
-    }
-
-    public static void onOpenBestFlip(String username, boolean isInitialKeypress) {
-        if (System.currentTimeMillis() - LastClick >= 300L) {
-            FlipData f = CoflCore.flipHandler.fds.GetHighestFlip();
-            System.out.println(f);
-            if (f != null) {
-                CoflSkyCommand.processCommand(new String[]{"openauctiongui", f.Id, "true"}, username);
-                LastViewAuctionUUID = f.Id;
-                LastViewAuctionInvocation = System.currentTimeMillis();
-                LastClick = System.currentTimeMillis();
-                String command = (new Gson()).toJson("/viewauction " + f.Id);
-                CoflCore.Wrapper.SendMessage(new JsonStringCommand(CommandType.Clicked, command));
-                CoflSkyCommand.processCommand(new String[]{"track", "besthotkey", f.Id, username}, username);
-            } else if (isInitialKeypress) {
-                CoflSkyCommand.processCommand(new String[]{"dialog", "nobestflip", username}, username);
-            }
-        }
     }
 
     @Subscribe
@@ -189,8 +159,11 @@ public class CoflModClient implements ClientModInitializer {
         EventBus.getDefault().post(new OnChatMessageReceive(f.getMessages()));
         CoflCore.flipHandler.fds.Insert(new FlipData(
                 Arrays.stream(f.getMessages())
-                         .map(cm -> new ChatMessageData(cm.getText(), cm.getOnClick(), cm.getHover()))
-                        .toArray(ChatMessageData[]::new),
+                         .map(cm -> new ChatMessageData(
+                                 cm.getText(),
+                                 cm.getOnClick(),
+                                 cm.getHover())
+                         ).toArray(ChatMessageData[]::new),
                 f.getId(),
                 f.getWorth(),
                 new SoundData(

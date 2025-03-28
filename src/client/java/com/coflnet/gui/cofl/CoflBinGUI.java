@@ -34,7 +34,6 @@ public class CoflBinGUI extends BinGUI {
 
     public CoflBinGUI(GenericContainerScreen gcs){
         super(Text.literal("Cofl Bin Gui"), gcs, 5, 4);
-        title = flipData == null ? "" : flipData.getMessageAsString();
     }
 
     @Override
@@ -120,14 +119,14 @@ public class CoflBinGUI extends BinGUI {
                 screenWidth / 2 - width / 2 + p + 3,
                 screenHeight / 2 - height / 2 + p + 2,
                 width - p*2 - 4, 10,
-                Text.of(title),
+                Text.of(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
                 MinecraftClient.getInstance().textRenderer
         ).alignLeft();
 
         loreScrollableTextWidget = new ScrollableDynamicTextWidget(
                 screenWidth / 2 - width / 2 + p + 20 + p + 4,
                 screenHeight / 2 - height / 2 + p + 12 + p + 2,
-                width - 20 - p*4 - 4, height - 75 - 2 - screenHeight / 15 - 2,
+                width - 20 - p*4 - 4,  height - 75 - 2 - screenHeight / 15 - 2,
                 lore, MinecraftClient.getInstance().textRenderer
         ){
             @Override
