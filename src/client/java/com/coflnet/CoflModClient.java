@@ -20,6 +20,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.sun.jna.internal.ReflectionUtils;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -28,16 +29,24 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvent;
+import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
+import net.minecraft.util.math.BlockPos;
+import org.apache.logging.log4j.core.util.ReflectionUtil;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 import org.lwjgl.glfw.GLFW;
 
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.Arrays;
@@ -49,7 +58,8 @@ import java.util.regex.Pattern;
 import static com.coflnet.Utils.ChatComponent;
 
 public class CoflModClient implements ClientModInitializer {
-    private  KeyBinding bestflipsKeyBinding;
+    private KeyBinding bestflipsKeyBinding;
+    private boolean keyPressed = false;
 
     private String username = "";
     private static FlipData flipData = null;
@@ -74,10 +84,12 @@ public class CoflModClient implements ClientModInitializer {
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if(bestflipsKeyBinding.wasPressed()) {
+            if(!keyPressed && bestflipsKeyBinding.isPressed()) {
                 EventRegistry.onOpenBestFlip(username, true);
-            }
+            } else keyPressed = false;
         });
+
+
 
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
@@ -172,6 +184,9 @@ public class CoflModClient implements ClientModInitializer {
                 ),
                 f.getRender()
         ));
+
+        PlayerEntity player = MinecraftClient.getInstance().player;
+        player.getWorld().playSound(player, player.getBlockPos(), findByName(f.getSound().getSoundName()), SoundCategory.MASTER, 1f, f.getSound().getSoundPitch() == null ? 1f : (float) f.getSound().getSoundPitch());
     }
 
     @Subscribe
@@ -180,6 +195,22 @@ public class CoflModClient implements ClientModInitializer {
             JsonObject jo = gson.fromJson(event.command.getData(), JsonObject.class);
             EventBus.getDefault().post(new OnFlipReceive(jsonObjToFlip(jo)));
         }
+    }
+
+    public static SoundEvent findByName(String name) {
+        SoundEvent result = SoundEvents.BLOCK_NOTE_BLOCK_BELL.value();
+
+        for (Field f : SoundEvents.class.getDeclaredFields()) {
+            if (f.getName().equalsIgnoreCase(name)) {
+                try {
+                    result = (SoundEvent) f.get(SoundEvents.class);
+                } catch (IllegalAccessException e) {
+                    System.out.println("SoundEvent inaccessible. This shouldn't happen");
+                }
+                break;
+            }
+        }
+        return result;
     }
 
     public static Flip jsonObjToFlip(JsonObject jsonObj){
