@@ -2,6 +2,7 @@ package com.coflnet.gui.tfm;
 
 import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
+import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
@@ -52,7 +53,7 @@ public class TfmBinGUI extends BinGUI {
         loreMultilineTextWidget = new MultilineTextWidget(
                 screenWidth / 2 - width / 2 + 12,
                 screenHeight / 2 - height / 2 + 8 + 8 + 6,
-                Text.of(flipData.getMessageAsString().replace("sellers ah", "")),
+                Text.of(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
                 MinecraftClient.getInstance().textRenderer
         ).setCentered(false);
 
@@ -113,6 +114,8 @@ public class TfmBinGUI extends BinGUI {
         this.addDrawableChild(confirmClickableWidget);
         this.addDrawableChild(cancelClickableWidget);
         this.addDrawableChild(itemWidget);
+
+        gcsh.getInventory();
     }
 
     @Override
