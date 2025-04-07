@@ -31,6 +31,7 @@ import net.fabricmc.fabric.impl.client.event.lifecycle.ClientLifecycleEventsImpl
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
@@ -124,9 +125,6 @@ public class CoflModClient implements ClientModInitializer {
             dispatcher.register(ClientCommandManager.literal("cofl")
                     .then(ClientCommandManager.argument("args", StringArgumentType.greedyString()).executes(context -> {
                         String[] args = context.getArgument("args", String.class).split(" ");
-//                        if (args[0].compareToIgnoreCase("openauctiongui") == 0){
-//                            flip = CoflCore.flipHandler.fds.getFlipById(args[1]);
-//                        } else flip = null;
                         CoflSkyCommand.processCommand(args,username);
                         return 1;
                     })));
@@ -140,7 +138,7 @@ public class CoflModClient implements ClientModInitializer {
                         && gcs.getScreenHandler().getInventory().size() == 9 * 6
                         || gcs.getTitle().getString().contains("Confirm Purchase")
                         && gcs.getScreenHandler().getInventory().size() == 9 * 3)
-                ) {
+                ){
                     if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
                         switch (CoflCore.config.purchaseOverlay) {
                             case COFL: client.setScreen(new CoflBinGUI(gcs));break;
@@ -153,17 +151,14 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
-            if (showCountdown && countdownData != null){
-                //RenderUtils.drawString(drawContext, "New flips in: "+String.format("%.1f", countdown), 10, 10, 0xFFFFFFFF);
-                MinecraftClient.getInstance().textRenderer.draw(
-                        countdownData.getPrefix()+String.format("New flips in: %.1f", countdown),
+            if (showCountdown && countdownData != null
+                    && (MinecraftClient.getInstance().currentScreen == null
+                        || MinecraftClient.getInstance().currentScreen instanceof ChatScreen)){
+                RenderUtils.drawStringWithShadow(
+                        drawContext, countdownData.getPrefix()+"New flips in: "+String.format("%.1f", countdown),
                         MinecraftClient.getInstance().getWindow().getWidth()/countdownData.getWidthPercentage(),
                         MinecraftClient.getInstance().getWindow().getHeight()/countdownData.getHeightPercentage(),
-                        0xFFFFFFFF, false,
-                        drawContext.getMatrices().peek().getPositionMatrix(),
-                        drawContext.getVertexConsumers(),
-                        TextRenderer.TextLayerType.NORMAL,
-                        0x00FFFFFF, 100
+                        0xFFFFFFFF, countdownData.getScale()
                 );
             }
         });

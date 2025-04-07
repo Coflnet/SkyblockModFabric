@@ -8,7 +8,9 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.screen.slot.SlotActionType;
@@ -89,6 +91,14 @@ public abstract class BinGUI extends Screen {
                 SlotActionType.PICKUP,
                 player
         );
+    }
+
+    protected AuctionStatus updateAuctionStatus(Item item){
+        if (item == Items.GOLD_NUGGET) auctionStatus = AuctionStatus.BUYING;
+        if (item == Items.RED_BED) auctionStatus = AuctionStatus.WAITING;
+        if (item == Items.POTATO) auctionStatus = AuctionStatus.SOLD;
+        if (item == Items.GREEN_TERRACOTTA) auctionStatus = AuctionStatus.CONFIRMING;
+        return auctionStatus;
     }
 
     @Override

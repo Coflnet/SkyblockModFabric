@@ -7,6 +7,7 @@ import net.minecraft.client.gui.screen.narration.NarrationPart;
 import net.minecraft.client.gui.widget.MultilineTextWidget;
 import net.minecraft.client.gui.widget.ScrollableWidget;
 import net.minecraft.text.Text;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
@@ -17,11 +18,11 @@ public class ScrollableDynamicTextWidget extends ScrollableWidget {
     public ScrollableDynamicTextWidget(int x, int y, int width, int height, Text message, TextRenderer textRenderer) {
         super(x, y, width, height, message);
         this.textRenderer = textRenderer;
-        this.wrapped = (new MultilineTextWidget(message, textRenderer)).setMaxWidth(this.getWidth() - this.getPaddingDoubled());
+        this.wrapped = (new MultilineTextWidget(message == null ? Text.empty() : message, textRenderer)).setMaxWidth(this.getWidth() - this.getPaddingDoubled());
     }
 
     public void updateText(Text message) {
-        this.wrapped = (new MultilineTextWidget(message, textRenderer)).setMaxWidth(this.getWidth() - this.getPaddingDoubled());
+        this.wrapped = (new MultilineTextWidget(message == null ? Text.empty() : message, textRenderer)).setMaxWidth(this.getWidth() - this.getPaddingDoubled());
     }
 
     public ScrollableDynamicTextWidget textColor(int textColor) {
@@ -79,6 +80,6 @@ public class ScrollableDynamicTextWidget extends ScrollableWidget {
     }
 
     protected void appendClickableNarrations(NarrationMessageBuilder builder) {
-        builder.put(NarrationPart.TITLE, this.getMessage());
+        builder.put(NarrationPart.TITLE, this.getMessage() == null ? Text.empty() : this.getMessage());
     }
 }

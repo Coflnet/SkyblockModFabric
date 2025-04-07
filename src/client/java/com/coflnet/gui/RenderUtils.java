@@ -5,6 +5,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.*;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.opengl.GL11;
@@ -30,15 +31,13 @@ public class RenderUtils {
     //draw a rectangle
     public static void drawRect(DrawContext context, float x, float y, float width, float height, int color) {
         buffer = tessellator.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-
+        
         buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x, y, z).color(color);
         buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x, y + height, z).color(color);
         buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x + width, y + height, z).color(color);
         buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x + width, y, z).color(color);
 
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 0.0F);
-
         BufferRenderer.drawWithGlobalProgram(buffer.end());
     }
 
@@ -157,14 +156,11 @@ public class RenderUtils {
 
     //draws a rounded rectangle with a given radius and color and size
     public static void drawRoundedRect(DrawContext context, int x, int y, int width, int height, int radius, @NotNull int color) {
-
         //draw the two rectangles
         drawRect(context, x + radius, y, width - radius * 2, height, color);
         drawRect(context, x, y + radius, radius, height - radius * 2, color);
         drawRect(context, x + width - radius, y + radius, radius, height - radius * 2, color);
 
-        //drawRect(x + radius, y, width - radius - radius, height, color.getRGB());
-        //drawRect(x, y + radius, width, height - radius - radius, color.getRGB());
         //draw the circles
         //drawArc(x + radius, y + radius, radius, 180, 270, color);
         //drawArc(x + width - radius, y + radius, radius, 90, 180, color);
@@ -229,41 +225,34 @@ public class RenderUtils {
                 true
         );
     }
-/*
+
     //draws a string with custom scale
-    public static void drawString(String text, int x, int y, int color, int scale) {
-        drawContext.drawText(textRenderer, text, x, y, color, false);
+    private static void drawString(DrawContext context, String text, int x, int y, int color, int scale, boolean centered, boolean shadow) {
+        MatrixStack ms = context.getMatrices();
+        ms.push();
+        ms.scale(scale,scale,0);
+        context.drawText(textRenderer, text, centered ? x - textRenderer.getWidth(text) / 2 : x, y, color, shadow);
+        ms.pop();
+    }
+
+    //draws a string with custom scale
+    public static void drawString(DrawContext context, String text, int x, int y, int color, int scale) {
+        drawString(context, text, x, y, color, scale, false, false);
     }
 
     //draws a string with custom scale and shadow
-    public static void drawStringWithShadow(String text, int x, int y, Color color, int scale) {
-        setColor(color);
-        FontRenderer fr = mc.fontRendererObj;
-        fr.drawStringWithShadow(text, x, y, color.getRGB());
+    public static void drawStringWithShadow(DrawContext context, String text, int x, int y, int color, int scale) {
+        drawString(context, text, x, y, color, scale, false, true);
     }
 
-    public static void drawCenteredString(String text, int x, int y, Color color, int scale) {
-        setColor(color);
-        FontRenderer fr = mc.fontRendererObj;
-        fr.drawString(text, x - fr.getStringWidth(text) / 2, y, color.getRGB());
+    public static void drawCenteredString(DrawContext context, String text, int x, int y, int color, int scale) {
+        drawString(context, text, x, y, color, scale, true, false);
     }
 
-    public static void drawCenteredStringWithShadow(String text, int x, int y, Color color, int scale) {
-        setColor(color);
-        FontRenderer fr = mc.fontRendererObj;
-        fr.drawStringWithShadow(text, x - fr.getStringWidth(text) / 2, y, color.getRGB());
+    public static void drawCenteredStringWithShadow(DrawContext context, String text, int x, int y, int color, int scale) {
+        drawString(context, text, x, y, color, scale, true, true);
     }
 
-    public static void drawCenteredStringWithShadow(String text, int x, int y, Color color, int scale, boolean centered) {
-        setColor(color);
-        FontRenderer fr = mc.fontRendererObj;
-        if (centered) {
-            fr.drawStringWithShadow(text, x - fr.getStringWidth(text) / 2, y, color.getRGB());
-        } else {
-            fr.drawStringWithShadow(text, x, y, color.getRGB());
-        }
-    }
-*/
     //draws an ItemStack at a given position with a given scale
     public static void drawItemStack(DrawContext context, ItemStack itemStack, int x, int y, float scale) {
         context.drawItem(itemStack, x, y, 0, z);

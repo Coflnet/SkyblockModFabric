@@ -1,8 +1,5 @@
 package com.coflnet.gui.cofl;
 
-import CoflCore.CoflCore;
-import CoflCore.commands.models.FlipData;
-import com.coflnet.CoflModClient;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
@@ -15,7 +12,6 @@ import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
 import net.minecraft.client.gui.widget.*;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
-import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import oshi.util.tuples.Pair;
@@ -138,20 +134,13 @@ public class CoflBinGUI extends BinGUI {
             }
         };
 
-        if (auctionStatus == AuctionStatus.CONFIRMING) setRightButtonConfig(AuctionStatus.CONFIRMING);
+        if(auctionStatus.compareTo(AuctionStatus.CONFIRMING) == 0) setRightButtonConfig(auctionStatus);
 
         this.addDrawableChild(titleTextWidget);
         this.addDrawableChild(loreScrollableTextWidget);
         this.addDrawableChild(rightClickableWidget);
         this.addDrawableChild(leftClickableWidget);
         this.addDrawableChild(itemWidget);
-    }
-
-    private AuctionStatus setAuctionStatus(Item item){
-        if (item == Items.GOLD_NUGGET) auctionStatus = AuctionStatus.BUYING;
-        if (item == Items.RED_BED) auctionStatus = AuctionStatus.WAITING;
-        if (item == Items.POTATO) auctionStatus = AuctionStatus.SOLD;
-        return auctionStatus;
     }
 
     private void setRightButtonConfig(AuctionStatus auctionStatus){
@@ -196,9 +185,18 @@ public class CoflBinGUI extends BinGUI {
             if (gcsh.getInventory().getStack(ITEM_SLOT).getItem() != Items.AIR) {
                 setItem(gcsh.getInventory().getStack(ITEM_SLOT));
                 lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), currentItem));
-                loreScrollableTextWidget.updateText(lore);
+                loreScrollableTextWidget.updateText(lore == null ? Text.empty() : lore);
             }
-            if (gcsh.getInventory().getStack(BUY_SLOT).getItem() != Items.AIR) setRightButtonConfig(setAuctionStatus(gcsh.getInventory().getStack(ITEM_SLOT).getItem()));
+
+            if (gcsh.getInventory()
+                    .getStack(auctionStatus.compareTo(AuctionStatus.CONFIRMING) == 0 ? CONFIRM_SLOT : BUY_SLOT)
+                    .getItem() != Items.AIR) {
+                setRightButtonConfig(updateAuctionStatus(
+                        gcsh.getInventory()
+                                .getStack(auctionStatus.compareTo(AuctionStatus.CONFIRMING) == 0 ? CONFIRM_SLOT : BUY_SLOT)
+                                .getItem()
+                ));
+            }
         }
 
         // Background
