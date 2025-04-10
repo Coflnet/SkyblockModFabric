@@ -3,11 +3,7 @@ package com.coflnet;
 import CoflCore.CoflCore;
 import CoflCore.classes.*;
 import CoflCore.CoflSkyCommand;
-import CoflCore.commands.CommandType;
-import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
-import CoflCore.commands.models.SoundData;
-import CoflCore.events.*;
 import CoflCore.handlers.EventRegistry;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
@@ -16,7 +12,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import com.sun.java.accessibility.util.AWTEventMonitor;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -26,68 +21,47 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
-import net.fabricmc.fabric.impl.client.event.lifecycle.ClientLifecycleEventsImpl;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.inventory.Inventories;
+import net.minecraft.inventory.Inventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.registry.Registries;
 import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.sound.SoundCategory;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Text;
-import net.minecraft.world.timer.TimerCallbackSerializer;
-import org.greenrobot.eventbus.EventBus;
-import org.greenrobot.eventbus.Subscribe;
+import net.minecraft.util.collection.DefaultedList;
 import org.lwjgl.glfw.GLFW;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
-import java.lang.ref.Reference;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Timer;
-import java.util.TimerTask;
-
-import static com.coflnet.Utils.ChatComponent;
+import java.util.*;
 
 public class CoflModClient implements ClientModInitializer {
-    private KeyBinding bestflipsKeyBinding;
-    private boolean keyPressed = false;
-    private int counter = 0;
+    private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+    private static boolean keyPressed = false;
+    private static int counter = 0;
+    public static KeyBinding bestflipsKeyBinding;
 
     private String username = "";
-    private static FlipData flipData = null;
-    private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
-    private static Countdown countdownData = null;
-    private static float countdown = 0.0f;
-    private static boolean showCountdown = false;
-    private static Timer timer = new Timer();
-    private static TimerTask task = new TimerTask() {
-        @Override
-        public void run() {
-            countdown -= 0.1f;
-            if(countdown < 0.0) {
-                showCountdown = false;
-                timer.cancel();
-            }
-        }
-    };
 	@Override
 	public void onInitializeClient() {
         username = MinecraftClient.getInstance().getSession().getUsername();
         Path configDir = FabricLoader.getInstance().getConfigDir();
         CoflCore cofl = new CoflCore();
         cofl.init(configDir);
-        cofl.registerEventFile(this);
+        cofl.registerEventFile(new EventSubscribers());
 
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
             RenderUtils.init();
@@ -103,8 +77,6 @@ public class CoflModClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if(bestflipsKeyBinding.isPressed()) {
                 if(counter == 0){
-//                    PlayerEntity player = MinecraftClient.getInstance().player;
-//                    player.getWorld().playSound(player, player.getBlockPos(), findByName("BLOCK_ANVIL_PLACE"), SoundCategory.MASTER, 1f, 1f);
                     EventRegistry.onOpenBestFlip(username, true);
                 }
                 if(counter < 2) counter++;
@@ -112,7 +84,6 @@ public class CoflModClient implements ClientModInitializer {
                 counter = 0;
             }
         });
-
 
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
@@ -133,6 +104,7 @@ public class CoflModClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof GenericContainerScreen gcs) {
                 System.out.println(gcs.getTitle().getString());
+                System.out.println("INV: "+gcs.getScreenHandler().getInventory().getClass().getName());
                 if (CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null
                         && (gcs.getTitle().getString().contains("BIN Auction View")
                         && gcs.getScreenHandler().getInventory().size() == 9 * 6
@@ -151,140 +123,23 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
-            if (showCountdown && countdownData != null
+            if (EventSubscribers.showCountdown && EventSubscribers.countdownData != null
                     && (MinecraftClient.getInstance().currentScreen == null
                         || MinecraftClient.getInstance().currentScreen instanceof ChatScreen)){
                 RenderUtils.drawStringWithShadow(
-                        drawContext, countdownData.getPrefix()+"New flips in: "+String.format("%.1f", countdown),
-                        MinecraftClient.getInstance().getWindow().getWidth()/countdownData.getWidthPercentage(),
-                        MinecraftClient.getInstance().getWindow().getHeight()/countdownData.getHeightPercentage(),
-                        0xFFFFFFFF, countdownData.getScale()
+                        drawContext, EventSubscribers.countdownData.getPrefix()+"New flips in: "+String.format("%.1f", EventSubscribers.countdown),
+                        MinecraftClient.getInstance().getWindow().getWidth()/EventSubscribers.countdownData.getWidthPercentage(),
+                        MinecraftClient.getInstance().getWindow().getHeight()/EventSubscribers.countdownData.getHeightPercentage(),
+                        0xFFFFFFFF, EventSubscribers.countdownData.getScale()
                 );
             }
         });
 	}
 
     public static FlipData popFlipData(){
-        FlipData fd = flipData;
-        flipData = null;
+        FlipData fd = EventSubscribers.flipData;
+        EventSubscribers.flipData = null;
         return fd;
-    }
-
-    @Subscribe
-    public void WriteToChat(OnWriteToChatReceive command){
-         MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(command.ChatMessage));
-    }
-
-    @Subscribe
-    public void onChatMessage(OnChatMessageReceive event){
-        for (ChatMessage message : event.ChatMessages) {
-            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(message));
-        }
-    }
-
-    @Subscribe
-    public void onModChatMessage(OnModChatMessage event){
-        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(event.message));
-    }
-
-    @Subscribe
-    public void onCountdownReceive(OnCountdownReceive event){
-        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of("COUNTDOWN RECEIVED: "+event.CountdownData.getDuration()));
-        countdown = event.CountdownData.getDuration();
-        countdownData = event.CountdownData;
-        showCountdown = true;
-
-        System.out.println("COUNTDOWNDATA:");
-        System.out.println("w%: "+countdownData.getWidthPercentage());
-        System.out.println("ww: "+MinecraftClient.getInstance().getWindow().getWidth());
-        System.out.println("w% of ww: "+MinecraftClient.getInstance().getWindow().getWidth()/countdownData.getWidthPercentage());
-        System.out.println("h%: "+countdownData.getHeightPercentage());
-        System.out.println("wh: "+MinecraftClient.getInstance().getWindow().getHeight());
-        System.out.println("h% of wh: "+MinecraftClient.getInstance().getWindow().getHeight()/countdownData.getHeightPercentage());
-        System.out.println("prefix: "+countdownData.getPrefix());
-        System.out.println("scale: "+countdownData.getScale());
-
-        timer = new Timer();
-        timer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                countdown -= 0.1f;
-                if(countdown < 0.0) {
-                    showCountdown = false;
-                    timer.cancel();
-                }
-            }
-        }, 1, 100);
-    }
-
-    @Subscribe
-    public void onOpenAuctionGUI(OnOpenAuctionGUI event){
-        flipData = event.flip;
-        MinecraftClient.getInstance().getNetworkHandler().sendChatMessage(event.openAuctionCommand);
-    }
-
-    @Subscribe
-    public void onFlipReceive(OnFlipReceive event){
-        Flip f = event.FlipData;
-        FlipData fd = new FlipData(
-                Arrays.stream(f.getMessages())
-                        .map(cm -> new ChatMessageData(
-                                cm.getText(),
-                                cm.getOnClick(),
-                                cm.getHover())
-                        ).toArray(ChatMessageData[]::new),
-                f.getId(),
-                f.getWorth(),
-                new SoundData(
-                        f.getSound().getSoundName(),
-                        f.getSound().getSoundPitch() == null ? 0 : f.getSound().getSoundPitch()
-                ),
-                f.getRender()
-        );
-
-        if (bestflipsKeyBinding.isPressed()) {
-            EventBus.getDefault().post(new OnOpenAuctionGUI("/viewauction "+fd.Id, fd));
-            return;
-        }
-
-        EventBus.getDefault().post(new OnChatMessageReceive(f.getMessages()));
-        EventBus.getDefault().post(new OnPlaySoundReceive(f.getSound()));
-        CoflCore.flipHandler.fds.Insert(fd);
-    }
-
-    @Subscribe
-    public void onReceiveCommand(ReceiveCommand event){
-        if (event.command.getType() == CommandType.Flip){
-            JsonObject jo = gson.fromJson(event.command.getData(), JsonObject.class);
-            EventBus.getDefault().post(new OnFlipReceive(jsonObjToFlip(jo)));
-        }
-    }
-
-    @Subscribe
-    public void onPlaySoundReceive(OnPlaySoundReceive event){
-        if(event.Sound == null || event.Sound.getSoundName() == null) return;
-
-        String soundName = "";
-        switch (event.Sound.getSoundName()){
-            case "note.bass" -> soundName = "BLOCK_NOTE_BLOCK_BASS";
-            case "note.pling" -> soundName = "BLOCK_NOTE_BLOCK_PLING";
-            case "note.hat" -> soundName = "BLOCK_NOTE_BLOCK_HAT";
-            case "random.orb" -> soundName = "ENTITY_EXPERIENCE_ORB_PICKUP";
-            default -> soundName = "";
-        }
-
-        PlayerEntity player = MinecraftClient.getInstance().player;
-        player.getWorld().playSound(
-                player, player.getBlockPos(),
-                findByName(soundName),
-                SoundCategory.MASTER, 1f,
-                event.Sound.getSoundPitch() == null ? 1f : (float) event.Sound.getSoundPitch()
-        );
-    }
-
-    @Subscribe
-    public void onExecuteCommand(OnExecuteCommand event){
-        System.out.println("ON EXEC COMMAND:"+event.Error);
     }
 
     public static SoundEvent findByName(String name) {
@@ -293,7 +148,6 @@ public class CoflModClient implements ClientModInitializer {
         for (Field f : SoundEvents.class.getDeclaredFields()) {
             if (f.getName().equalsIgnoreCase(name)) {
                 try {
-                    SoundEvents.BLOCK_NOTE_BLOCK_PLING.value();
                     try {
                         result = (SoundEvent) f.get(SoundEvent.class);
                     } catch (ClassCastException e){
@@ -308,7 +162,8 @@ public class CoflModClient implements ClientModInitializer {
         return result;
     }
 
-    public static Flip jsonObjToFlip(JsonObject jsonObj){
+    public static Flip jsonToFlip(String json){
+        JsonObject jsonObj = gson.fromJson(json, JsonObject.class);
         JsonObject[] chatMessagesObj = gson.fromJson(jsonObj.get("messages"), JsonObject[].class);
         ChatMessage[] chatMessages = Arrays.stream(chatMessagesObj).map(jsonObject -> new ChatMessage(
                 jsonObject.get("text").getAsString(),
@@ -324,4 +179,40 @@ public class CoflModClient implements ClientModInitializer {
         String target = gson.fromJson(jsonObj.get("target"), String.class);
         return new Flip(chatMessages, id, worth, sound, auction, render, target);
     }
+
+    public static String inventoryToNBT(Inventory inventory){
+        NbtCompound nbtCompound = new NbtCompound();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PlayerEntity player = MinecraftClient.getInstance().player;
+        DefaultedList<ItemStack> itemStacks = DefaultedList.of();
+
+        for (int i = 0; i < inventory.size(); i++) {
+            itemStacks.add(inventory.getStack(i));
+        }
+
+        try {
+            Inventories.writeNbt(nbtCompound, itemStacks, player.getRegistryManager());
+            nbtCompound.put("i", nbtCompound.get("Items"));
+            nbtCompound.remove("Items");
+
+            System.out.println(nbtCompound.get("i").asString());
+
+            NbtIo.writeCompressed(nbtCompound, baos);
+            return Base64.getEncoder().encodeToString(baos.toByteArray());
+
+        } catch (IOException e){}
+        return "";
+    }
+
+    public static String[] getItemIdsFromInventory(PlayerInventory inventory){
+        ArrayList<String> res = new ArrayList<>();
+
+        for (int i = 0; i < inventory.size(); i++) {
+            ItemStack stack = inventory.getStack(i);
+            if (stack.getItem() != Items.AIR) res.add(Registries.ITEM.getId(stack.getItem()).toString());
+        }
+
+        return res.toArray(String[]::new);
+    }
 }
+
