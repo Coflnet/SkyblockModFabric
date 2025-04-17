@@ -4,7 +4,11 @@ import CoflCore.CoflCore;
 import CoflCore.classes.*;
 import CoflCore.CoflSkyCommand;
 import CoflCore.commands.models.FlipData;
+import CoflCore.configuration.Config;
+import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
+import CoflCore.network.QueryServerCommands;
+import CoflCore.network.WSClient;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.tfm.TfmBinGUI;
@@ -17,28 +21,44 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.advancement.criterion.InventoryChangedCriterion;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ChatScreen;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
+import net.minecraft.client.gui.screen.ingame.HandledScreens;
+import net.minecraft.client.gui.screen.ingame.InventoryScreen;
+import net.minecraft.client.gui.tooltip.HoveredTooltipPositioner;
+import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.Inventory;
+import net.minecraft.inventory.InventoryChangedListener;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.item.tooltip.TooltipData;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.screen.ScreenHandler;
+import net.minecraft.screen.ScreenHandlerListener;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
+import net.minecraft.text.HoverEvent;
+import net.minecraft.text.Text;
 import net.minecraft.util.collection.DefaultedList;
 import org.lwjgl.glfw.GLFW;
 
@@ -53,6 +73,7 @@ public class CoflModClient implements ClientModInitializer {
     private static boolean keyPressed = false;
     private static int counter = 0;
     public static KeyBinding bestflipsKeyBinding;
+    public static HashMap<String, String> itemIds = new HashMap<>();
 
     private String username = "";
 	@Override
@@ -122,6 +143,61 @@ public class CoflModClient implements ClientModInitializer {
             }
         });
 
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            if (screen instanceof HandledScreen hs) {
+                DefaultedList<ItemStack> itemStacks = ((HandledScreen<?>) screen).getScreenHandler().getStacks();
+
+                if (!client.player.getInventory().getStack(8).getComponents().toString().contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")) return;
+                DescriptionHandler.emptyTooltipData();
+                DescriptionHandler.loadDescriptionForInventory(
+                        getItemIdsFromInventory(itemStacks),
+                        screen.getTitle().getLiteralString(),
+                        inventoryToNBT(itemStacks),
+                        MinecraftClient.getInstance().getSession().getUsername()
+                );
+
+                hs.getScreenHandler().addListener(new ScreenHandlerListener() {
+                    @Override
+                    public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
+                        if (DescriptionHandler.getTooltipData(CoflModClient.itemIds.get(stack.toString())).length == 0){
+                            System.out.println("NO DESC FOUND");
+                        }
+                    }
+                    @Override
+                    public void onPropertyUpdate(ScreenHandler handler, int property, int value) {}
+                });
+            }
+        });
+
+        ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
+            if (itemIds.isEmpty()) return;
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(itemIds.get(stack.toString()));
+            ArrayList<Text> temp = new ArrayList<>(lines);
+            for (DescriptionHandler.DescModification tooltip : tooltips) {
+                switch (tooltip.type){
+                    case "APPEND":
+                        lines.add(Text.of(tooltip.value+" "));
+                        break;
+                    case "REPLACE":
+                        lines.remove(tooltip.line);
+                        lines.add(tooltip.line, Text.of(tooltip.value));
+                        break;
+                    case "INSERT":
+                        lines.add(tooltip.line, Text.of(tooltip.value));
+                        break;
+                    case "DELETE":
+                        lines.remove(tooltip.line);
+                        break;
+                    case "HIGHLIGHT":
+                        if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs){
+                            //hs.getScreenHandler().getSlot(hs.getScreenHandler().getStacks().indexOf(stack));
+                        }
+                        break;
+                    default: System.out.println("Unknown type: "+tooltip.type);
+                }
+            }
+        });
+
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
             if (EventSubscribers.showCountdown && EventSubscribers.countdownData != null
                     && (MinecraftClient.getInstance().currentScreen == null
@@ -180,15 +256,28 @@ public class CoflModClient implements ClientModInitializer {
         return new Flip(chatMessages, id, worth, sound, auction, render, target);
     }
 
-    public static String inventoryToNBT(Inventory inventory){
-        NbtCompound nbtCompound = new NbtCompound();
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        PlayerEntity player = MinecraftClient.getInstance().player;
+    public static DefaultedList<ItemStack> inventoryToItemStacks(Inventory inventory){
         DefaultedList<ItemStack> itemStacks = DefaultedList.of();
 
         for (int i = 0; i < inventory.size(); i++) {
             itemStacks.add(inventory.getStack(i));
         }
+
+        return itemStacks;
+    }
+
+    public static String inventoryToNBT(Inventory inventory){
+        return inventoryToNBT(inventoryToItemStacks(inventory));
+    }
+
+    public static String[] getItemIdsFromInventory(Inventory inventory){
+        return getItemIdsFromInventory(inventoryToItemStacks(inventory));
+    }
+
+    public static String inventoryToNBT(DefaultedList<ItemStack> itemStacks){
+        NbtCompound nbtCompound = new NbtCompound();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PlayerEntity player = MinecraftClient.getInstance().player;
 
         try {
             Inventories.writeNbt(nbtCompound, itemStacks, player.getRegistryManager());
@@ -204,15 +293,20 @@ public class CoflModClient implements ClientModInitializer {
         return "";
     }
 
-    public static String[] getItemIdsFromInventory(PlayerInventory inventory){
+    public static String[] getItemIdsFromInventory(DefaultedList<ItemStack> itemStacks){
         ArrayList<String> res = new ArrayList<>();
+        itemIds.clear();
 
-        for (int i = 0; i < inventory.size(); i++) {
-            ItemStack stack = inventory.getStack(i);
-            if (stack.getItem() != Items.AIR) res.add(Registries.ITEM.getId(stack.getItem()).toString());
+        for (int i = 0; i < itemStacks.size(); i++) {
+            ItemStack stack = itemStacks.get(i);
+            if (stack.getItem() != Items.AIR) {
+                itemIds.put(stack.toString(), stack.toString());
+                res.add(stack.toString());
+            }
         }
 
         return res.toArray(String[]::new);
     }
+
 }
 
