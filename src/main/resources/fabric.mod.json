@@ -1,11 +1,14 @@
 {
 	"schemaVersion": 1,
-	"id": "coflmod",
+	"id": "skycofl",
 	"version": "${version}",
-	"name": "CoflMod",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"name": "SkyCofl",
+	"description": "SkyCoflMod adds pricing information to hypixel skyblock",
 	"authors": [
-		"Me!"
+		"OC.Marwo",
+		"HackOS",
+		"Ragult",
+		"Ekwav"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
