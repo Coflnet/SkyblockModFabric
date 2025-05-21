@@ -14,8 +14,11 @@ import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.tfm.TfmBinGUI;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.JsonOps;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -40,6 +43,7 @@ import net.minecraft.client.gui.tooltip.HoveredTooltipPositioner;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.component.ComponentType;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.inventory.Inventories;
@@ -61,6 +65,7 @@ import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.collection.DefaultedList;
 import org.lwjgl.glfw.GLFW;
+import org.spongepowered.asm.mixin.transformer.ClassInfo;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -171,7 +176,7 @@ public class CoflModClient implements ClientModInitializer {
 
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
             if (itemIds.isEmpty()) return;
-            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(itemIds.get(stack.toString()));
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(itemIds.get(getIdFromStack(stack)));
             ArrayList<Text> temp = new ArrayList<>(lines);
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type){
@@ -300,12 +305,23 @@ public class CoflModClient implements ClientModInitializer {
         for (int i = 0; i < itemStacks.size(); i++) {
             ItemStack stack = itemStacks.get(i);
             if (stack.getItem() != Items.AIR) {
-                itemIds.put(stack.toString(), stack.toString());
-                res.add(stack.toString());
+                String id = getIdFromStack(stack);
+                itemIds.put(id, id);
+                res.add(id);
+                System.out.println(id);
             }
         }
 
         return res.toArray(String[]::new);
+    }
+
+    public static String getIdFromStack(ItemStack stack){
+        JsonObject stackJson = ItemStack.CODEC.encodeStart(JsonOps.INSTANCE, stack).getOrThrow().getAsJsonObject();
+        JsonObject customData = stackJson.getAsJsonObject("components").getAsJsonObject("minecraft:custom_data");
+        JsonElement uuid = customData.get("uuid");
+        if (uuid != null) return uuid.getAsString();
+        return stackJson.get("id").getAsString()+";"+stackJson.get("count").getAsString();
+
     }
 
 }
