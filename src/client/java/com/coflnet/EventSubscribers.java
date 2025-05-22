@@ -47,7 +47,7 @@ public class EventSubscribers {
     @Subscribe
     public void onChatMessage(OnChatMessageReceive event){
         for (ChatMessage message : event.ChatMessages) {
-            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(message));
+            if (message.getText().compareTo(" ") != 0) MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(message));
         }
     }
 
