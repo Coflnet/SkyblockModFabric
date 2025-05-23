@@ -16,6 +16,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.mojang.authlib.minecraft.client.ObjectMapper;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.JsonOps;
@@ -43,6 +44,7 @@ import net.minecraft.client.gui.tooltip.HoveredTooltipPositioner;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.component.Component;
 import net.minecraft.component.ComponentType;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.player.PlayerInventory;
@@ -161,23 +163,23 @@ public class CoflModClient implements ClientModInitializer {
                         MinecraftClient.getInstance().getSession().getUsername()
                 );
 
-                hs.getScreenHandler().addListener(new ScreenHandlerListener() {
-                    @Override
-                    public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
-                        if (DescriptionHandler.getTooltipData(CoflModClient.itemIds.get(stack.toString())).length == 0){
-                            System.out.println("NO DESC FOUND");
-                        }
-                    }
-                    @Override
-                    public void onPropertyUpdate(ScreenHandler handler, int property, int value) {}
-                });
+//                hs.getScreenHandler().addListener(new ScreenHandlerListener() {
+//                    @Override
+//                    public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
+//                        if (DescriptionHandler.getTooltipData(CoflModClient.itemIds.get(getIdFromStack(stack))).length == 0){
+//                            System.out.println("NO DESC FOUND");
+//                        }
+//                    }
+//                    @Override
+//                    public void onPropertyUpdate(ScreenHandler handler, int property, int value) {}
+//                });
             }
         });
 
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
             if (itemIds.isEmpty()) return;
             DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(itemIds.get(getIdFromStack(stack)));
-            ArrayList<Text> temp = new ArrayList<>(lines);
+            System.out.println("Tooltips anz: "+ tooltips.length);
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type){
                     case "APPEND":
@@ -316,12 +318,17 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static String getIdFromStack(ItemStack stack){
-        JsonObject stackJson = ItemStack.CODEC.encodeStart(JsonOps.INSTANCE, stack).getOrThrow().getAsJsonObject();
-        JsonObject customData = stackJson.getAsJsonObject("components").getAsJsonObject("minecraft:custom_data");
-        JsonElement uuid = customData.get("uuid");
-        if (uuid != null) return uuid.getAsString();
-        return stackJson.get("id").getAsString()+";"+stackJson.get("count").getAsString();
+        JsonObject stackJson = null;
+        for (ComponentType<?> type : stack.getComponents().getTypes()) {
+            if (type.toString().contains("minecraft:custom_data")){
+                stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
+            }
+        }
+        if (stackJson == null) return "";
 
+        JsonElement uuid = stackJson.get("uuid");
+        if (uuid != null) return uuid.getAsString();
+        return stackJson.get("id").getAsString()+";"+stack.getCount();
     }
 
 }
