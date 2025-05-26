@@ -179,7 +179,7 @@ public class CoflModClient implements ClientModInitializer {
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
             if (itemIds.isEmpty()) return;
             DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(itemIds.get(getIdFromStack(stack)));
-            System.out.println("Tooltips anz: "+ tooltips.length);
+            //System.out.println("Tooltips anz: "+ tooltips.length);
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type){
                     case "APPEND":

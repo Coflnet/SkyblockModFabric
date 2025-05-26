@@ -129,8 +129,10 @@ public class CoflBinGUI extends BinGUI {
             protected void drawBox(DrawContext context) {}
 
             @Override
-            public void onClick(double mouseX, double mouseY) {
-                rightClickableWidget.onClick(mouseX,mouseY);
+            public boolean mouseClicked(double mouseX, double mouseY, int button) {
+                boolean clicked = super.mouseClicked(mouseX, mouseY, button);
+                if (clicked) rightClickableWidget.onClick(mouseX, mouseY);
+                return clicked;
             }
         };
 
