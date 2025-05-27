@@ -87,7 +87,6 @@ public class EventSubscribers {
 
     @Subscribe
     public void onCountdownReceive(OnCountdownReceive event){
-        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of("COUNTDOWN RECEIVED: "+event.CountdownData.getDuration()));
         countdown = event.CountdownData.getDuration();
         countdownData = event.CountdownData;
         showCountdown = true;
