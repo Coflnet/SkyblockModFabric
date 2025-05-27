@@ -1,5 +1,14 @@
 package com.coflnet;
 
+import java.util.Arrays;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import org.greenrobot.eventbus.EventBus;
+import org.greenrobot.eventbus.Subscribe;
+
+import static com.coflnet.Utils.ChatComponent;
+
 import CoflCore.CoflCore;
 import CoflCore.classes.ChatMessage;
 import CoflCore.classes.Countdown;
@@ -8,19 +17,19 @@ import CoflCore.commands.CommandType;
 import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
 import CoflCore.commands.models.SoundData;
-import CoflCore.events.*;
+import CoflCore.events.OnChatMessageReceive;
+import CoflCore.events.OnCountdownReceive;
+import CoflCore.events.OnExecuteCommand;
+import CoflCore.events.OnFlipReceive;
+import CoflCore.events.OnModChatMessage;
+import CoflCore.events.OnOpenAuctionGUI;
+import CoflCore.events.OnPlaySoundReceive;
+import CoflCore.events.OnWriteToChatReceive;
+import CoflCore.events.ReceiveCommand;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.text.Text;
-import org.greenrobot.eventbus.EventBus;
-import org.greenrobot.eventbus.Subscribe;
-
-import java.util.Arrays;
-import java.util.Timer;
-import java.util.TimerTask;
-
-import static com.coflnet.Utils.ChatComponent;
 
 public class EventSubscribers {
     public static FlipData flipData = null;
@@ -46,9 +55,22 @@ public class EventSubscribers {
 
     @Subscribe
     public void onChatMessage(OnChatMessageReceive event){
-        for (ChatMessage message : event.ChatMessages) {
-            if (message.getText().compareTo(" ") != 0) MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(message));
+        if (event.ChatMessages == null || event.ChatMessages.length == 0) {
+            return;
         }
+
+        net.minecraft.text.MutableText combinedMessage = net.minecraft.text.Text.empty();
+
+        for (ChatMessage message : event.ChatMessages) {
+            if (message == null) {
+                continue;
+            } 
+            net.minecraft.text.Text styledPart = ChatComponent(message);
+            if (styledPart != null) {
+                combinedMessage.append(styledPart);
+            }
+        }
+        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(combinedMessage);
     }
 
     @Subscribe
