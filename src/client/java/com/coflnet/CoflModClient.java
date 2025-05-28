@@ -5,6 +5,8 @@ import CoflCore.classes.*;
 import CoflCore.CoflSkyCommand;
 import CoflCore.commands.models.FlipData;
 import CoflCore.configuration.Config;
+import CoflCore.configuration.Configuration;
+import CoflCore.events.OnSettingsReceive;
 import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
 import CoflCore.network.QueryServerCommands;
@@ -27,13 +29,16 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
+import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.advancement.criterion.InventoryChangedCriterion;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
@@ -43,6 +48,7 @@ import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.gui.tooltip.HoveredTooltipPositioner;
 import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.ChatMessages;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.component.Component;
 import net.minecraft.component.ComponentType;
@@ -57,6 +63,7 @@ import net.minecraft.item.Items;
 import net.minecraft.item.tooltip.TooltipData;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.network.packet.c2s.play.ChatMessageC2SPacket;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.screen.ScreenHandler;
@@ -74,13 +81,15 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class CoflModClient implements ClientModInitializer {
     private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
     public static KeyBinding bestflipsKeyBinding;
-    public static HashMap<String, String> itemIds = new HashMap<>();
+    public static ArrayList<String> knownIds = new ArrayList<>();
 
     private String username = "";
 	@Override
@@ -152,17 +161,7 @@ public class CoflModClient implements ClientModInitializer {
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof HandledScreen hs) {
-                DefaultedList<ItemStack> itemStacks = ((HandledScreen<?>) screen).getScreenHandler().getStacks();
-
-                if (!client.player.getInventory().getStack(8).getComponents().toString().contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")) return;
-                DescriptionHandler.emptyTooltipData();
-                DescriptionHandler.loadDescriptionForInventory(
-                        getItemIdsFromInventory(itemStacks),
-                        screen.getTitle().getLiteralString(),
-                        inventoryToNBT(itemStacks),
-                        MinecraftClient.getInstance().getSession().getUsername()
-                );
-
+                loadDescriptionsForInv(hs);
 //                hs.getScreenHandler().addListener(new ScreenHandlerListener() {
 //                    @Override
 //                    public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
@@ -177,8 +176,12 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
-            if (itemIds.isEmpty()) return;
-            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(itemIds.get(getIdFromStack(stack)));
+            if (knownIds.indexOf(getIdFromStack(stack)) == -1 && MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
+                loadDescriptionsForInv(hs);
+                return;
+            }
+
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(getIdFromStack(stack));
             //System.out.println("Tooltips anz: "+ tooltips.length);
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type){
@@ -216,6 +219,11 @@ public class CoflModClient implements ClientModInitializer {
                         0xFFFFFFFF, EventSubscribers.countdownData.getScale()
                 );
             }
+        });
+
+        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            System.out.println(Configuration.getInstance().collectChat);
+            EventRegistry.onChatMessage(message.getString());
         });
 	}
 
@@ -302,15 +310,14 @@ public class CoflModClient implements ClientModInitializer {
 
     public static String[] getItemIdsFromInventory(DefaultedList<ItemStack> itemStacks){
         ArrayList<String> res = new ArrayList<>();
-        itemIds.clear();
+        knownIds.clear();
 
         for (int i = 0; i < itemStacks.size(); i++) {
             ItemStack stack = itemStacks.get(i);
             if (stack.getItem() != Items.AIR) {
                 String id = getIdFromStack(stack);
-                itemIds.put(id, id);
+                knownIds.add(id);
                 res.add(id);
-                System.out.println(id);
             }
         }
 
@@ -329,6 +336,18 @@ public class CoflModClient implements ClientModInitializer {
         JsonElement uuid = stackJson.get("uuid");
         if (uuid != null) return uuid.getAsString();
         return stackJson.get("id").getAsString()+";"+stack.getCount();
+    }
+
+    public static void loadDescriptionsForInv(HandledScreen screen){
+        DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
+        if (!MinecraftClient.getInstance().player.getInventory().getStack(8).getComponents().toString().contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")) return;
+        DescriptionHandler.emptyTooltipData();
+        DescriptionHandler.loadDescriptionForInventory(
+                getItemIdsFromInventory(itemStacks),
+                MinecraftClient.getInstance().currentScreen.getTitle().getLiteralString(),
+                inventoryToNBT(itemStacks),
+                MinecraftClient.getInstance().getSession().getUsername()
+        );
     }
 
 }
