@@ -335,7 +335,12 @@ public class CoflModClient implements ClientModInitializer {
 
         JsonElement uuid = stackJson.get("uuid");
         if (uuid != null) return uuid.getAsString();
-        return stackJson.get("id").getAsString()+";"+stack.getCount();
+        JsonElement idElement = stackJson.get("id");
+        if (idElement != null) {
+            return idElement.getAsString() + ";" + stack.getCount();
+        }
+        // If "id" is not present, use the item's name
+        return stack.getItem().getName().getString() + ";" + stack.getCount();
     }
 
     public static void loadDescriptionsForInv(HandledScreen screen){
