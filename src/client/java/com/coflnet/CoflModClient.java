@@ -7,6 +7,7 @@ import CoflCore.commands.CommandType;
 import CoflCore.commands.models.FlipData;
 import CoflCore.configuration.Config;
 import CoflCore.configuration.Configuration;
+import CoflCore.configuration.LocalConfig;
 import CoflCore.events.OnSettingsReceive;
 import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
@@ -65,6 +66,7 @@ import net.minecraft.item.tooltip.TooltipData;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.network.packet.c2s.play.ChatMessageC2SPacket;
+import net.minecraft.network.packet.s2c.play.GameJoinS2CPacket;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.screen.ScreenHandler;
@@ -73,6 +75,7 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.collection.DefaultedList;
 import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.transformer.ClassInfo;
@@ -127,6 +130,7 @@ public class CoflModClient implements ClientModInitializer {
 			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
 				System.out.println("Connected to Hypixel");
                 username = MinecraftClient.getInstance().getSession().getUsername();
+                if (CoflCore.config.autoStart) CoflSkyCommand.start(username);
 			}
 		});
 

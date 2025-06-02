@@ -5,7 +5,11 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import CoflCore.classes.*;
+import CoflCore.configuration.ConfigurationManager;
+import CoflCore.configuration.LocalConfig;
 import CoflCore.events.*;
+import CoflCore.network.WSClient;
+import net.fabricmc.fabric.impl.networking.client.ClientNetworkingImpl;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 
@@ -92,11 +96,7 @@ public class EventSubscribers {
 
     @Subscribe
     public void onReceiveCommand(ReceiveCommand event){
-//        if (event.command.getType() == CommandType.PrivacySettings){
-//            System.out.println(event.command.getData());
-//            Configuration ps = event.command.GetAs(new TypeToken<Configuration>() {}).getData();
-//            System.out.println("PS Object: "+ps.chatRegex);
-//        }
+        
     }
 
     @Subscribe
@@ -160,6 +160,6 @@ public class EventSubscribers {
 
     @Subscribe
     public void onSettingsReceive(OnSettingsReceive event){
-        
+        System.out.println("SETTINGS RECEIVED: "+event.Settings.getSettingName());
     }
 }
