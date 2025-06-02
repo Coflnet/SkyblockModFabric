@@ -3,6 +3,7 @@ package com.coflnet;
 import CoflCore.CoflCore;
 import CoflCore.classes.*;
 import CoflCore.CoflSkyCommand;
+import CoflCore.commands.CommandType;
 import CoflCore.commands.models.FlipData;
 import CoflCore.configuration.Config;
 import CoflCore.configuration.Configuration;
@@ -85,7 +86,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class CoflModClient implements ClientModInitializer {
-    private static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
+    public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
     public static KeyBinding bestflipsKeyBinding;
@@ -162,16 +163,6 @@ public class CoflModClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof HandledScreen hs) {
                 loadDescriptionsForInv(hs);
-//                hs.getScreenHandler().addListener(new ScreenHandlerListener() {
-//                    @Override
-//                    public void onSlotUpdate(ScreenHandler handler, int slotId, ItemStack stack) {
-//                        if (DescriptionHandler.getTooltipData(CoflModClient.itemIds.get(getIdFromStack(stack))).length == 0){
-//                            System.out.println("NO DESC FOUND");
-//                        }
-//                    }
-//                    @Override
-//                    public void onPropertyUpdate(ScreenHandler handler, int property, int value) {}
-//                });
             }
         });
 
@@ -182,7 +173,6 @@ public class CoflModClient implements ClientModInitializer {
             }
 
             DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(getIdFromStack(stack));
-            //System.out.println("Tooltips anz: "+ tooltips.length);
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type){
                     case "APPEND":
@@ -222,7 +212,6 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
-            System.out.println(Configuration.getInstance().collectChat);
             EventRegistry.onChatMessage(message.getString());
         });
 	}
@@ -251,24 +240,6 @@ public class CoflModClient implements ClientModInitializer {
             }
         }
         return result;
-    }
-
-    public static Flip jsonToFlip(String json){
-        JsonObject jsonObj = gson.fromJson(json, JsonObject.class);
-        JsonObject[] chatMessagesObj = gson.fromJson(jsonObj.get("messages"), JsonObject[].class);
-        ChatMessage[] chatMessages = Arrays.stream(chatMessagesObj).map(jsonObject -> new ChatMessage(
-                jsonObject.get("text").getAsString(),
-                jsonObject.get("onClick").getAsString(),
-                jsonObject.get("hover").isJsonNull() ? null : jsonObject.get("hover").getAsString()
-        )).toArray(ChatMessage[]::new);
-
-        String id = gson.fromJson(jsonObj.get("id"), String.class);
-        int worth = gson.fromJson(jsonObj.get("worth"), Integer.class);
-        Sound sound = gson.fromJson(jsonObj.get("sound"), Sound.class);
-        AuctionItem auction = gson.fromJson(jsonObj.get("auction"), AuctionItem.class);
-        String render = gson.fromJson(jsonObj.get("render"), String.class);
-        String target = gson.fromJson(jsonObj.get("target"), String.class);
-        return new Flip(chatMessages, id, worth, sound, auction, render, target);
     }
 
     public static DefaultedList<ItemStack> inventoryToItemStacks(Inventory inventory){

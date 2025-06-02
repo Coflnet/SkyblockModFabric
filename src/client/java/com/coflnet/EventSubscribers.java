@@ -4,28 +4,18 @@ import java.util.Arrays;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import CoflCore.classes.*;
+import CoflCore.events.*;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 
 import static com.coflnet.Utils.ChatComponent;
 
 import CoflCore.CoflCore;
-import CoflCore.classes.ChatMessage;
-import CoflCore.classes.Countdown;
-import CoflCore.classes.Flip;
 import CoflCore.commands.CommandType;
 import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
 import CoflCore.commands.models.SoundData;
-import CoflCore.events.OnChatMessageReceive;
-import CoflCore.events.OnCountdownReceive;
-import CoflCore.events.OnExecuteCommand;
-import CoflCore.events.OnFlipReceive;
-import CoflCore.events.OnModChatMessage;
-import CoflCore.events.OnOpenAuctionGUI;
-import CoflCore.events.OnPlaySoundReceive;
-import CoflCore.events.OnWriteToChatReceive;
-import CoflCore.events.ReceiveCommand;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.sound.SoundCategory;
@@ -102,9 +92,11 @@ public class EventSubscribers {
 
     @Subscribe
     public void onReceiveCommand(ReceiveCommand event){
-        if (event.command.getType() == CommandType.Flip){
-            EventBus.getDefault().post(new OnFlipReceive(CoflModClient.jsonToFlip(event.command.getData())));
-        }
+//        if (event.command.getType() == CommandType.PrivacySettings){
+//            System.out.println(event.command.getData());
+//            Configuration ps = event.command.GetAs(new TypeToken<Configuration>() {}).getData();
+//            System.out.println("PS Object: "+ps.chatRegex);
+//        }
     }
 
     @Subscribe
@@ -130,7 +122,7 @@ public class EventSubscribers {
     public void onFlipReceive(OnFlipReceive event){
         Flip f = event.FlipData;
         FlipData fd = new FlipData(
-                Arrays.stream(f.getMessages())
+                Arrays.stream(f.getMessages().toArray(ChatMessage[]::new))
                         .map(cm -> new ChatMessageData(
                                 cm.getText(),
                                 cm.getOnClick(),
@@ -150,7 +142,7 @@ public class EventSubscribers {
             return;
         }
 
-        EventBus.getDefault().post(new OnChatMessageReceive(f.getMessages()));
+        EventBus.getDefault().post(new OnChatMessageReceive(f.getMessages().toArray(ChatMessage[]::new)));
         EventBus.getDefault().post(new OnPlaySoundReceive(f.getSound()));
         CoflCore.flipHandler.fds.Insert(fd);
     }
@@ -164,5 +156,10 @@ public class EventSubscribers {
     @Subscribe
     public void onExecuteCommand(OnExecuteCommand event){
         System.out.println("ON EXEC COMMAND:"+event.Error);
+    }
+
+    @Subscribe
+    public void onSettingsReceive(OnSettingsReceive event){
+        
     }
 }
