@@ -137,7 +137,7 @@ public class CoflModClient implements ClientModInitializer {
 			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
 				System.out.println("Connected to Hypixel");
                 username = MinecraftClient.getInstance().getSession().getUsername();
-                if (CoflCore.config.autoStart) CoflSkyCommand.start(username);
+                if (!CoflCore.Wrapper.isRunning && CoflCore.config.autoStart) CoflSkyCommand.start(username);
 			}
 		});
 
