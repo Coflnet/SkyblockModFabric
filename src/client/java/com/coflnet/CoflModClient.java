@@ -16,6 +16,7 @@ import CoflCore.network.WSClient;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.tfm.TfmBinGUI;
+import com.coflnet.temp.MyEventRegistry;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -32,14 +33,17 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
+import net.fabricmc.fabric.api.networking.v1.S2CPlayChannelEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.advancement.criterion.InventoryChangedCriterion;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.hud.ChatHud;
 import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.Screen;
@@ -66,9 +70,12 @@ import net.minecraft.item.tooltip.TooltipData;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.network.packet.c2s.play.ChatMessageC2SPacket;
+import net.minecraft.network.packet.s2c.play.ChatMessageS2CPacket;
 import net.minecraft.network.packet.s2c.play.GameJoinS2CPacket;
+import net.minecraft.network.packet.s2c.play.ScoreboardScoreUpdateS2CPacket;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.ScreenHandlerListener;
 import net.minecraft.sound.SoundEvent;
@@ -145,8 +152,7 @@ public class CoflModClient implements ClientModInitializer {
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof GenericContainerScreen gcs) {
-                System.out.println(gcs.getTitle().getString());
-                System.out.println("INV: "+gcs.getScreenHandler().getInventory().getClass().getName());
+                //System.out.println(gcs.getTitle().getString());
                 if (CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null
                         && (gcs.getTitle().getString().contains("BIN Auction View")
                         && gcs.getScreenHandler().getInventory().size() == 9 * 6
@@ -215,8 +221,9 @@ public class CoflModClient implements ClientModInitializer {
             }
         });
 
-        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
-            EventRegistry.onChatMessage(message.getString());
+        ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
+            MyEventRegistry.onChatMessage(message.getString());
+            return true;
         });
 	}
 
@@ -274,7 +281,7 @@ public class CoflModClient implements ClientModInitializer {
             nbtCompound.put("i", nbtCompound.get("Items"));
             nbtCompound.remove("Items");
 
-            System.out.println(nbtCompound.get("i").asString());
+            //System.out.println(nbtCompound.get("i").asString());
 
             NbtIo.writeCompressed(nbtCompound, baos);
             return Base64.getEncoder().encodeToString(baos.toByteArray());
