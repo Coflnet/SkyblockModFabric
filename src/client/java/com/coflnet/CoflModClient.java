@@ -14,6 +14,7 @@ import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
 import CoflCore.network.QueryServerCommands;
 import CoflCore.network.WSClient;
+import com.mojang.brigadier.Message;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 
 import com.coflnet.gui.RenderUtils;
@@ -111,6 +112,18 @@ public class CoflModClient implements ClientModInitializer {
     private String username = "";
     private boolean uploadedScoreboard = false;
 
+    public class TooltipMessage implements  Message{
+        private final String text;
+
+        public TooltipMessage(String text) {
+            this.text = text;
+        }
+        @Override
+        public String getString() {
+            return text;
+        }
+    }
+
     @Override
     public void onInitializeClient() {
         username = MinecraftClient.getInstance().getSession().getUsername();
@@ -154,9 +167,70 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             dispatcher.register(ClientCommandManager.literal("cofl")
-                    .then(ClientCommandManager.argument("args", StringArgumentType.greedyString()).executes(context -> {
+                    .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
+                    .suggests((context, builder) -> {
+                        String input = context.getInput();
+                        String[] inputArgs = input.split(" ");
+
+                        String[] suggestions = {"start", "stop", "report", "online", "delay", "blacklist", "bl", "whitelist", "wl",
+                                "mute", "blocked", "chat", "c", "nickname", "nick", "profit", "worstflips", "bestflips",
+                                "leaderboard", "lb", "loserboard", "buyspeedboard", "trades", "flips", "set", "s",
+                                "purchase", "buy", "transactions", "balance", "help", "h", "logout", "backup", "restore",
+                                "captcha", "importtfm", "replayactive", "reminder", "filters", "emoji", "addremindertime",
+                                "lore", "fact", "flip", "preapi", "transfercoins", "ping", "setgui", "bazaar", "bz",
+                                "switchregion", "craftbreakdown", "cheapattrib", "ca", "attributeupgrade", "au", "ownconfigs",
+                                "configs", "config", "licenses", "license", "verify", "unverify", "attributeflip", "forge",
+                                "crafts", "craft", "upgradeplan", "updatecurrentconfig", "settimezone", "cheapmuseum", "cm",
+                                "replayflips", "lowball", "ahtax", "sethotkey"};
+
+
+                        // Check if the command is "s" or "set" and suggest specific subcommands
+                        if (inputArgs.length >= 2 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
+                            suggestions = new String[] {"lbin", "finders", "onlyBin", "whitelistAftermain", "DisableFlips",
+                                    "DebugMode", "blockHighCompetition", "minProfit", "minProfitPercent", "minVolume", "maxCost",
+                                    "modjustProfit", "modsoundOnFlip", "modshortNumbers", "modshortNames", "modblockTenSecMsg",
+                                    "modformat", "modblockedFormat", "modchat", "modcountdown", "modhideNoBestFlip", "modtimerX",
+                                    "modtimerY", "modtimerSeconds", "modtimerScale", "modtimerPrefix", "modtimerPrecision",
+                                    "modblockedMsg", "modmaxPercentOfPurse", "modnoBedDelay", "modstreamerMode", "modautoStartFlipper",
+                                    "modnormalSoldFlips", "modtempBlacklistSpam", "moddataOnlyMode", "modahListHours", "modquickSell",
+                                    "modmaxItemsInInventory", "moddisableSpamProtection", "showcost", "showestProfit", "showlbin",
+                                    "showslbin", "showmedPrice", "showseller", "showvolume", "showextraFields", "showprofitPercent",
+                                    "showprofit", "showsellerOpenBtn", "showlore", "showhideSold", "showhideManipulated",
+                                    "privacyExtendDescriptions", "privacyAutoStart", "loreHighlightFilterMatch",
+                                    "loreMinProfitForHighlight", "loreDisableHighlighting"};
+                        }
+                        for (String suggestion : suggestions) {
+                            builder.suggest(suggestion);
+                        }
+                        return builder.buildFuture();
+                    })
+                    .executes(context -> {
                         String[] args = context.getArgument("args", String.class).split(" ");
                         CoflSkyCommand.processCommand(args, username);
+                        return 1;
+                    })));
+            dispatcher.register(ClientCommandManager.literal("fc")
+                    .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
+                    .suggests((context, builder) -> {
+
+                        String[] suggestions = {":tableflip:", ":sad:", ":smile:", ":grin:", ":heart:", ":skull:", ":airplane:", ":check:", "<3",
+                                ":star:", ":yes:", ":no:", ":java:", ":arrow", ":shrug:", "o/", ":123:", ":totem:", ":typing:",
+                                ":maths:", ":snail:", ":thinking:", ":gimme:", ":wizard:", ":pvp:", ":peace:", ":oof:", ":puffer:",
+                                ":yey:", ":cat:", ":dab:", ":dj:", ":snow:", ":^_^:", ":^-^:", ":sloth:", ":cute:", ":dog:",
+                                ":fyou:", ":angwyflip:", ":snipe:", ":preapi:", ":tm:", ":r:", ":c:", ":crown:", ":fire:",
+                                ":sword:", ":shield:", ":cross:", ":star1:", ":star2:", ":star3:", ":star4:", ":rich:", ":boop:",
+                                ":yay:", ":gg:"};
+                        for (String suggestion : suggestions) {
+                            builder.suggest(suggestion, new TooltipMessage("Will be replaced with the emoji"));
+                        }
+                        return builder.buildFuture();
+                    })
+                    .executes(context -> {
+                        String[] args = context.getArgument("args", String.class).split(" ");
+                        String[] newArgs = new String[args.length + 1];
+                        System.arraycopy(args, 0, newArgs, 1, args.length);
+                        newArgs[0] = "chat";
+                        CoflSkyCommand.processCommand(newArgs, username);
                         return 1;
                     })));
         });
