@@ -75,7 +75,7 @@ import net.minecraft.network.packet.s2c.play.GameJoinS2CPacket;
 import net.minecraft.network.packet.s2c.play.ScoreboardScoreUpdateS2CPacket;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.scoreboard.Scoreboard;
+import net.minecraft.scoreboard.*;
 import net.minecraft.screen.ScreenHandler;
 import net.minecraft.screen.ScreenHandlerListener;
 import net.minecraft.sound.SoundEvent;
@@ -126,6 +126,10 @@ public class CoflModClient implements ClientModInitializer {
             if(bestflipsKeyBinding.isPressed()) {
                 if(counter == 0){
                     EventRegistry.onOpenBestFlip(username, true);
+                    Scoreboard s = client.player.getScoreboard();
+                    System.out.println("---------------------------------------------------");
+                    CoflModClient.getScoreboard();
+                    System.out.println("---------------------------------------------------");
                 }
                 if(counter < 2) counter++;
             } else {
@@ -326,16 +330,42 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static void loadDescriptionsForInv(HandledScreen screen){
-        DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
-        if (!MinecraftClient.getInstance().player.getInventory().getStack(8).getComponents().toString().contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")) return;
-        DescriptionHandler.emptyTooltipData();
-        DescriptionHandler.loadDescriptionForInventory(
-                getItemIdsFromInventory(itemStacks),
-                MinecraftClient.getInstance().currentScreen.getTitle().getLiteralString(),
-                inventoryToNBT(itemStacks),
-                MinecraftClient.getInstance().getSession().getUsername()
-        );
+//        DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
+//        if (!MinecraftClient.getInstance().player.getInventory().getStack(8).getComponents().toString().contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")) return;
+//        DescriptionHandler.emptyTooltipData();
+//        DescriptionHandler.loadDescriptionForInventory(
+//                getItemIdsFromInventory(itemStacks),
+//                MinecraftClient.getInstance().currentScreen.getTitle().getLiteralString(),
+//                inventoryToNBT(itemStacks),
+//                MinecraftClient.getInstance().getSession().getUsername()
+//        );
     }
 
+    private static List<String> getScoreboard() {
+        ArrayList<String> scoreboardAsText = new ArrayList<>();
+        if (MinecraftClient.getInstance() == null || MinecraftClient.getInstance().world == null) {
+            return scoreboardAsText;
+        }
+        Scoreboard scoreboard = MinecraftClient.getInstance().world.getScoreboard();
+        ScoreboardObjective sideBarObjective = scoreboard.getObjectiveForSlot(ScoreboardDisplaySlot.SIDEBAR);
+        if (sideBarObjective == null) {
+            return scoreboardAsText;
+        }
+        String scoreboardTitle = sideBarObjective.getDisplayName().getString();
+        //scoreboardTitle = EnumChatFormatting.getTextWithoutFormattingCodes(scoreboardTitle);
+        scoreboardAsText.add(scoreboardTitle);
+        Collection<ScoreHolder> scoreboardLines = scoreboard.getKnownScoreHolders();
+        for (ScoreHolder line : scoreboardLines) {
+            String playerName = line.getDisplayName().getString();
+            if (playerName == null || playerName.startsWith("#")) {
+                continue;
+            }
+            Team scorePlayerTeam = scoreboard.getTeam(playerName);
+            String lineText = Team.decorateName(scorePlayerTeam, Text.of(playerName)).getString();
+            scoreboardAsText.add(lineText);
+            System.out.println(lineText);
+        }
+        return scoreboardAsText;
+    }
 }
 

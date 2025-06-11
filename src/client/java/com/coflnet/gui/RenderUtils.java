@@ -1,6 +1,8 @@
 package com.coflnet.gui;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.fabricmc.fabric.impl.renderer.RendererManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -37,8 +39,7 @@ public class RenderUtils {
         buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x + width, y + height, z).color(color);
         buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x + width, y, z).color(color);
 
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        BufferRenderer.drawWithGlobalProgram(buffer.end());
+        RenderLayer.getGui().draw(buffer.end()); // drawWithGlobalProgram(buffer.end());
     }
 
 
@@ -50,7 +51,7 @@ public class RenderUtils {
 
     //draws a circle with a given radius and thickness
     public static void drawCircle(DrawContext context, int x, int y, int radius, int color) {
-        buffer = tessellator.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
+        buffer = tessellator.begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR);
 
         for (int i = 0; i <= 360; i++) {
             buffer.vertex(
@@ -61,11 +62,11 @@ public class RenderUtils {
             ).color(color);
         }
 
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 0.0F);
+        //RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 1.0F);
 
-        BufferRenderer.drawWithGlobalProgram(buffer.end());
-
+        //BufferRenderer.drawWithGlobalProgram(buffer.end());
+        RenderLayer.getGui().draw(buffer.end());
     }
 
     //draws a circle outline with a given radius and thickness
@@ -131,9 +132,11 @@ public class RenderUtils {
                     z
             ).color(color);
         }
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+
+        //RenderSystem.setShader(GameRenderer::getPositionColorProgram);
         //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 0.0F);
-        BufferRenderer.drawWithGlobalProgram(buffer.end());
+        //BufferRenderer.drawWithGlobalProgram(buffer.end());
+        RenderLayer.getGui().draw(buffer.end());
     }
 
 
@@ -149,9 +152,10 @@ public class RenderUtils {
                     z
             ).color(color);
         }
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        //RenderSystem.setShader(GameRenderer::getPositionColorProgram);
         //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 0.0F);
-        BufferRenderer.drawWithGlobalProgram(buffer.end());
+        //BufferRenderer.drawWithGlobalProgram(buffer.end());
+        RenderLayer.getGui().draw(buffer.end());
     }
 
     //draws a rounded rectangle with a given radius and color and size

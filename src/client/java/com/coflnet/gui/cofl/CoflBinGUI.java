@@ -4,7 +4,7 @@ import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
-import com.coflnet.gui.widget.ScrollableDynamicTextWidget;
+//import com.coflnet.gui.widget.ScrollableDynamicTextWidget;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
@@ -20,7 +20,7 @@ import java.util.List;
 
 public class CoflBinGUI extends BinGUI {
     private TextWidget titleTextWidget;
-    private ScrollableDynamicTextWidget loreScrollableTextWidget;
+    private ScrollableTextWidget loreScrollableTextWidget;
     private ClickableWidget rightClickableWidget;
     private ClickableWidget leftClickableWidget;
 
@@ -119,7 +119,7 @@ public class CoflBinGUI extends BinGUI {
                 MinecraftClient.getInstance().textRenderer
         ).alignLeft();
 
-        loreScrollableTextWidget = new ScrollableDynamicTextWidget(
+        loreScrollableTextWidget = new ScrollableTextWidget(
                 screenWidth / 2 - width / 2 + p + 20 + p + 4,
                 screenHeight / 2 - height / 2 + p + 12 + p + 2,
                 width - 20 - p*4 - 4,  height - 75 - 2 - screenHeight / 15 - 2,
@@ -187,7 +187,7 @@ public class CoflBinGUI extends BinGUI {
             if (gcsh.getInventory().getStack(ITEM_SLOT).getItem() != Items.AIR) {
                 setItem(gcsh.getInventory().getStack(ITEM_SLOT));
                 lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), currentItem));
-                loreScrollableTextWidget.updateText(lore == null ? Text.empty() : lore);
+                loreScrollableTextWidget.setMessage(lore == null ? Text.empty() : lore);
             }
 
             if (gcsh.getInventory()
