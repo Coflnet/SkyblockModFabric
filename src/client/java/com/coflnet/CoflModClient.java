@@ -3,6 +3,7 @@ package com.coflnet;
 import CoflCore.CoflCore;
 import CoflCore.classes.*;
 import CoflCore.CoflSkyCommand;
+import CoflCore.commands.Command;
 import CoflCore.commands.CommandType;
 import CoflCore.commands.models.FlipData;
 import CoflCore.configuration.Config;
@@ -13,10 +14,11 @@ import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
 import CoflCore.network.QueryServerCommands;
 import CoflCore.network.WSClient;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.tfm.TfmBinGUI;
-import com.coflnet.temp.MyEventRegistry;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
@@ -53,6 +55,9 @@ import net.minecraft.client.gui.screen.ingame.HandledScreens;
 import net.minecraft.client.gui.screen.ingame.InventoryScreen;
 import net.minecraft.client.gui.tooltip.HoveredTooltipPositioner;
 import net.minecraft.client.gui.tooltip.Tooltip;
+import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.ChatMessages;
 import net.minecraft.client.util.InputUtil;
@@ -82,6 +87,7 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.collection.DefaultedList;
 import org.lwjgl.glfw.GLFW;
@@ -103,8 +109,10 @@ public class CoflModClient implements ClientModInitializer {
     public static ArrayList<String> knownIds = new ArrayList<>();
 
     private String username = "";
-	@Override
-	public void onInitializeClient() {
+    private boolean uploadedScoreboard = false;
+
+    @Override
+    public void onInitializeClient() {
         username = MinecraftClient.getInstance().getSession().getUsername();
         Path configDir = FabricLoader.getInstance().getConfigDir();
         CoflCore cofl = new CoflCore();
@@ -119,55 +127,59 @@ public class CoflModClient implements ClientModInitializer {
                 "keybinding.coflmod.bestflips",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_B,
-                ""
-        ));
+                ""));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if(bestflipsKeyBinding.isPressed()) {
-                if(counter == 0){
+            if (bestflipsKeyBinding.isPressed()) {
+                if (counter == 0) {
                     EventRegistry.onOpenBestFlip(username, true);
-                    Scoreboard s = client.player.getScoreboard();
-                    System.out.println("---------------------------------------------------");
-                    CoflModClient.getScoreboard();
-                    System.out.println("---------------------------------------------------");
                 }
-                if(counter < 2) counter++;
+                if (counter < 2)
+                    counter++;
             } else {
                 counter = 0;
             }
         });
 
-		ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-			if(MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")){
-				System.out.println("Connected to Hypixel");
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            if (MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null
+                    && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")) {
+                System.out.println("Connected to Hypixel");
                 username = MinecraftClient.getInstance().getSession().getUsername();
-                if (!CoflCore.Wrapper.isRunning && CoflCore.config.autoStart) CoflSkyCommand.start(username);
-			}
-		});
+                if (!CoflCore.Wrapper.isRunning && CoflCore.config.autoStart)
+                    CoflSkyCommand.start(username);
+            }
+            uploadedScoreboard = false;
+        });
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             dispatcher.register(ClientCommandManager.literal("cofl")
                     .then(ClientCommandManager.argument("args", StringArgumentType.greedyString()).executes(context -> {
                         String[] args = context.getArgument("args", String.class).split(" ");
-                        CoflSkyCommand.processCommand(args,username);
+                        CoflSkyCommand.processCommand(args, username);
                         return 1;
                     })));
         });
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof GenericContainerScreen gcs) {
-                //System.out.println(gcs.getTitle().getString());
+                // System.out.println(gcs.getTitle().getString());
                 if (CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null
                         && (gcs.getTitle().getString().contains("BIN Auction View")
-                        && gcs.getScreenHandler().getInventory().size() == 9 * 6
-                        || gcs.getTitle().getString().contains("Confirm Purchase")
-                        && gcs.getScreenHandler().getInventory().size() == 9 * 3)
-                ){
+                                && gcs.getScreenHandler().getInventory().size() == 9 * 6
+                                || gcs.getTitle().getString().contains("Confirm Purchase")
+                                        && gcs.getScreenHandler().getInventory().size() == 9 * 3)) {
                     if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
                         switch (CoflCore.config.purchaseOverlay) {
-                            case COFL: client.setScreen(new CoflBinGUI(gcs));break;
-                            case TFM: client.setScreen(new TfmBinGUI(gcs));break;
-                            case null: default: break;
+                            case COFL:
+                                client.setScreen(new CoflBinGUI(gcs));
+                                break;
+                            case TFM:
+                                client.setScreen(new TfmBinGUI(gcs));
+                                break;
+                            case null:
+                            default:
+                                break;
                         }
                     }
                 }
@@ -177,20 +189,27 @@ public class CoflModClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof HandledScreen hs) {
                 loadDescriptionsForInv(hs);
+                if(!uploadedScoreboard)
+                {
+                    uploadScoreboard();
+                    uploadTabList();
+                    uploadedScoreboard = true;
+                }
             }
         });
 
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
-            if (knownIds.indexOf(getIdFromStack(stack)) == -1 && MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
+            if (knownIds.indexOf(getIdFromStack(stack)) == -1
+                    && MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
                 loadDescriptionsForInv(hs);
                 return;
             }
 
             DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(getIdFromStack(stack));
             for (DescriptionHandler.DescModification tooltip : tooltips) {
-                switch (tooltip.type){
+                switch (tooltip.type) {
                     case "APPEND":
-                        lines.add(Text.of(tooltip.value+" "));
+                        lines.add(Text.of(tooltip.value + " "));
                         break;
                     case "REPLACE":
                         lines.remove(tooltip.line);
@@ -203,11 +222,12 @@ public class CoflModClient implements ClientModInitializer {
                         lines.remove(tooltip.line);
                         break;
                     case "HIGHLIGHT":
-                        if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs){
-                            //hs.getScreenHandler().getSlot(hs.getScreenHandler().getStacks().indexOf(stack));
+                        if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
+                            // hs.getScreenHandler().getSlot(hs.getScreenHandler().getStacks().indexOf(stack));
                         }
                         break;
-                    default: System.out.println("Unknown type: "+tooltip.type);
+                    default:
+                        System.out.println("Unknown type: " + tooltip.type);
                 }
             }
         });
@@ -215,23 +235,36 @@ public class CoflModClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
             if (EventSubscribers.showCountdown && EventSubscribers.countdownData != null
                     && (MinecraftClient.getInstance().currentScreen == null
-                        || MinecraftClient.getInstance().currentScreen instanceof ChatScreen)){
+                            || MinecraftClient.getInstance().currentScreen instanceof ChatScreen)) {
                 RenderUtils.drawStringWithShadow(
-                        drawContext, EventSubscribers.countdownData.getPrefix()+"New flips in: "+String.format("%.1f", EventSubscribers.countdown),
-                        MinecraftClient.getInstance().getWindow().getWidth()/EventSubscribers.countdownData.getWidthPercentage(),
-                        MinecraftClient.getInstance().getWindow().getHeight()/EventSubscribers.countdownData.getHeightPercentage(),
-                        0xFFFFFFFF, EventSubscribers.countdownData.getScale()
-                );
+                        drawContext,
+                        EventSubscribers.countdownData.getPrefix() + "New flips in: "
+                                + String.format("%.1f", EventSubscribers.countdown),
+                        MinecraftClient.getInstance().getWindow().getWidth()
+                                / EventSubscribers.countdownData.getWidthPercentage(),
+                        MinecraftClient.getInstance().getWindow().getHeight()
+                                / EventSubscribers.countdownData.getHeightPercentage(),
+                        0xFFFFFFFF, EventSubscribers.countdownData.getScale());
             }
         });
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
-            MyEventRegistry.onChatMessage(message.getString());
+            EventRegistry.onChatMessage(message.getString());
             return true;
         });
-	}
+    }
 
-    public static FlipData popFlipData(){
+    private static void uploadTabList() {
+        Command<String[]> data = new Command<>(CommandType.uploadTab, CoflModClient.getTabList().toArray(new String[0]));
+        CoflCore.Wrapper.SendMessage(data);
+    }
+
+    private static void uploadScoreboard() {
+        Command<String[]> data = new Command<>(CommandType.uploadScoreboard, CoflModClient.getScoreboard().toArray(new String[0]));
+        CoflCore.Wrapper.SendMessage(data);
+    }
+
+    public static FlipData popFlipData() {
         FlipData fd = EventSubscribers.flipData;
         EventSubscribers.flipData = null;
         return fd;
@@ -245,7 +278,7 @@ public class CoflModClient implements ClientModInitializer {
                 try {
                     try {
                         result = (SoundEvent) f.get(SoundEvent.class);
-                    } catch (ClassCastException e){
+                    } catch (ClassCastException e) {
                         result = (SoundEvent) ((RegistryEntry.Reference) f.get(RegistryEntry.Reference.class)).value();
                     }
                 } catch (IllegalAccessException e) {
@@ -257,7 +290,7 @@ public class CoflModClient implements ClientModInitializer {
         return result;
     }
 
-    public static DefaultedList<ItemStack> inventoryToItemStacks(Inventory inventory){
+    public static DefaultedList<ItemStack> inventoryToItemStacks(Inventory inventory) {
         DefaultedList<ItemStack> itemStacks = DefaultedList.of();
 
         for (int i = 0; i < inventory.size(); i++) {
@@ -267,15 +300,15 @@ public class CoflModClient implements ClientModInitializer {
         return itemStacks;
     }
 
-    public static String inventoryToNBT(Inventory inventory){
+    public static String inventoryToNBT(Inventory inventory) {
         return inventoryToNBT(inventoryToItemStacks(inventory));
     }
 
-    public static String[] getItemIdsFromInventory(Inventory inventory){
+    public static String[] getItemIdsFromInventory(Inventory inventory) {
         return getItemIdsFromInventory(inventoryToItemStacks(inventory));
     }
 
-    public static String inventoryToNBT(DefaultedList<ItemStack> itemStacks){
+    public static String inventoryToNBT(DefaultedList<ItemStack> itemStacks) {
         NbtCompound nbtCompound = new NbtCompound();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PlayerEntity player = MinecraftClient.getInstance().player;
@@ -285,16 +318,17 @@ public class CoflModClient implements ClientModInitializer {
             nbtCompound.put("i", nbtCompound.get("Items"));
             nbtCompound.remove("Items");
 
-            //System.out.println(nbtCompound.get("i").asString());
+            // System.out.println(nbtCompound.get("i").asString());
 
             NbtIo.writeCompressed(nbtCompound, baos);
             return Base64.getEncoder().encodeToString(baos.toByteArray());
 
-        } catch (IOException e){}
+        } catch (IOException e) {
+        }
         return "";
     }
 
-    public static String[] getItemIdsFromInventory(DefaultedList<ItemStack> itemStacks){
+    public static String[] getItemIdsFromInventory(DefaultedList<ItemStack> itemStacks) {
         ArrayList<String> res = new ArrayList<>();
         knownIds.clear();
 
@@ -310,17 +344,19 @@ public class CoflModClient implements ClientModInitializer {
         return res.toArray(String[]::new);
     }
 
-    public static String getIdFromStack(ItemStack stack){
+    public static String getIdFromStack(ItemStack stack) {
         JsonObject stackJson = null;
         for (ComponentType<?> type : stack.getComponents().getTypes()) {
-            if (type.toString().contains("minecraft:custom_data")){
+            if (type.toString().contains("minecraft:custom_data")) {
                 stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
             }
         }
-        if (stackJson == null) return "";
+        if (stackJson == null)
+            return "";
 
         JsonElement uuid = stackJson.get("uuid");
-        if (uuid != null) return uuid.getAsString();
+        if (uuid != null)
+            return uuid.getAsString();
         JsonElement idElement = stackJson.get("id");
         if (idElement != null) {
             return idElement.getAsString() + ";" + stack.getCount();
@@ -329,43 +365,90 @@ public class CoflModClient implements ClientModInitializer {
         return stack.getItem().getName().getString() + ";" + stack.getCount();
     }
 
-    public static void loadDescriptionsForInv(HandledScreen screen){
-//        DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
-//        if (!MinecraftClient.getInstance().player.getInventory().getStack(8).getComponents().toString().contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")) return;
-//        DescriptionHandler.emptyTooltipData();
-//        DescriptionHandler.loadDescriptionForInventory(
-//                getItemIdsFromInventory(itemStacks),
-//                MinecraftClient.getInstance().currentScreen.getTitle().getLiteralString(),
-//                inventoryToNBT(itemStacks),
-//                MinecraftClient.getInstance().getSession().getUsername()
-//        );
+    public static void loadDescriptionsForInv(HandledScreen screen) {
+        DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
+        if (!MinecraftClient.getInstance().player.getInventory().getStack(8).getComponents().toString()
+                .contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}"))
+            return;
+        DescriptionHandler.emptyTooltipData();
+
+        Thread.startVirtualThread(() -> {
+            try {
+                DescriptionHandler.loadDescriptionForInventory(
+                        getItemIdsFromInventory(itemStacks),
+                        screen.getTitle().getString(),
+                        inventoryToNBT(itemStacks),
+                        MinecraftClient.getInstance().getSession().getUsername());
+            } catch (Exception e) {
+                System.out.println("Failed to load descriptions for inventory: " + e.getMessage() + " "
+                        + inventoryToNBT(itemStacks));
+            }
+        });
     }
 
     private static List<String> getScoreboard() {
-        ArrayList<String> scoreboardAsText = new ArrayList<>();
+        ObjectArrayList<String> scoreboardAsText = new ObjectArrayList<>();
         if (MinecraftClient.getInstance() == null || MinecraftClient.getInstance().world == null) {
+            System.out.println("MinecraftClient or world is null, cannot get scoreboard.");
             return scoreboardAsText;
         }
-        Scoreboard scoreboard = MinecraftClient.getInstance().world.getScoreboard();
-        ScoreboardObjective sideBarObjective = scoreboard.getObjectiveForSlot(ScoreboardDisplaySlot.SIDEBAR);
-        if (sideBarObjective == null) {
+        ClientPlayerEntity player = MinecraftClient.getInstance().player;
+        if (player == null) {
+            System.out.println("Player is null, cannot get scoreboard.");
             return scoreboardAsText;
         }
-        String scoreboardTitle = sideBarObjective.getDisplayName().getString();
-        //scoreboardTitle = EnumChatFormatting.getTextWithoutFormattingCodes(scoreboardTitle);
-        scoreboardAsText.add(scoreboardTitle);
-        Collection<ScoreHolder> scoreboardLines = scoreboard.getKnownScoreHolders();
-        for (ScoreHolder line : scoreboardLines) {
-            String playerName = line.getDisplayName().getString();
-            if (playerName == null || playerName.startsWith("#")) {
+
+        Scoreboard scoreboard = player.getScoreboard();
+        ScoreboardObjective objective = scoreboard.getObjectiveForSlot(ScoreboardDisplaySlot.FROM_ID.apply(1));
+
+        for (ScoreHolder scoreHolder : scoreboard.getKnownScoreHolders()) {
+            if (!scoreboard.getScoreHolderObjectives(scoreHolder).containsKey(objective))
                 continue;
+            Team team = scoreboard.getScoreHolderTeam(scoreHolder.getNameForScoreboard());
+
+            if (team != null) {
+                String strLine = team.getPrefix().getString() + team.getSuffix().getString();
+
+                if (!strLine.trim().isEmpty()) {
+                    String formatted = Formatting.strip(strLine);
+                    scoreboardAsText.add(formatted);
+                }
             }
-            Team scorePlayerTeam = scoreboard.getTeam(playerName);
-            String lineText = Team.decorateName(scorePlayerTeam, Text.of(playerName)).getString();
-            scoreboardAsText.add(lineText);
-            System.out.println(lineText);
+        }
+
+        if (objective != null) {
+            scoreboardAsText.add(objective.getDisplayName().getString());
+            Collections.reverse(scoreboardAsText);
         }
         return scoreboardAsText;
     }
-}
 
+    private static List<String> getTabList() {
+        List<String> tabList = new ArrayList<>();
+        if (MinecraftClient.getInstance() == null || MinecraftClient.getInstance().world == null) {
+            System.out.println("MinecraftClient or world is null, cannot get tab list.");
+            return tabList;
+        }
+
+        MinecraftClient client = MinecraftClient.getInstance();
+        ClientPlayNetworkHandler networkHandler = client.getNetworkHandler();
+
+        if (networkHandler != null) {
+            // Get the collection of player list entries
+            for (PlayerListEntry playerListEntry : networkHandler.getPlayerList()) {
+                if (playerListEntry != null) {
+                    // Get the display name (the text shown in the tab list)
+                    if (playerListEntry.getDisplayName() != null) {
+                        String displayName = playerListEntry.getDisplayName().getString();
+                         System.out.println(displayName);
+                        tabList.add(displayName);
+                    } else {
+                        String playerName = playerListEntry.getProfile().getName();
+                        tabList.add(playerName);
+                    }
+                }
+            }
+        }
+        return tabList;
+    }
+}
