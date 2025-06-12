@@ -163,6 +163,16 @@ public class CoflModClient implements ClientModInitializer {
                     CoflSkyCommand.start(username);
             }
             uploadedScoreboard = false;
+            Thread.startVirtualThread(() -> {
+                try {
+                    Thread.sleep(5000); // wait 5 seconds for the scoreboard to be populated
+                    uploadScoreboard();
+                    uploadTabList();
+                    uploadedScoreboard = true;
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            });
         });
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
