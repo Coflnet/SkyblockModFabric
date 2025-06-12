@@ -123,7 +123,7 @@ public class CoflBinGUI extends BinGUI {
                 screenWidth / 2 - width / 2 + p + 20 + p + 4,
                 screenHeight / 2 - height / 2 + p + 12 + p + 2,
                 width - 20 - p*4 - 4,  height - 75 - 2 - screenHeight / 15 - 2,
-                lore, MinecraftClient.getInstance().textRenderer
+                lore == null ? Text.of("") : lore, MinecraftClient.getInstance().textRenderer
         ){
             @Override
             protected void drawBox(DrawContext context) {}
