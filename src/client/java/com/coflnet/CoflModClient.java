@@ -161,6 +161,17 @@ public class CoflModClient implements ClientModInitializer {
                 username = MinecraftClient.getInstance().getSession().getUsername();
                 if (!CoflCore.Wrapper.isRunning && CoflCore.config.autoStart)
                     CoflSkyCommand.start(username);
+                Thread.startVirtualThread(() -> {
+                    try {
+                        Thread.sleep(5000); // wait 5 seconds for the scoreboard to be populated
+                        if(!CoflCore.Wrapper.isRunning)
+                            return;
+                        uploadScoreboard();
+                        uploadTabList();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                });
             }
             uploadedScoreboard = false;
         });
