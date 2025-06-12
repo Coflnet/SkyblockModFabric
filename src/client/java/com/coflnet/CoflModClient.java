@@ -176,6 +176,13 @@ public class CoflModClient implements ClientModInitializer {
             uploadedScoreboard = false;
         });
 
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            if (CoflCore.Wrapper.isRunning) {
+                System.out.println("Disconnected from server");
+                CoflCore.Wrapper.stop();
+            }
+        });
+
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             dispatcher.register(ClientCommandManager.literal("cofl")
                     .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
