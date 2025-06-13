@@ -110,6 +110,7 @@ public class CoflModClient implements ClientModInitializer {
     public static ArrayList<String> knownIds = new ArrayList<>();
 
     private String username = "";
+    private String lastNbtRequest = "";
     private boolean uploadedScoreboard = false;
 
     public class TooltipMessage implements  Message{
@@ -173,6 +174,7 @@ public class CoflModClient implements ClientModInitializer {
                     }
                 });
             }
+            DescriptionHandler.emptyTooltipData();
             uploadedScoreboard = false;
         });
 
@@ -280,6 +282,7 @@ public class CoflModClient implements ClientModInitializer {
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof HandledScreen hs) {
+                knownIds.clear();
                 loadDescriptionsForInv(hs);
                 if(!uploadedScoreboard)
                 {
@@ -422,7 +425,6 @@ public class CoflModClient implements ClientModInitializer {
 
     public static String[] getItemIdsFromInventory(DefaultedList<ItemStack> itemStacks) {
         ArrayList<String> res = new ArrayList<>();
-        knownIds.clear();
 
         for (int i = 0; i < itemStacks.size(); i++) {
             ItemStack stack = itemStacks.get(i);
@@ -457,20 +459,54 @@ public class CoflModClient implements ClientModInitializer {
         return stack.getItem().getName().getString() + ";" + stack.getCount();
     }
 
-    public static void loadDescriptionsForInv(HandledScreen screen) {
-        DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
+    public void loadDescriptionsForInv(HandledScreen screen) {
         if (!MinecraftClient.getInstance().player.getInventory().getStack(8).getComponents().toString()
                 .contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}"))
             return;
-        DescriptionHandler.emptyTooltipData();
-
         Thread.startVirtualThread(() -> {
             try {
+                Thread.sleep(100); // wait for the screen to load
+                // TODO: check if items are already loaded earlier
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
+            try {
+                knownIds.clear();
+                String[] visibleItems = getItemIdsFromInventory(itemStacks);
+                String userName = MinecraftClient.getInstance().getSession().getUsername();
+                String nbtString = inventoryToNBT(itemStacks);
+                if(nbtString.equals(lastNbtRequest)) {
+                    System.out.println("Skipping descriptions load, NBT is the same: " + nbtString);
+                    return;
+                }
+                lastNbtRequest = nbtString;
                 DescriptionHandler.loadDescriptionForInventory(
-                        getItemIdsFromInventory(itemStacks),
+                        visibleItems,
                         screen.getTitle().getString(),
-                        inventoryToNBT(itemStacks),
-                        MinecraftClient.getInstance().getSession().getUsername());
+                        nbtString,
+                        userName);
+                if(screen.getTitle().getString().contains("Bazaar"))
+                {
+                    System.out.println("Bazaar data: "
+                            + inventoryToNBT(itemStacks));
+                }
+                Thread.sleep(1000);
+                // check all items in the inventory for descriptions
+                String[] itemIds = getItemIdsFromInventory(screen.getScreenHandler().getStacks());
+                List<String> visibleList = Arrays.asList(visibleItems);
+                for (String itemId : itemIds) {
+                    if (!visibleList.contains((itemId))) {
+                        DescriptionHandler.loadDescriptionForInventory(
+                                visibleItems,
+                                screen.getTitle().getString(),
+                                inventoryToNBT(itemStacks),
+                                userName);
+                        System.out.println("items changed, descriptions reloaded for " + itemId + " count: "
+                        + itemIds.length + " visible: " + visibleItems.length);
+                        break;
+                    }
+                }
             } catch (Exception e) {
                 System.out.println("Failed to load descriptions for inventory: " + e.getMessage() + " "
                         + inventoryToNBT(itemStacks));

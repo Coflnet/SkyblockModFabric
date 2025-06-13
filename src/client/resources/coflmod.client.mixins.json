@@ -1,11 +1,13 @@
 {
-	"required": true,
-	"package": "com.coflnet.mixin",
-	"compatibilityLevel": "JAVA_21",
-	"client": [
-		"ScrollableWidgetMixin"
-	],
-	"injectors": {
-		"defaultRequire": 1
-	}
+  "required": true,
+  "package": "com.coflnet.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ItemHighlightMixin",
+    "ScrollableWidgetMixin",
+    "ExampleMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
 }
