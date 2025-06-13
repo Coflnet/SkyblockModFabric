@@ -3,9 +3,9 @@
   "package": "com.coflnet.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "NewItemInChestMixin",
     "ItemHighlightMixin",
-    "ScrollableWidgetMixin",
-    "ExampleMixin"
+    "ScrollableWidgetMixin"
   ],
   "injectors": {
     "defaultRequire": 1

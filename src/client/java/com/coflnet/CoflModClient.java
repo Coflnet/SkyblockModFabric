@@ -110,8 +110,9 @@ public class CoflModClient implements ClientModInitializer {
     public static ArrayList<String> knownIds = new ArrayList<>();
 
     private String username = "";
-    private String lastNbtRequest = "";
+    private static String lastNbtRequest = "";
     private boolean uploadedScoreboard = false;
+    public static CoflModClient instance;
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -127,6 +128,7 @@ public class CoflModClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        instance = this;
         username = MinecraftClient.getInstance().getSession().getUsername();
         Path configDir = FabricLoader.getInstance().getConfigDir();
         CoflCore cofl = new CoflCore();
@@ -446,7 +448,7 @@ public class CoflModClient implements ClientModInitializer {
             }
         }
         if (stackJson == null)
-            return "";
+            return stack.getItem().getName().getString() + ";" + stack.getCount();
 
         JsonElement uuid = stackJson.get("uuid");
         if (uuid != null)
@@ -477,7 +479,7 @@ public class CoflModClient implements ClientModInitializer {
                 String userName = MinecraftClient.getInstance().getSession().getUsername();
                 String nbtString = inventoryToNBT(itemStacks);
                 if(nbtString.equals(lastNbtRequest)) {
-                    System.out.println("Skipping descriptions load, NBT is the same: " + nbtString);
+                    System.out.println("Skipping descriptions load, NBT is the same: ");
                     return;
                 }
                 lastNbtRequest = nbtString;
