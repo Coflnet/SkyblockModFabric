@@ -10,11 +10,14 @@ import net.minecraft.client.gui.screen.ingame.HandledScreen;
 
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.text.Text;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 
 @Mixin(HandledScreen.class) // Target HandledScreen, which is the base for most container UIs
@@ -26,18 +29,17 @@ public abstract class ItemHighlightMixin {
     @Shadow protected int backgroundWidth;
     @Shadow protected int backgroundHeight;
 
-    // Assuming descriptionHandler is a client-side component, you'd access it differently
-    // or pass relevant data. If it's a global instance, you can reference it directly.
-    // private YourDescriptionHandler descriptionHandler; // Example if it needs to be instantiated per screen
-    // Or, if it's a static utility:
-    // import static com.yourmodid.YourModClient.descriptionHandler; // Example if static
+    @Shadow @Nullable protected Slot focusedSlot;
 
-    /**
-     * Injects custom rendering logic after the default screen background is drawn.
-     * This method is often called `method_23880` or similar in older MC versions,
-     * but `renderBackground` is common in newer versions.
-     * The exact @At value might need adjustment based on the Minecraft version and specific need.
-     */
+
+    @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
+    private void onKeyPressed(int keyCode, int scanCode, int modifiers, CallbackInfoReturnable<Boolean> cir) {
+        if (CoflModClient.uploadItemKeyBinding.matchesKey(keyCode, scanCode)) {
+            if (focusedSlot != null && focusedSlot.hasStack()) {
+                CoflModClient.uploadItem(focusedSlot.getStack());
+            }
+        }
+    }
 
     @Inject(method = "drawSlot", at = @At("RETURN")) // drawBackground is a good place
     private void yourmodid_onDrawBackground(DrawContext context, Slot slot, CallbackInfo ci) {

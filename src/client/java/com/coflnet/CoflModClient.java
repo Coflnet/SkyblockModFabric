@@ -1,21 +1,16 @@
 package com.coflnet;
 
-import CoflCore.CoflCore;
-import CoflCore.classes.*;
-import CoflCore.CoflSkyCommand;
-import CoflCore.commands.Command;
-import CoflCore.commands.CommandType;
-import CoflCore.commands.models.FlipData;
-import CoflCore.configuration.Config;
-import CoflCore.configuration.Configuration;
-import CoflCore.configuration.LocalConfig;
-import CoflCore.events.OnSettingsReceive;
-import CoflCore.handlers.DescriptionHandler;
-import CoflCore.handlers.EventRegistry;
-import CoflCore.network.QueryServerCommands;
-import CoflCore.network.WSClient;
-import com.mojang.brigadier.Message;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.Collections;
+import java.util.List;
+
+import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
@@ -24,10 +19,18 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.mojang.authlib.minecraft.client.ObjectMapper;
+import com.mojang.brigadier.Message;
 import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.serialization.DataResult;
-import com.mojang.serialization.JsonOps;
+
+import CoflCore.CoflCore;
+import CoflCore.CoflSkyCommand;
+import CoflCore.commands.Command;
+import CoflCore.commands.CommandType;
+import CoflCore.commands.RawCommand;
+import CoflCore.commands.models.FlipData;
+import CoflCore.handlers.DescriptionHandler;
+import CoflCore.handlers.EventRegistry;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -36,77 +39,45 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
-import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
-import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
-import net.fabricmc.fabric.api.networking.v1.S2CPlayChannelEvents;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.advancement.criterion.InventoryChangedCriterion;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.hud.ChatHud;
-import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.gui.screen.ChatScreen;
-import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.client.gui.screen.ingame.HandledScreens;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.client.gui.tooltip.HoveredTooltipPositioner;
-import net.minecraft.client.gui.tooltip.Tooltip;
 import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.network.PlayerListEntry;
 import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.ChatMessages;
 import net.minecraft.client.util.InputUtil;
-import net.minecraft.component.Component;
 import net.minecraft.component.ComponentType;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
 import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.Inventory;
-import net.minecraft.inventory.InventoryChangedListener;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.item.tooltip.TooltipData;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.network.packet.c2s.play.ChatMessageC2SPacket;
-import net.minecraft.network.packet.s2c.play.ChatMessageS2CPacket;
-import net.minecraft.network.packet.s2c.play.GameJoinS2CPacket;
-import net.minecraft.network.packet.s2c.play.ScoreboardScoreUpdateS2CPacket;
-import net.minecraft.registry.Registries;
 import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.scoreboard.*;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.ScreenHandlerListener;
+import net.minecraft.scoreboard.ScoreHolder;
+import net.minecraft.scoreboard.Scoreboard;
+import net.minecraft.scoreboard.ScoreboardDisplaySlot;
+import net.minecraft.scoreboard.ScoreboardObjective;
+import net.minecraft.scoreboard.Team;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.HoverEvent;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import net.minecraft.util.Identifier;
 import net.minecraft.util.collection.DefaultedList;
-import org.lwjgl.glfw.GLFW;
-import org.spongepowered.asm.mixin.transformer.ClassInfo;
-
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.lang.reflect.Field;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class CoflModClient implements ClientModInitializer {
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
     public static KeyBinding bestflipsKeyBinding;
+    public static KeyBinding uploadItemKeyBinding;
     public static ArrayList<String> knownIds = new ArrayList<>();
 
     private String username = "";
@@ -143,7 +114,12 @@ public class CoflModClient implements ClientModInitializer {
                 "keybinding.coflmod.bestflips",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_B,
-                ""));
+                "SkyCofl"));
+        uploadItemKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "keybinding.coflmod.uploaditem",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_I,
+                "SkyCofl"));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (bestflipsKeyBinding.isPressed()) {
@@ -155,6 +131,9 @@ public class CoflModClient implements ClientModInitializer {
             } else {
                 counter = 0;
             }
+            if(uploadItemKeyBinding.wasPressed())
+                handleGetHoveredItem(client);
+
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
@@ -349,6 +328,29 @@ public class CoflModClient implements ClientModInitializer {
             EventRegistry.onChatMessage(message.getString());
             return true;
         });
+    }
+
+    private void handleGetHoveredItem(MinecraftClient client) {
+         uploadItem(client.player.getInventory().getStack(client.player.getInventory().getSelectedSlot()));
+    }
+
+    public static void uploadItem(ItemStack hoveredStack) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null || hoveredStack == null) return;
+
+        RawCommand data = new RawCommand("hotkey", gson.toJson("upload_item" + getContextToAppend(hoveredStack)));
+        CoflCore.Wrapper.SendMessage(data);
+    }
+
+    private static String getContextToAppend(ItemStack hoveredStack) {
+        String toAppend = "";
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null)
+            return "";
+
+        DefaultedList<ItemStack> mockList = DefaultedList.of();
+        mockList.add(hoveredStack);
+        return "|" + inventoryToNBT(mockList);
     }
 
     private static void uploadTabList() {
