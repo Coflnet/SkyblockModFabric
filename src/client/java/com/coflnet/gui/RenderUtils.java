@@ -26,7 +26,7 @@ public class RenderUtils {
 
     public static void init(){
         z = 0; // 401
-        getTessellator();
+        tessellator = Tessellator.getInstance();
         textRenderer = MinecraftClient.getInstance().textRenderer;
     }
 

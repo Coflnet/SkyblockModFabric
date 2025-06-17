@@ -12,14 +12,11 @@ import org.jetbrains.annotations.Nullable;
 
 public class ItemWidget extends EmptyWidget implements Element, Drawable, Selectable {
     public ItemStack item;
-    public boolean tooltipOnHover;
 
     public ItemWidget(int x, int y, ItemStack item) {
         super(x, y, 16, 16);
         this.item = item;
     }
-
-    public void setTooltipOnHover(boolean b){ this.tooltipOnHover = b; }
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
