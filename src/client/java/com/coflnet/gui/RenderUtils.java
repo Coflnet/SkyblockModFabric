@@ -19,14 +19,14 @@ import java.awt.*;
  * Modified by iroot-work
  */
 public class RenderUtils {
-    public static Tessellator tessellator = null;
+    private static Tessellator tessellator = null;
     private static BufferBuilder buffer = null;
     public static TextRenderer textRenderer = null;
     public static int z = 0;
 
     public static void init(){
         z = 0; // 401
-        tessellator = Tessellator.getInstance();
+        getTessellator();
         textRenderer = MinecraftClient.getInstance().textRenderer;
     }
 
