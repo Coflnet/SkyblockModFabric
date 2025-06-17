@@ -10,6 +10,8 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 
+import com.mojang.brigadier.CommandDispatcher;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
@@ -167,49 +169,8 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
-            dispatcher.register(ClientCommandManager.literal("cofl")
-                    .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
-                    .suggests((context, builder) -> {
-                        String input = context.getInput();
-                        String[] inputArgs = input.split(" ");
-
-                        String[] suggestions = {"start", "stop", "report", "online", "delay", "blacklist", "bl", "whitelist", "wl",
-                                "mute", "blocked", "chat", "c", "nickname", "nick", "profit", "worstflips", "bestflips",
-                                "leaderboard", "lb", "loserboard", "buyspeedboard", "trades", "flips", "set", "s",
-                                "purchase", "buy", "transactions", "balance", "help", "h", "logout", "backup", "restore",
-                                "captcha", "importtfm", "replayactive", "reminder", "filters", "emoji", "addremindertime",
-                                "lore", "fact", "flip", "preapi", "transfercoins", "ping", "setgui", "bazaar", "bz",
-                                "switchregion", "craftbreakdown", "cheapattrib", "ca", "attributeupgrade", "au", "ownconfigs",
-                                "configs", "config", "licenses", "license", "verify", "unverify", "attributeflip", "forge",
-                                "crafts", "craft", "upgradeplan", "updatecurrentconfig", "settimezone", "cheapmuseum", "cm",
-                                "replayflips", "lowball", "ahtax", "sethotkey"};
-
-
-                        // Check if the command is "s" or "set" and suggest specific subcommands
-                        if (inputArgs.length >= 2 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
-                            suggestions = new String[] {"lbin", "finders", "onlyBin", "whitelistAftermain", "DisableFlips",
-                                    "DebugMode", "blockHighCompetition", "minProfit", "minProfitPercent", "minVolume", "maxCost",
-                                    "modjustProfit", "modsoundOnFlip", "modshortNumbers", "modshortNames", "modblockTenSecMsg",
-                                    "modformat", "modblockedFormat", "modchat", "modcountdown", "modhideNoBestFlip", "modtimerX",
-                                    "modtimerY", "modtimerSeconds", "modtimerScale", "modtimerPrefix", "modtimerPrecision",
-                                    "modblockedMsg", "modmaxPercentOfPurse", "modnoBedDelay", "modstreamerMode", "modautoStartFlipper",
-                                    "modnormalSoldFlips", "modtempBlacklistSpam", "moddataOnlyMode", "modahListHours", "modquickSell",
-                                    "modmaxItemsInInventory", "moddisableSpamProtection", "showcost", "showestProfit", "showlbin",
-                                    "showslbin", "showmedPrice", "showseller", "showvolume", "showextraFields", "showprofitPercent",
-                                    "showprofit", "showsellerOpenBtn", "showlore", "showhideSold", "showhideManipulated",
-                                    "privacyExtendDescriptions", "privacyAutoStart", "loreHighlightFilterMatch",
-                                    "loreMinProfitForHighlight", "loreDisableHighlighting"};
-                        }
-                        for (String suggestion : suggestions) {
-                            builder.suggest(suggestion);
-                        }
-                        return builder.buildFuture();
-                    })
-                    .executes(context -> {
-                        String[] args = context.getArgument("args", String.class).split(" ");
-                        CoflSkyCommand.processCommand(args, username);
-                        return 1;
-                    })));
+            registerDefaultCommands(dispatcher, "cofl");
+            registerDefaultCommands(dispatcher, "cl");
             dispatcher.register(ClientCommandManager.literal("fc")
                     .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
                     .suggests((context, builder) -> {
@@ -221,8 +182,14 @@ public class CoflModClient implements ClientModInitializer {
                                 ":fyou:", ":angwyflip:", ":snipe:", ":preapi:", ":tm:", ":r:", ":c:", ":crown:", ":fire:",
                                 ":sword:", ":shield:", ":cross:", ":star1:", ":star2:", ":star3:", ":star4:", ":rich:", ":boop:",
                                 ":yay:", ":gg:"};
+                        String input = context.getInput();
+                        String[] inputParts = input.split(" ");
+                        String currentWord = inputParts.length > 0 ? inputParts[inputParts.length - 1] : "";
+
                         for (String suggestion : suggestions) {
-                            builder.suggest(suggestion, new TooltipMessage("Will be replaced with the emoji"));
+                            if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())) {
+                                builder.suggest(suggestion, new TooltipMessage("Will be replaced with the emoji"));
+                            }
                         }
                         return builder.buildFuture();
                     })
@@ -328,6 +295,55 @@ public class CoflModClient implements ClientModInitializer {
             EventRegistry.onChatMessage(message.getString());
             return true;
         });
+    }
+
+    private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
+        dispatcher.register(ClientCommandManager.literal(name)
+                .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
+                .suggests((context, builder) -> {
+                    String input = context.getInput();
+                    String[] inputArgs = input.split(" ");;
+                    String currentWord = inputArgs.length > 0 ? inputArgs[inputArgs.length - 1] : "";
+
+                    String[] suggestions = {"start", "stop", "vps", "report", "online", "delay", "blacklist", "bl", "whitelist", "wl",
+                            "mute", "blocked", "chat", "c", "nickname", "nick", "profit", "worstflips", "bestflips",
+                            "leaderboard", "lb", "loserboard", "buyspeedboard", "trades", "flips", "set", "s",
+                            "purchase", "buy", "transactions", "balance", "help", "h", "logout", "backup", "restore",
+                            "captcha", "importtfm", "replayactive", "reminder", "filters", "emoji", "addremindertime",
+                            "lore", "fact", "flip", "preapi", "transfercoins", "ping", "setgui", "bazaar", "bz",
+                            "switchregion", "craftbreakdown", "cheapattrib", "ca", "attributeupgrade", "au", "ownconfigs",
+                            "configs", "config", "licenses", "license", "verify", "unverify", "attributeflip", "forge",
+                            "crafts", "craft", "upgradeplan", "updatecurrentconfig", "settimezone", "cheapmuseum", "cm",
+                            "replayflips", "lowball", "ahtax", "sethotkey"};
+
+
+                    // Check if the command is "s" or "set" and suggest specific subcommands
+                    if (inputArgs.length == 2 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
+                        suggestions = new String[] {"lbin", "finders", "onlyBin", "whitelistAftermain", "DisableFlips",
+                                "DebugMode", "blockHighCompetition", "minProfit", "minProfitPercent", "minVolume", "maxCost",
+                                "modjustProfit", "modsoundOnFlip", "modshortNumbers", "modshortNames", "modblockTenSecMsg",
+                                "modformat", "modblockedFormat", "modchat", "modcountdown", "modhideNoBestFlip", "modtimerX",
+                                "modtimerY", "modtimerSeconds", "modtimerScale", "modtimerPrefix", "modtimerPrecision",
+                                "modblockedMsg", "modmaxPercentOfPurse", "modnoBedDelay", "modstreamerMode", "modautoStartFlipper",
+                                "modnormalSoldFlips", "modtempBlacklistSpam", "moddataOnlyMode", "modahListHours", "modquickSell",
+                                "modmaxItemsInInventory", "moddisableSpamProtection", "showcost", "showestProfit", "showlbin",
+                                "showslbin", "showmedPrice", "showseller", "showvolume", "showextraFields", "showprofitPercent",
+                                "showprofit", "showsellerOpenBtn", "showlore", "showhideSold", "showhideManipulated",
+                                "privacyExtendDescriptions", "privacyAutoStart", "loreHighlightFilterMatch",
+                                "loreMinProfitForHighlight", "loreDisableHighlighting"};
+                    } else if(inputArgs.length > 1)
+                        return builder.buildFuture();
+                    for (String suggestion : suggestions) {
+                        if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase()))
+                            builder.suggest(suggestion);
+                    }
+                    return builder.buildFuture();
+                })
+                .executes(context -> {
+                    String[] args = context.getArgument("args", String.class).split(" ");
+                    CoflSkyCommand.processCommand(args, username);
+                    return 1;
+                })));
     }
 
     private void handleGetHoveredItem(MinecraftClient client) {
