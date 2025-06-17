@@ -1,11 +1,14 @@
 {
 	"schemaVersion": 1,
-	"id": "coflmod",
+	"id": "skycofl",
 	"version": "${version}",
-	"name": "CoflMod",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"name": "SkyCofl",
+	"description": "SkyCoflMod adds pricing information to hypixel skyblock",
 	"authors": [
-		"Me!"
+		"OC.Marwo",
+		"HackOS",
+		"Ragult",
+		"Ekwav"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
@@ -24,10 +27,13 @@
 	},
 	"depends": {
 		"fabricloader": ">=0.16.2",
-		"minecraft": "~1.21.1",
+		"minecraft": "~1.21.5",
 		"java": ">=21",
 		"fabric-api": "*"
 	},
+	"mixins": [
+		"coflmod.client.mixins.json"
+	],
 	"suggests": {
 		"another-mod": "*"
 	}
