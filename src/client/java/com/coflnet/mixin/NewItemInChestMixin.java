@@ -17,8 +17,8 @@ public class NewItemInChestMixin {
     @Inject(method = "onScreenHandlerSlotUpdate", at = @At("TAIL"))
     private void onPacketReceive(ScreenHandlerSlotUpdateS2CPacket packet, CallbackInfo ci) {
         try {
-            String itemTitle = packet.getStack().getCustomName().getString();
-            if (itemTitle.contains("Pending their confirm") || itemTitle.contains("Deal timer!")) {
+            String itemTitle = packet.getStack().hasCustomName() ? packet.getStack().getCustomName().getString() : "";
+            if (!itemTitle.isEmpty() && (itemTitle.contains("Pending their confirm") || itemTitle.contains("Deal timer!"))) {
                 if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs)
                     CoflModClient.instance.loadDescriptionsForInv(hs);
                 System.out.println("Trade Slot Update Packet received." + packet.getStack().getCustomName());
