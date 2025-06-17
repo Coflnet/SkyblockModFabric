@@ -1,2 +1,3 @@
 # SkyblockModFabric
-DISCLAIMER: This mod is under development and NOT MEANT FOR USE IN SKYBLOCK
+A frontend for https://sky.coflnet.com inside minecraft based on fabric 1.21.5 and up.  
+For forge see [here](https://github.com/Coflnet/Skyblockmod)
