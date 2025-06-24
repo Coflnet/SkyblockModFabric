@@ -4,14 +4,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
-import com.mojang.brigadier.CommandDispatcher;
-import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
@@ -21,6 +15,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.Message;
 import com.mojang.brigadier.arguments.StringArgumentType;
 
@@ -36,6 +31,7 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
@@ -466,17 +462,17 @@ public class CoflModClient implements ClientModInitializer {
             }
         }
         if (stackJson == null)
-            return stack.getItem().getName().getString() + ";" + stack.getCount();
+            return stack.getCustomName().getString() + ";" + stack.getCount();
 
         JsonElement uuid = stackJson.get("uuid");
         if (uuid != null)
             return uuid.getAsString();
         JsonElement idElement = stackJson.get("id");
-        if (idElement != null) {
+        if (idElement != null && !Objects.equals(idElement.getAsString(), "ATTRIBUTE_SHARD")) {
             return idElement.getAsString() + ";" + stack.getCount();
         }
         // If "id" is not present, use the item's name
-        return stack.getItem().getName().getString() + ";" + stack.getCount();
+        return stack.getCustomName().getString() + ";" + stack.getCount();
     }
 
     public void loadDescriptionsForInv(HandledScreen screen) {
@@ -583,7 +579,8 @@ public class CoflModClient implements ClientModInitializer {
 
         if (networkHandler != null) {
             // Get the collection of player list entries
-            for (PlayerListEntry playerListEntry : networkHandler.getPlayerList()) {
+            List<PlayerListEntry> playerList = new ArrayList<>(networkHandler.getPlayerList());
+            for (PlayerListEntry playerListEntry : playerList) {
                 if (playerListEntry != null) {
                     // Get the display name (the text shown in the tab list)
                     if (playerListEntry.getDisplayName() != null) {
