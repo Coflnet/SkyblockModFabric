@@ -306,15 +306,15 @@ public class CoflModClient implements ClientModInitializer {
                             "leaderboard", "lb", "loserboard", "buyspeedboard", "trades", "flips", "set", "s",
                             "purchase", "buy", "transactions", "balance", "help", "h", "logout", "backup", "restore",
                             "captcha", "importtfm", "replayactive", "reminder", "filters", "emoji", "addremindertime",
-                            "lore", "fact", "flip", "preapi", "transfercoins", "ping", "setgui", "bazaar", "bz",
+                            "lore", "fact", "flip", "preapi", "transfercoins", "ping", "setgui tfm", "setgui cofl", "setgui off", "bazaar", "bz",
                             "switchregion", "craftbreakdown", "cheapattrib", "ca", "attributeupgrade", "au", "ownconfigs",
                             "configs", "config", "licenses", "license", "verify", "unverify", "attributeflip", "forge",
                             "crafts", "craft", "upgradeplan", "updatecurrentconfig", "settimezone", "cheapmuseum", "cm",
                             "replayflips", "lowball", "ahtax", "sethotkey"};
 
-
+                    System.out.println(inputArgs.length + currentWord);
                     // Check if the command is "s" or "set" and suggest specific subcommands
-                    if (inputArgs.length == 2 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
+                    if (inputArgs.length == 3 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
                         suggestions = new String[] {"lbin", "finders", "onlyBin", "whitelistAftermain", "DisableFlips",
                                 "DebugMode", "blockHighCompetition", "minProfit", "minProfitPercent", "minVolume", "maxCost",
                                 "modjustProfit", "modsoundOnFlip", "modshortNumbers", "modshortNames", "modblockTenSecMsg",
@@ -327,12 +327,18 @@ public class CoflModClient implements ClientModInitializer {
                                 "showprofit", "showsellerOpenBtn", "showlore", "showhideSold", "showhideManipulated",
                                 "privacyExtendDescriptions", "privacyAutoStart", "loreHighlightFilterMatch",
                                 "loreMinProfitForHighlight", "loreDisableHighlighting"};
-                    } else if(inputArgs.length > 1)
+
+                        for (String suggestion : suggestions) {
+                            if (suggestion.toLowerCase().contains(currentWord.toLowerCase()))
+                                builder.suggest("set " + suggestion);
+                        }
+                    } else if(inputArgs.length > 3)
                         return builder.buildFuture();
-                    for (String suggestion : suggestions) {
-                        if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase()))
-                            builder.suggest(suggestion);
-                    }
+                    else
+                        for (String suggestion : suggestions) {
+                            if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase()))
+                                builder.suggest(suggestion);
+                        }
                     return builder.buildFuture();
                 })
                 .executes(context -> {
