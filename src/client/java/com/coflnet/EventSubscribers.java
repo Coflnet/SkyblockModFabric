@@ -155,7 +155,9 @@ public class EventSubscribers {
 
     @Subscribe
     public void onExecuteCommand(OnExecuteCommand event){
-        System.out.println("ON EXEC COMMAND:"+event.Error);
+        System.out.println("Skycofl executes:"+event.Error);
+        String command =event.Error.replace("\"", "").substring(1);
+        MinecraftClient.getInstance().getNetworkHandler().sendCommand(command);
     }
 
     @Subscribe
