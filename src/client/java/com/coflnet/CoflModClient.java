@@ -6,6 +6,19 @@ import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.*;
 
+import com.mojang.brigadier.CommandDispatcher;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.component.Component;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.MergedComponentMap;
+import net.minecraft.item.Item;
+import net.minecraft.nbt.*;
+import net.minecraft.nbt.visitor.StringNbtWriter;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryWrapper;
+import net.minecraft.storage.NbtReadView;
+import net.minecraft.storage.NbtWriteView;
+import net.minecraft.util.ErrorReporter;
 import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
@@ -56,8 +69,6 @@ import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtIo;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.scoreboard.ScoreHolder;
 import net.minecraft.scoreboard.Scoreboard;
@@ -431,11 +442,8 @@ public class CoflModClient implements ClientModInitializer {
         PlayerEntity player = MinecraftClient.getInstance().player;
 
         try {
-            Inventories.writeNbt(nbtCompound, itemStacks, player.getRegistryManager());
-            nbtCompound.put("i", nbtCompound.get("Items"));
-            nbtCompound.remove("Items");
-
-            // System.out.println(nbtCompound.get("i").asString());
+            nbtCompound = writeNbt(nbtCompound, itemStacks, player.getRegistryManager());
+            System.out.println(nbtCompound.get("i").asString());
 
             NbtIo.writeCompressed(nbtCompound, baos);
             return Base64.getEncoder().encodeToString(baos.toByteArray());
@@ -443,6 +451,25 @@ public class CoflModClient implements ClientModInitializer {
         } catch (IOException e) {
         }
         return "";
+    }
+
+    public static NbtCompound writeNbt(NbtCompound nbt, DefaultedList<ItemStack> stacks, RegistryWrapper.WrapperLookup registries) {
+        NbtList nbtList = new NbtList();
+
+        for(int i = 0; i < stacks.size(); ++i) {
+            ItemStack itemStack = (ItemStack)stacks.get(i);
+            if (!itemStack.isEmpty()) {
+                NbtCompound nbtCompound = new NbtCompound();
+                nbtCompound.putByte("Slot", (byte)i);
+                nbtList.add((NbtElement)ItemStack.CODEC.encode(itemStack, registries.getOps(NbtOps.INSTANCE), nbtCompound).getOrThrow());
+            }
+        }
+
+        if (!nbtList.isEmpty()) {
+            nbt.put("i", nbtList);
+        }
+
+        return nbt;
     }
 
     public static String[] getItemIdsFromInventory(DefaultedList<ItemStack> itemStacks) {

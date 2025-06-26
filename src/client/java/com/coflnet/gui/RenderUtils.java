@@ -1,8 +1,6 @@
 package com.coflnet.gui;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import net.fabricmc.fabric.impl.renderer.RendererManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -32,14 +30,7 @@ public class RenderUtils {
 
     //draw a rectangle
     public static void drawRect(DrawContext context, float x, float y, float width, float height, int color) {
-        buffer = tessellator.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-        
-        buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x, y, z).color(color);
-        buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x, y + height, z).color(color);
-        buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x + width, y + height, z).color(color);
-        buffer.vertex(context.getMatrices().peek().getPositionMatrix(), x + width, y, z).color(color);
-
-        RenderLayer.getGui().draw(buffer.end()); // drawWithGlobalProgram(buffer.end());
+        context.fill((int) x, (int) y, (int) (x + width), (int) (y + height), color);
     }
 
 
@@ -51,22 +42,15 @@ public class RenderUtils {
 
     //draws a circle with a given radius and thickness
     public static void drawCircle(DrawContext context, int x, int y, int radius, int color) {
-        buffer = tessellator.begin(VertexFormat.DrawMode.TRIANGLE_STRIP, VertexFormats.POSITION_COLOR);
-
         for (int i = 0; i <= 360; i++) {
-            buffer.vertex(
-                    context.getMatrices().peek().getPositionMatrix(),
-                    (float) (x + Math.sin(i * Math.PI / 180) * radius),
-                    (float) (y + Math.cos(i * Math.PI / 180) * radius),
-                    z
-            ).color(color);
+            context.fill(
+                    (int) (x + Math.sin(i * Math.PI / 180) * radius),
+                    (int) (y + Math.cos(i * Math.PI / 180) * radius),
+                    x,
+                    y,
+                    color
+            );
         }
-
-        //RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 1.0F);
-
-        //BufferRenderer.drawWithGlobalProgram(buffer.end());
-        RenderLayer.getGui().draw(buffer.end());
     }
 
     //draws a circle outline with a given radius and thickness
@@ -122,40 +106,40 @@ public class RenderUtils {
 
     //draws an arc with a given radius, start angle, and end angle
     public static void drawArc(DrawContext context, int x, int y, int radius, int startAngle, int endAngle, int color) {
-        buffer = tessellator.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
-
-        for (int i = startAngle; i <= endAngle; i++) {
-            buffer.vertex(
-                    context.getMatrices().peek().getPositionMatrix(),
-                    (float) (x + Math.sin(i * Math.PI / 180) * radius),
-                    (float) (y + Math.cos(i * Math.PI / 180) * radius),
-                    z
-            ).color(color);
-        }
-
-        //RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 0.0F);
-        //BufferRenderer.drawWithGlobalProgram(buffer.end());
-        RenderLayer.getGui().draw(buffer.end());
+//        buffer = tessellator.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
+//
+//        for (int i = startAngle; i <= endAngle; i++) {
+//            buffer.vertex(
+//                    context.getMatrices().peek().getPositionMatrix(),
+//                    (float) (x + Math.sin(i * Math.PI / 180) * radius),
+//                    (float) (y + Math.cos(i * Math.PI / 180) * radius),
+//                    z
+//            ).color(color);
+//        }
+//
+//        //RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+//        //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 0.0F);
+//        //BufferRenderer.drawWithGlobalProgram(buffer.end());
+//        //RenderLayer.getGui().draw(buffer.end());
     }
 
 
     //draw a loading circle with a given radius, thickness, and speed
     public static void drawLoadingCircle(DrawContext context, float x, float y, float radius, float thickness, float speed, int color) {
-        buffer = tessellator.begin(VertexFormat.DrawMode.LINE_STRIP, VertexFormats.POSITION_COLOR);
-
-        for (int i = 0; i <= 360; i++) {
-            buffer.vertex(
-                    context.getMatrices().peek().getPositionMatrix(),
-                    (float) (x + Math.sin((i + speed) * Math.PI / 180) * radius),
-                    (float) (y + Math.cos((i + speed) * Math.PI / 180) * radius),
-                    z
-            ).color(color);
-        }
-        //RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 0.0F);
-        //BufferRenderer.drawWithGlobalProgram(buffer.end());
-        RenderLayer.getGui().draw(buffer.end());
+//        buffer = tessellator.begin(VertexFormat.DrawMode.LINE_STRIP, VertexFormats.POSITION_COLOR);
+//
+//        for (int i = 0; i <= 360; i++) {
+//            buffer.vertex(
+//                    context.getMatrices().peek().getPositionMatrix(),
+//                    (float) (x + Math.sin((i + speed) * Math.PI / 180) * radius),
+//                    (float) (y + Math.cos((i + speed) * Math.PI / 180) * radius),
+//                    z
+//            ).color(color);
+//        }
+//        //RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+//        //RenderSystem.setShaderColor(0.0F, 0.0F, 0.0F, 0.0F);
+//        //BufferRenderer.drawWithGlobalProgram(buffer.end());
+//        RenderLayer.getGui().draw(buffer.end());
     }
 
     //draws a rounded rectangle with a given radius and color and size
@@ -172,9 +156,9 @@ public class RenderUtils {
         //drawArc(x + width - radius, y + height - radius, radius, 0, 90, color);
 
         drawCircle(context, x + radius, y + radius, radius, color);
-        drawCircle(context, x + width - radius, y + radius, radius, color);
-        drawCircle(context, x + radius, y + height - radius, radius, color);
-        drawCircle(context, x + width - radius, y + height - radius, radius, color);
+        drawCircle(context, x + width - radius + 1, y + radius, radius, color);
+        drawCircle(context, x + radius, y + height - radius + 1, radius, color);
+        drawCircle(context, x + width - radius + 1, y + height - radius + 1, radius, color);
 
         //drawRectOutline(x, y, width, height, 1, Color.GREEN);
         //System.out.println("Rounded Rect drawn!");
@@ -232,7 +216,7 @@ public class RenderUtils {
 
     //draws a string with custom scale
     private static void drawString(DrawContext context, String text, int x, int y, int color, int scale, boolean centered, boolean shadow) {
-        MatrixStack ms = context.getMatrices();
+        MatrixStack ms = new MatrixStack();
         ms.push();
         ms.scale(scale,scale,0);
         context.drawText(textRenderer, text, centered ? x - textRenderer.getWidth(text) / 2 : x, y, color, shadow);
@@ -259,7 +243,7 @@ public class RenderUtils {
 
     //draws an ItemStack at a given position with a given scale
     public static void drawItemStack(DrawContext context, ItemStack itemStack, int x, int y, float scale) {
-        context.drawItem(itemStack, x, y, 0, z);
+        context.drawItem(itemStack, x, y, 0);
     }
 
     /*
