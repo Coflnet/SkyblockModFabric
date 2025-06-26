@@ -494,8 +494,9 @@ public class CoflModClient implements ClientModInitializer {
                 stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
             }
         }
+        String itemName = stack.getCustomName() == null ? stack.getItem().getName().getString() : stack.getCustomName().getString();
         if (stackJson == null)
-            return stack.getCustomName().getString() + ";" + stack.getCount();
+            return itemName + ";" + stack.getCount();
 
         JsonElement uuid = stackJson.get("uuid");
         if (uuid != null)
@@ -505,7 +506,7 @@ public class CoflModClient implements ClientModInitializer {
             return idElement.getAsString() + ";" + stack.getCount();
         }
         // If "id" is not present, use the item's name
-        return stack.getCustomName().getString() + ";" + stack.getCount();
+        return itemName + ";" + stack.getCount();
     }
 
     public void loadDescriptionsForInv(HandledScreen screen) {
