@@ -139,12 +139,11 @@ public class EventSubscribers {
 
         if (CoflModClient.bestflipsKeyBinding.isPressed()) {
             EventBus.getDefault().post(new OnOpenAuctionGUI("/viewauction "+fd.Id, fd));
-            return;
-        }
+        } else 
+            CoflCore.flipHandler.fds.Insert(fd);
 
         EventBus.getDefault().post(new OnChatMessageReceive(f.getMessages().toArray(ChatMessage[]::new)));
         EventBus.getDefault().post(new OnPlaySoundReceive(f.getSound()));
-        CoflCore.flipHandler.fds.Insert(fd);
     }
 
     @Subscribe
