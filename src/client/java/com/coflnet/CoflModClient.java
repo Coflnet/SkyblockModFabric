@@ -311,7 +311,7 @@ public class CoflModClient implements ClientModInitializer {
                             "purchase", "buy", "transactions", "balance", "help", "h", "logout", "backup", "restore",
                             "captcha", "importtfm", "replayactive", "reminder", "filters", "emoji", "addremindertime",
                             "lore", "fact", "flip", "preapi", "transfercoins", "ping", "setgui tfm", "setgui cofl", "setgui off", "bazaar", "bz",
-                            "switchregion", "craftbreakdown", "cheapattrib", "ca", "attributeupgrade", "au", "ownconfigs",
+                            "switchregion", "craftbreakdown", "cheapattrib", "ca", "ownconfigs",
                             "configs", "config", "licenses", "license", "verify", "unverify", "attributeflip", "forge",
                             "crafts", "craft", "upgradeplan", "updatecurrentconfig", "settimezone", "cheapmuseum", "cm",
                             "replayflips", "lowball", "ahtax", "sethotkey"};
@@ -340,7 +340,9 @@ public class CoflModClient implements ClientModInitializer {
                         return builder.buildFuture();
                     else
                         for (String suggestion : suggestions) {
-                            if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase()))
+                            if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())
+                             || inputArgs.length == 1 // just /cofl should show all
+                            )
                                 builder.suggest(suggestion);
                         }
                     return builder.buildFuture();
