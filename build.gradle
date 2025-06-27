@@ -23,7 +23,15 @@ loom {
 			sourceSet sourceSets.client
 		}
 	}
+}
 
+configurations.all {
+    resolutionStrategy {
+        // For changing modules (like SNAPSHOTs), check every 0 seconds (i.e., always check)
+        cacheChangingModulesFor(0, "seconds")
+        // For dynamic versions (like '[1.0, 2.0)'), cache for a short period
+        cacheDynamicVersionsFor(60, "minutes")
+    }
 }
 
 dependencies {
