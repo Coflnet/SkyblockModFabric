@@ -3,6 +3,7 @@ package com.coflnet.gui;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
@@ -32,7 +33,6 @@ public class RenderUtils {
     public static void drawRect(DrawContext context, float x, float y, float width, float height, int color) {
         context.fill((int) x, (int) y, (int) (x + width), (int) (y + height), color);
     }
-
 
     //draws an outlined rectangle with a given color and size and a given line width
     public static void drawRectOutline(DrawContext context, int x, int y, int width, int height, float lineWidth, int fillCol, int lineCol) {
