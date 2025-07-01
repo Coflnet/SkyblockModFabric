@@ -6,6 +6,19 @@ import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.*;
 
+import CoflCore.configuration.GUIType;
+import com.coflnet.gui.BinGUI;
+import com.mojang.brigadier.CommandDispatcher;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.component.Component;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.MergedComponentMap;
+import net.minecraft.item.Item;
+import net.minecraft.nbt.*;
+import net.minecraft.nbt.visitor.StringNbtWriter;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryWrapper;
+import net.minecraft.util.ErrorReporter;
 import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
@@ -56,8 +69,6 @@ import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtIo;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.scoreboard.ScoreHolder;
 import net.minecraft.scoreboard.Scoreboard;
@@ -200,26 +211,13 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-            if (screen instanceof GenericContainerScreen gcs) {
+            if (screen instanceof GenericContainerScreen gcs && CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null ) {
                 // System.out.println(gcs.getTitle().getString());
-                if (CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null
-                        && (gcs.getTitle().getString().contains("BIN Auction View")
-                                && gcs.getScreenHandler().getInventory().size() == 9 * 6
-                                || gcs.getTitle().getString().contains("Confirm Purchase")
-                                        && gcs.getScreenHandler().getInventory().size() == 9 * 3)) {
-                    if (!(client.currentScreen instanceof CoflBinGUI || client.currentScreen instanceof TfmBinGUI)) {
-                        switch (CoflCore.config.purchaseOverlay) {
-                            case COFL:
-                                client.setScreen(new CoflBinGUI(gcs));
-                                break;
-                            case TFM:
-                                client.setScreen(new TfmBinGUI(gcs));
-                                break;
-                            case null:
-                            default:
-                                break;
-                        }
-                    }
+                if (!(client.currentScreen instanceof BinGUI) && isBINAuction(gcs)) {
+                    if (CoflCore.config.purchaseOverlay == GUIType.COFL) client.setScreen(new CoflBinGUI(gcs));
+                    if (CoflCore.config.purchaseOverlay == GUIType.TFM) client.setScreen(new TfmBinGUI(gcs));
+                } else if (false && isOwnAuction(gcs)) {
+
                 }
             }
         });
@@ -608,5 +606,14 @@ public class CoflModClient implements ClientModInitializer {
             }
         }
         return tabList;
+    }
+
+    public static boolean isBINAuction(GenericContainerScreen gcs) {
+        return (BinGUI.isAuctionInit(gcs) || BinGUI.isAuctionConfirming(gcs));
+    }
+
+    public static boolean isOwnAuction(GenericContainerScreen gcs) {
+        ItemStack stack = gcs.getScreenHandler().getInventory().getStack(31);
+        return (BinGUI.isAuctionInit(gcs) && (stack.getItem() == Items.GRAY_STAINED_GLASS_PANE || stack.getItem() == Items.GOLD_BLOCK));
     }
 }

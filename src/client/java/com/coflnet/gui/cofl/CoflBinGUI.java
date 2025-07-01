@@ -10,7 +10,6 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
 import net.minecraft.client.gui.widget.*;
-import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
@@ -59,8 +58,8 @@ public class CoflBinGUI extends BinGUI {
 
             @Override
             public void onClick(double mouseX, double mouseY) {
-                if (auctionStatus != AuctionStatus.CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
-                else clickSlot(CONFIRMATION_CANCEL_SLOT);
+                if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
+                else clickSlot(AUCTION_CONFIRMATION_CANCEL_SLOT);
             }
         };
 
@@ -104,9 +103,25 @@ public class CoflBinGUI extends BinGUI {
                 if (leftClickableWidget.isMouseOver(mouseX, mouseY)) {
                     leftClickableWidget.onClick(mouseX, mouseY);
                 } else {
-                    if(auctionStatus != AuctionStatus.CONFIRMING) clickSlot(BUY_SLOT);
-                    else if(auctionStatus == AuctionStatus.WAITING) MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal("[§1C§6oflnet§f]§7: waiting for auction grace period "));
-                    else clickSlot(CONFIRM_SLOT);
+                    switch (auctionStatus){
+                        case INIT:
+                        case AUCTION_BUYING:
+                            clickSlot(AUCTION_BUY_SLOT);
+                            break;
+                        case AUCTION_WAITING:
+                            MinecraftClient.getInstance().inGameHud.getChatHud()
+                                    .addMessage(Text.literal("[§1C§6oflnet§f]§7: waiting for auction grace period "));
+                            break;
+                        case AUCTION_CONFIRMING:
+                            clickSlot(AUCTION_CONFIRM_SLOT);
+                            break;
+                        case OWN_AUCTION_CLAIMING:
+                            clickSlot(OWN_AUCTION_CLAIM_SLOT);
+                            break;
+                        case OWN_AUCTION_CANCELING:
+                            clickSlot(OWN_AUCTION_CANCEL_SLOT);
+                            break;
+                    }
                 }
             }
         };
@@ -136,7 +151,7 @@ public class CoflBinGUI extends BinGUI {
             }
         };
 
-        if(auctionStatus.compareTo(AuctionStatus.CONFIRMING) == 0) setRightButtonConfig(auctionStatus);
+        if(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0) setRightButtonConfig(auctionStatus);
 
         this.addDrawableChild(titleTextWidget);
         this.addDrawableChild(loreScrollableTextWidget);
@@ -148,18 +163,26 @@ public class CoflBinGUI extends BinGUI {
     private void setRightButtonConfig(AuctionStatus auctionStatus){
         switch (auctionStatus){
             case INIT:
-            case BUYING:
-            case WAITING:
+            case AUCTION_BUYING:
+            case AUCTION_WAITING:
                 rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
                 rightClickableWidget.setMessage(Text.of("Buy (You can click anywhere)"));
                 break;
-            case SOLD:
+            case AUCTION_SOLD:
                 rightButtonCol = new Pair<>(CoflColConfig.UNAVAILABLE, CoflColConfig.UNAVAILABLE);
                 rightClickableWidget.setMessage(Text.of("Bought by "));
                 break;
-            case CONFIRMING:
+            case AUCTION_CONFIRMING:
                 rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
                 rightClickableWidget.setMessage(Text.of("Confirm purchase"));
+                break;
+            case OWN_AUCTION_CLAIMING:
+                rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
+                rightClickableWidget.setMessage(Text.of("Claim Auction (You can click anywhere)"));
+                break;
+            case OWN_AUCTION_CANCELING:
+                rightButtonCol = new Pair<>(CoflColConfig.UNAVAILABLE, CoflColConfig.UNAVAILABLE);
+                rightClickableWidget.setMessage(Text.of("Cancel Auction \n(You can click anywhere)"));
                 break;
         }
     }
@@ -184,20 +207,21 @@ public class CoflBinGUI extends BinGUI {
         super.renderBackground(drawContext, mouseX, mouseY, delta);
 
         if(!gcsh.getInventory().isEmpty()){
-            if (gcsh.getInventory().getStack(ITEM_SLOT).getItem() != Items.AIR) {
-                setItem(gcsh.getInventory().getStack(ITEM_SLOT));
+            if (gcsh.getInventory().getStack(AUCTION_ITEM_SLOT).getItem() != Items.AIR) {
+                setItem(gcsh.getInventory().getStack(AUCTION_ITEM_SLOT));
                 lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), currentItem));
                 loreScrollableTextWidget.setMessage(lore == null ? Text.empty() : lore);
             }
 
             if (gcsh.getInventory()
-                    .getStack(auctionStatus.compareTo(AuctionStatus.CONFIRMING) == 0 ? CONFIRM_SLOT : BUY_SLOT)
+                    .getStack(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
                     .getItem() != Items.AIR) {
-                setRightButtonConfig(updateAuctionStatus(
+                AuctionStatus as = updateAuctionStatus(
                         gcsh.getInventory()
-                                .getStack(auctionStatus.compareTo(AuctionStatus.CONFIRMING) == 0 ? CONFIRM_SLOT : BUY_SLOT)
-                                .getItem()
-                ));
+                                .getStack(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
+                );
+                //System.out.println(as);
+                setRightButtonConfig(as);
             }
         }
 

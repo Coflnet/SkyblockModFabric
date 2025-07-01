@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import net.fabricmc.fabric.impl.renderer.RendererManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
@@ -41,7 +42,6 @@ public class RenderUtils {
 
         RenderLayer.getGui().draw(buffer.end()); // drawWithGlobalProgram(buffer.end());
     }
-
 
     //draws an outlined rectangle with a given color and size and a given line width
     public static void drawRectOutline(DrawContext context, int x, int y, int width, int height, float lineWidth, int fillCol, int lineCol) {

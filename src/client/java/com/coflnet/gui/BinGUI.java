@@ -7,12 +7,14 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
+import net.minecraft.component.Component;
+import net.minecraft.component.ComponentType;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.ScreenHandlerType;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.text.Text;
 
@@ -23,11 +25,13 @@ public abstract class BinGUI extends Screen {
     protected int screenWidth;
     protected int p;
     protected int r;
-    protected final int ITEM_SLOT = 13;
-    protected final int BUY_SLOT = 31;
+    protected final int AUCTION_ITEM_SLOT = 13;
+    protected final int AUCTION_BUY_SLOT = 31;
     protected final int AUCTION_CANCEL_SLOT = 49;
-    protected final int CONFIRM_SLOT = 11;
-    protected final int CONFIRMATION_CANCEL_SLOT = 15;
+    protected final int AUCTION_CONFIRM_SLOT = 11;
+    protected final int AUCTION_CONFIRMATION_CANCEL_SLOT = 15;
+    protected final int OWN_AUCTION_CLAIM_SLOT = 31;
+    protected final int OWN_AUCTION_CANCEL_SLOT = 33;
     protected ItemWidget itemWidget;
     protected ItemStack currentItem;
     protected FlipData flipData;
@@ -42,9 +46,8 @@ public abstract class BinGUI extends Screen {
         this.p = p;
         this.r = r;
 
-        if (gcsh.getType() == ScreenHandlerType.GENERIC_9X3){
-            this.auctionStatus = AuctionStatus.CONFIRMING;
-        } else this.auctionStatus = AuctionStatus.INIT;
+        if (isAuctionConfirming(gcs)) this.auctionStatus = AuctionStatus.AUCTION_CONFIRMING;
+        else if (isAuctionInit(gcs)) this.auctionStatus = AuctionStatus.INIT;
 
         flipData = CoflModClient.popFlipData();
 
@@ -93,11 +96,36 @@ public abstract class BinGUI extends Screen {
         );
     }
 
-    protected AuctionStatus updateAuctionStatus(Item item){
-        if (item == Items.GOLD_NUGGET) auctionStatus = AuctionStatus.BUYING;
-        if (item == Items.RED_BED) auctionStatus = AuctionStatus.WAITING;
-        if (item == Items.POTATO) auctionStatus = AuctionStatus.SOLD;
-        if (item == Items.GREEN_TERRACOTTA) auctionStatus = AuctionStatus.CONFIRMING;
+    protected AuctionStatus updateAuctionStatus(ItemStack itemStack){
+        Item item = itemStack.getItem();
+        if (item == Items.BLACK_STAINED_GLASS_PANE) {
+            auctionStatus = AuctionStatus.OWN_AUCTION_CANCELING;
+            return auctionStatus;
+        }
+
+        if (item == Items.RED_BED) {
+            auctionStatus = AuctionStatus.AUCTION_WAITING;
+            return auctionStatus;
+        }
+
+        String customName = itemStack.getCustomName().getString();
+        String loreString = itemStack.getComponents().get(DataComponentTypes.LORE).toString();
+
+        switch (customName){
+            case "Buy Item Right Now":
+                if (loreString.contains("Cannot afford bid!")) auctionStatus = AuctionStatus.AUCTION_BUYING;
+                else if (loreString.contains("Click to purchase!")) auctionStatus = AuctionStatus.AUCTION_BUYING;
+                return auctionStatus;
+            case "Collect Auction":
+                if (loreString.contains("Click to collect coins!")) auctionStatus = AuctionStatus.OWN_AUCTION_CLAIMING;
+                else if (loreString.contains("Click to pick up item!")) auctionStatus = AuctionStatus.OWN_AUCTION_CLAIMING;
+                else if (loreString.contains("Someone else purchased the item")) auctionStatus = AuctionStatus.AUCTION_SOLD;
+                return auctionStatus;
+            case "Confirm":
+                auctionStatus = AuctionStatus.AUCTION_CONFIRMING;
+                return auctionStatus;
+        }
+
         return auctionStatus;
     }
 
@@ -110,5 +138,16 @@ public abstract class BinGUI extends Screen {
             initSize(screenWidth, screenHeight);
             clearAndInitWidgets(screenWidth, screenHeight);
         }
+    }
+
+    public static boolean isAuctionConfirming(GenericContainerScreen gcs){
+        return  gcs.getTitle().getString().contains("Confirm Purchase")
+                && gcs.getScreenHandler().getInventory().size() == 9 * 3;
+    }
+
+
+    public static boolean isAuctionInit(GenericContainerScreen gcs) {
+        return gcs.getTitle().getString().contains("BIN Auction View")
+                && gcs.getScreenHandler().getInventory().size() == 9 * 6;
     }
 }
