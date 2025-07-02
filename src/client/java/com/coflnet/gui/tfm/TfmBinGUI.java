@@ -76,9 +76,9 @@ public class TfmBinGUI extends BinGUI {
                 if (cancelClickableWidget.isMouseOver(mouseX, mouseY)){
                     cancelClickableWidget.onClick(mouseX,mouseY);
                 } else {
-                    if(auctionStatus != AuctionStatus.CONFIRMING) clickSlot(BUY_SLOT);
-                    else if(auctionStatus == AuctionStatus.WAITING) MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal("[§1C§6oflnet§f]§7: waiting for auction grace period "));
-                    else clickSlot(CONFIRM_SLOT);
+                    if(auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_BUY_SLOT);
+                    else if(auctionStatus == AuctionStatus.AUCTION_WAITING) MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal("[§1C§6oflnet§f]§7: waiting for auction grace period "));
+                    else clickSlot(AUCTION_CONFIRM_SLOT);
                 }
             }
 
@@ -104,8 +104,8 @@ public class TfmBinGUI extends BinGUI {
 
             @Override
             public void onClick(double mouseX, double mouseY) {
-                if (auctionStatus != AuctionStatus.CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
-                else clickSlot(CONFIRMATION_CANCEL_SLOT);
+                if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
+                else clickSlot(AUCTION_CONFIRMATION_CANCEL_SLOT);
             }
         };
 
@@ -123,7 +123,7 @@ public class TfmBinGUI extends BinGUI {
         super.renderBackground(drawContext, mouseX, mouseY, delta);
 
         if(!gcsh.getInventory().isEmpty()){
-            if (gcsh.getInventory().getStack(ITEM_SLOT).getItem() != Items.AIR) setItem(gcsh.getInventory().getStack(ITEM_SLOT));
+            if (gcsh.getInventory().getStack(AUCTION_ITEM_SLOT).getItem() != Items.AIR) setItem(gcsh.getInventory().getStack(AUCTION_ITEM_SLOT));
         }
 
         RenderUtils.drawRectOutline(
