@@ -1,15 +1,25 @@
 package com.coflnet;
 
+import java.awt.*;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.List;
 
 import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.GameVersion;
+import net.minecraft.MinecraftVersion;
+import net.minecraft.client.gui.screen.PopupScreen;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.component.Component;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.MergedComponentMap;
@@ -20,7 +30,10 @@ import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.storage.NbtReadView;
 import net.minecraft.storage.NbtWriteView;
+import net.minecraft.text.ClickEvent;
 import net.minecraft.util.ErrorReporter;
+import net.minecraft.util.Urls;
+import net.minecraft.util.Util;
 import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
@@ -84,6 +97,7 @@ import net.minecraft.util.Formatting;
 import net.minecraft.util.collection.DefaultedList;
 
 public class CoflModClient implements ClientModInitializer {
+    public static final String targetVersion = "1.21.6";
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
@@ -94,6 +108,7 @@ public class CoflModClient implements ClientModInitializer {
     private String username = "";
     private static String lastNbtRequest = "";
     private boolean uploadedScoreboard = false;
+    private static boolean popupShown = false;
     public static CoflModClient instance;
 
     public class TooltipMessage implements  Message{
@@ -294,6 +309,30 @@ public class CoflModClient implements ClientModInitializer {
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             EventRegistry.onChatMessage(message.getString());
             return true;
+        });
+
+        ScreenEvents.AFTER_INIT.register((minecraftClient, screen, i, i1) -> {
+            if(!(MinecraftClient.getInstance().currentScreen instanceof TitleScreen)) return;
+            if (!popupShown && !checkVersionCompability()) {
+                popupShown = true;
+                Screen currentScreen = MinecraftClient.getInstance().currentScreen;
+                MinecraftClient.getInstance().setScreen(
+                        new PopupScreen.Builder(currentScreen, Text.of("Warning"))
+                                .button(Text.literal("Modrinth"), popupScreen -> {
+                                    Util.getOperatingSystem().open("https://modrinth.com/mod/skycofl/versions");
+                                })
+                                .button(Text.of("Curseforge"), popupScreen -> {
+                                    Util.getOperatingSystem().open("https://www.curseforge.com/minecraft/mc-mods/skycofl/files/all?page=1&pageSize=20");
+                                })
+                                .button(Text.of("dismiss"), popupScreen -> popupScreen.close())
+                                .message(Text.of(
+                                        "This version of the SkyCofl mod is meant for use in Minecraft "+
+                                                targetVersion+" and likely won't work."+
+                                                "\nYou can find other versions of SkyCofl here:"
+                                ))
+                                .build()
+                );
+            }
         });
     }
 
@@ -633,5 +672,17 @@ public class CoflModClient implements ClientModInitializer {
     public static boolean isOwnAuction(GenericContainerScreen gcs) {
         ItemStack stack = gcs.getScreenHandler().getInventory().getStack(31);
         return (BinGUI.isAuctionInit(gcs) && (stack.getItem() == Items.GRAY_STAINED_GLASS_PANE || stack.getItem() == Items.GOLD_BLOCK));
+    }
+
+    private boolean checkVersionCompability() {
+        try {
+            Method m = MinecraftVersion.CURRENT.getClass().getDeclaredMethod("name");
+            String v = m.invoke(MinecraftVersion.CURRENT, null).toString();
+            boolean b = v.compareTo(targetVersion) == 0;
+
+            return b;
+        } catch (Exception e) {
+            return false;
+        }
     }
 }
