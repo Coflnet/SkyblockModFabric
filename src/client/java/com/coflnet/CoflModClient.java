@@ -677,7 +677,7 @@ public class CoflModClient implements ClientModInitializer {
     private boolean checkVersionCompability() {
         try {
             Method m = MinecraftVersion.CURRENT.getClass().getDeclaredMethod("name");
-            String v = m.invoke(MinecraftVersion.CURRENT, null).toString();
+            String v = m.invoke(MinecraftVersion.CURRENT).toString();
             boolean b = v.compareTo(targetVersion) == 0;
 
             return b;
