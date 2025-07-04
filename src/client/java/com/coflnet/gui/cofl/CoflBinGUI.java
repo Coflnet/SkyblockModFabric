@@ -150,6 +150,11 @@ public class CoflBinGUI extends BinGUI {
                 if (clicked) rightClickableWidget.onClick(mouseX, mouseY);
                 return clicked;
             }
+
+            @Override
+            protected boolean isValidClickButton(int button) {
+                return button == 0 || button == 1;
+            }
         };
 
         if(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0) setRightButtonConfig(auctionStatus);
