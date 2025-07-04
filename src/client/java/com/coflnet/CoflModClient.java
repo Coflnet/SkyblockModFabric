@@ -653,10 +653,13 @@ public class CoflModClient implements ClientModInitializer {
         try {
             Method m = MinecraftVersion.CURRENT.getClass().getDeclaredMethod("getName");
             String v = m.invoke(MinecraftVersion.CURRENT).toString();
+            System.out.println("Detected Minecraft version:" + v);
             boolean b = v.compareTo(targetVersion) == 0;
 
             return b;
         } catch (Exception e) {
+            if(targetVersion == "1.21.5")
+                return true; // the method is only available in 1.21.6 so we assume this is .5
             return false;
         }
     }
