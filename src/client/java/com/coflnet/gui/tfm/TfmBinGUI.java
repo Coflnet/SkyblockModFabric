@@ -77,6 +77,11 @@ public class TfmBinGUI extends BinGUI {
 
             @Override
             protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
+
+            @Override
+            protected boolean isValidClickButton(int button) {
+                return button == 0 || button == 1;
+            }
         };
 
         cancelClickableWidget = new ClickableWidget(
@@ -99,6 +104,11 @@ public class TfmBinGUI extends BinGUI {
             public void onClick(double mouseX, double mouseY) {
                 if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
                 else clickSlot(AUCTION_CONFIRMATION_CANCEL_SLOT);
+            }
+
+            @Override
+            protected boolean isValidClickButton(int button) {
+                return button == 0 || button == 1;
             }
         };
 

@@ -63,6 +63,11 @@ public class CoflBinGUI extends BinGUI {
                 if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
                 else clickSlot(AUCTION_CONFIRMATION_CANCEL_SLOT);
             }
+
+            @Override
+            protected boolean isValidClickButton(int button) {
+                return button == 0 || button == 1;
+            }
         };
 
         int tempWidth = width;
@@ -125,6 +130,11 @@ public class CoflBinGUI extends BinGUI {
                             break;
                     }
                 }
+            }
+
+            @Override
+            protected boolean isValidClickButton(int button) {
+                return button == 0 || button == 1;
             }
         };
 
