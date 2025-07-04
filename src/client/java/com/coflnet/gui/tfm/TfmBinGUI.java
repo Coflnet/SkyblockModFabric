@@ -48,7 +48,12 @@ public class TfmBinGUI extends BinGUI {
                 screenHeight / 2 - height / 2 + 8 + 8 + 6,
                 Text.of(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
                 MinecraftClient.getInstance().textRenderer
-        ).setCentered(false);
+        ){
+            @Override
+            protected boolean isValidClickButton(int button) {
+                return button == 0 || button == 1;
+            }
+        }.setCentered(false);
 
         confirmClickableWidget = new ClickableWidget(
                 0, 0, screenWidth, screenHeight, Text.empty()
