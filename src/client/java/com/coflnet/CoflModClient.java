@@ -327,7 +327,7 @@ public class CoflModClient implements ClientModInitializer {
                                 .button(Text.of("dismiss"), popupScreen -> popupScreen.close())
                                 .message(Text.of(
                                         "This version of the SkyCofl mod is meant for use in Minecraft "+
-                                                targetVersion+" and likely won't work."+
+                                                targetVersion+" and likely won't work on this version."+
                                                 "\nYou can find other versions of SkyCofl here:"
                                 ))
                                 .build()
@@ -676,12 +676,12 @@ public class CoflModClient implements ClientModInitializer {
 
     private boolean checkVersionCompability() {
         try {
-            Method m = MinecraftVersion.CURRENT.getClass().getDeclaredMethod("name");
-            String v = m.invoke(MinecraftVersion.CURRENT).toString();
+            String v = MinecraftVersion.CURRENT.name();
+            System.out.println("Detected Minecraft version:" + v);
             boolean b = v.compareTo(targetVersion) == 0;
 
             return b;
-        } catch (Exception e) {
+        } catch (NoSuchMethodError e){
             return false;
         }
     }
