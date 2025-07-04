@@ -10,11 +10,13 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
 import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
 import net.minecraft.client.gui.widget.*;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.Items;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import oshi.util.tuples.Pair;
 
+import java.awt.event.ComponentEvent;
 import java.util.List;
 
 public class CoflBinGUI extends BinGUI {
@@ -170,7 +172,9 @@ public class CoflBinGUI extends BinGUI {
                 break;
             case AUCTION_SOLD:
                 rightButtonCol = new Pair<>(CoflColConfig.UNAVAILABLE, CoflColConfig.UNAVAILABLE);
-                rightClickableWidget.setMessage(Text.of("Bought by "));
+                for (Text line : currentItem.getComponents().get(DataComponentTypes.LORE).lines()) {
+                    if (line.getString().startsWith("Buyer: ")) rightClickableWidget.setMessage(Text.literal("Bought by "+line.getString().substring("Buyer: ".length())));
+                }
                 break;
             case AUCTION_CONFIRMING:
                 rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
@@ -178,11 +182,15 @@ public class CoflBinGUI extends BinGUI {
                 break;
             case OWN_AUCTION_CLAIMING:
                 rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
-                rightClickableWidget.setMessage(Text.of("Claim Auction (You can click anywhere)"));
+                rightClickableWidget.setMessage(Text.of(
+                        "Claim Auction"
+                ));
                 break;
             case OWN_AUCTION_CANCELING:
                 rightButtonCol = new Pair<>(CoflColConfig.UNAVAILABLE, CoflColConfig.UNAVAILABLE);
-                rightClickableWidget.setMessage(Text.of("Cancel Auction \n(You can click anywhere)"));
+                rightClickableWidget.setMessage(Text.of(
+                        "Cancel Auction"
+                ));
                 break;
         }
     }
