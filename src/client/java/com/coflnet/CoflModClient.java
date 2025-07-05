@@ -493,7 +493,6 @@ public class CoflModClient implements ClientModInitializer {
             } else {
                 // If the stack is empty, we can still add an empty NbtCompound to keep the slot index and give the backend an easier time figuring out the structure
                 NbtCompound nbtCompound = new NbtCompound();
-                nbtCompound.putByte("Slot", (byte)i);
                 nbtList.add(nbtCompound);
             }
         }
@@ -514,7 +513,8 @@ public class CoflModClient implements ClientModInitializer {
                 String id = getIdFromStack(stack);
                 knownIds.add(id);
                 res.add(id);
-            }
+            } else
+                res.add("EMPTY_SLOT_" + i); // Add a placeholder for empty slots
         }
 
         return res.toArray(String[]::new);
@@ -591,7 +591,7 @@ public class CoflModClient implements ClientModInitializer {
                     }
                 }
             } catch (Exception e) {
-                System.out.println("Failed to load descriptions for inventory: " + e.getMessage() + " "
+                System.out.println("Failed to load descriptions for inventory: " + e + " "
                         + inventoryToNBT(itemStacks));
             }
         });
