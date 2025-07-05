@@ -481,6 +481,30 @@ public class CoflModClient implements ClientModInitializer {
         return "";
     }
 
+    public static NbtCompound writeNbt(NbtCompound nbt, DefaultedList<ItemStack> stacks, RegistryWrapper.WrapperLookup registries) {
+        NbtList nbtList = new NbtList();
+
+        for(int i = 0; i < stacks.size(); ++i) {
+            ItemStack itemStack = (ItemStack)stacks.get(i);
+            if (!itemStack.isEmpty()) {
+                NbtCompound nbtCompound = new NbtCompound();
+                nbtCompound.putByte("Slot", (byte)i);
+                nbtList.add((NbtElement)ItemStack.CODEC.encode(itemStack, registries.getOps(NbtOps.INSTANCE), nbtCompound).getOrThrow());
+            } else {
+                // If the stack is empty, we can still add an empty NbtCompound to keep the slot index and give the backend an easier time figuring out the structure
+                NbtCompound nbtCompound = new NbtCompound();
+                nbtCompound.putByte("Slot", (byte)i);
+                nbtList.add(nbtCompound);
+            }
+        }
+
+        if (!nbtList.isEmpty()) {
+            nbt.put("i", nbtList);
+        }
+
+        return nbt;
+    }
+
     public static String[] getItemIdsFromInventory(DefaultedList<ItemStack> itemStacks) {
         ArrayList<String> res = new ArrayList<>();
 
