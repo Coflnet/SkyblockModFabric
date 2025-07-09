@@ -17,7 +17,13 @@ import net.minecraft.item.Items;
 import net.minecraft.screen.GenericContainerScreenHandler;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.text.Text;
+import org.jetbrains.annotations.NotNull;
 
+/**
+ * Abstract class that contains logic which is needed in implementations of BIN GUIs.
+ * @see com.coflnet.gui.cofl.CoflBinGUI
+ * @see com.coflnet.gui.tfm.TfmBinGUI
+ */
 public abstract class BinGUI extends Screen {
     protected int width;
     protected int height;
@@ -39,7 +45,15 @@ public abstract class BinGUI extends Screen {
     protected AuctionStatus auctionStatus;
     protected GenericContainerScreenHandler gcsh;
     protected GenericContainerScreen gcs;
-    protected BinGUI(Text title, GenericContainerScreen gcs, int p, int r) {
+
+    /**
+     * Constructor for BIN-GUIs.
+     * @param title title of the screen
+     * @param gcs the BIN auction as an instance of {@link GenericContainerScreen}
+     * @param p padding as an int
+     * @param r radius for rounded corners
+     */
+    protected BinGUI(Text title, @NotNull GenericContainerScreen gcs, @NotNull int p, int r) {
         super(title);
         this.gcs = gcs;
         this.gcsh = gcs.getScreenHandler();
@@ -65,6 +79,12 @@ public abstract class BinGUI extends Screen {
         if (height < 225) this.height = 225;
     }
 
+    /**
+     * Implementations of this method should include {@code this.clearChildren();}
+     * and all initializations of your GUIs widgets (such as buttons).
+     * @param screenWidth the current width of the screen as an int
+     * @param screenHeight the current height of the screen as an int
+     */
     protected abstract void clearAndInitWidgets(int screenWidth, int screenHeight);
 
     public void setItem(ItemStack item) {
@@ -84,6 +104,10 @@ public abstract class BinGUI extends Screen {
         super.close();
     }
 
+    /**
+     * Handles clicking a {@link net.minecraft.screen.slot.Slot} for the player.
+     * @param slotId the index of the slot that is to be clicked by the player.
+     */
     protected void clickSlot(int slotId) {
         PlayerEntity player = client.player;
 
@@ -96,7 +120,13 @@ public abstract class BinGUI extends Screen {
         );
     }
 
-    protected AuctionStatus updateAuctionStatus(ItemStack itemStack){
+    /**
+     * Determines the status of the auction based on the metadata of the "Confirm"-item in a BIN Auction
+     * and furthermore updates the status in {@link #auctionStatus auctionStatus}.
+     * @return the updated auctionStatus
+     * @see AuctionStatus
+     */
+    protected AuctionStatus updateAuctionStatus(@NotNull ItemStack itemStack){
         Item item = itemStack.getItem();
         if (item == Items.BLACK_STAINED_GLASS_PANE) {
             auctionStatus = AuctionStatus.OWN_AUCTION_CANCELING;
@@ -129,6 +159,14 @@ public abstract class BinGUI extends Screen {
         return auctionStatus;
     }
 
+    /**
+     * Adds logic to update the size of the UI elements when the window size changes dynamically.
+     * <br/>
+     * <br/>
+     * When overriding this method, make sure to include
+     * {@code super.renderBackground(drawContext, mouseX, mouseY, delta);}
+     * so your GUI changes size dynamically.
+     */
     @Override
     public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
         if (screenWidth != MinecraftClient.getInstance().currentScreen.width
@@ -140,13 +178,22 @@ public abstract class BinGUI extends Screen {
         }
     }
 
-    public static boolean isAuctionConfirming(GenericContainerScreen gcs){
+    /**
+     * Determines if the given screen is the confirmation part of a BIN auction.
+     * @param gcs instance of {@link GenericContainerScreen}
+     * @return {@code true} if the screen is the confirmation screen of a BIN auction, otherwise {@code false}
+     */
+    public static boolean isAuctionConfirming(@NotNull GenericContainerScreen gcs){
         return  gcs.getTitle().getString().contains("Confirm Purchase")
                 && gcs.getScreenHandler().getInventory().size() == 9 * 3;
     }
 
-
-    public static boolean isAuctionInit(GenericContainerScreen gcs) {
+    /**
+     * Determines if the given screen is a BIN auction.
+     * @param gcs instance of {@link GenericContainerScreen}
+     * @return {@code true} if the screen is a BIN auction, otherwise {@code false}
+     */
+    public static boolean isAuctionInit(@NotNull GenericContainerScreen gcs) {
         return gcs.getTitle().getString().contains("BIN Auction View")
                 && gcs.getScreenHandler().getInventory().size() == 9 * 6;
     }
