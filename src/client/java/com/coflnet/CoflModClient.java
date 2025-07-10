@@ -467,11 +467,7 @@ public class CoflModClient implements ClientModInitializer {
         PlayerEntity player = MinecraftClient.getInstance().player;
 
         try {
-            Inventories.writeNbt(nbtCompound, itemStacks, player.getRegistryManager());
-            nbtCompound.put("i", nbtCompound.get("Items"));
-            nbtCompound.remove("Items");
-
-            // System.out.println(nbtCompound.get("i").asString());
+            nbtCompound = writeNbt(nbtCompound, itemStacks, player.getRegistryManager());
 
             NbtIo.writeCompressed(nbtCompound, baos);
             return Base64.getEncoder().encodeToString(baos.toByteArray());
