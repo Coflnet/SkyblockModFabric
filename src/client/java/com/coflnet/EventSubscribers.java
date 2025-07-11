@@ -11,6 +11,7 @@ import CoflCore.network.WSClient;
 import net.fabricmc.fabric.impl.networking.client.ClientNetworkingImpl;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.collection.DefaultedList;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 
@@ -167,18 +168,20 @@ public class EventSubscribers {
 
     @Subscribe
     public void onCloseGUI(OnCloseGUI event){
-        System.out.println("OnCloseGUI event received");
-        if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) hs.close();
+        if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
+            System.out.println("Closing GUI: " + hs.getClass().getName());
+            hs.close();
+        }
     }
 
     @Subscribe
     public void onGetInventory(OnGetInventory event){
-        System.out.println("OnGetInventory event received");
         try {
-            List<ItemStack> itemStacks = new ArrayList<>();
+            DefaultedList<ItemStack> itemStacks = DefaultedList.of();
             for (Iterator<ItemStack> it = MinecraftClient.getInstance().player.getInventory().iterator(); it.hasNext(); ) {
                 itemStacks.add(it.next());
             }
+            CoflModClient.loadDescriptionsForItems("Inventory", itemStacks);
         } catch (Exception e){
             System.out.println(e);
         }

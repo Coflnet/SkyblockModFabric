@@ -3,6 +3,7 @@ package com.coflnet;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
@@ -292,10 +293,19 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             EventRegistry.onChatMessage(message.getString());
-            if(message.getStyle().getHoverEvent() != null
-                    && message.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest){
-                EventRegistry.onChatMessage(hest.value().getString());
+            // iterate over all components of the message
+            String previousHover = null;
+            for (Text component : message.getSiblings()) {
+                if(component.getStyle().getHoverEvent() != null
+                        && component.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest) {
+                    String text = hest.value().getString();
+                    if (text.equals(previousHover))
+                        continue; // skip if the text is the same as the previous one, different colored text often has the same hover text
+                    previousHover = text;
+                    EventRegistry.onChatMessage(hest.value().getString());
+                }
             }
+
             return true;
         });
 
@@ -561,20 +571,10 @@ public class CoflModClient implements ClientModInitializer {
             DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
             try {
                 knownIds.clear();
+                String title = screen.getTitle().getString();
                 String[] visibleItems = getItemIdsFromInventory(itemStacks);
-                String userName = MinecraftClient.getInstance().getSession().getUsername();
-                String nbtString = inventoryToNBT(itemStacks);
-                if(nbtString.equals(lastNbtRequest)) {
-                    System.out.println("Skipping descriptions load, NBT is the same: ");
-                    return;
-                }
-                lastNbtRequest = nbtString;
-                DescriptionHandler.loadDescriptionForInventory(
-                        visibleItems,
-                        screen.getTitle().getString(),
-                        nbtString,
-                        userName);
-                if(screen.getTitle().getString().contains("Bazaar"))
+                loadDescriptionsForItems(title, itemStacks);
+                if(title.contains("Bazaar"))
                 {
                     System.out.println("Bazaar data: "
                             + inventoryToNBT(itemStacks));
@@ -585,11 +585,7 @@ public class CoflModClient implements ClientModInitializer {
                 List<String> visibleList = Arrays.asList(visibleItems);
                 for (String itemId : itemIds) {
                     if (!visibleList.contains((itemId))) {
-                        DescriptionHandler.loadDescriptionForInventory(
-                                visibleItems,
-                                screen.getTitle().getString(),
-                                inventoryToNBT(itemStacks),
-                                userName);
+                        loadDescriptionsForItems(title, screen.getScreenHandler().getStacks());
                         System.out.println("items changed, descriptions reloaded for " + itemId + " count: "
                         + itemIds.length + " visible: " + visibleItems.length);
                         break;
@@ -600,6 +596,22 @@ public class CoflModClient implements ClientModInitializer {
                         + inventoryToNBT(itemStacks));
             }
         });
+    }
+
+    public static void loadDescriptionsForItems(String title, DefaultedList<ItemStack> items)
+    {
+        String[] visibleItems = getItemIdsFromInventory(items);
+        String userName = MinecraftClient.getInstance().getSession().getUsername();
+        String nbtString = inventoryToNBT(items);
+        if(nbtString.equals(lastNbtRequest)) {
+            return;
+        }
+        lastNbtRequest = nbtString;
+        DescriptionHandler.loadDescriptionForInventory(
+                visibleItems,
+                title,
+                nbtString,
+                userName);
     }
 
     private static List<String> getScoreboard() {
