@@ -692,7 +692,7 @@ public class CoflModClient implements ClientModInitializer {
 
         for (int i = 0; i < scores.length; i++) {
             String score = scores[i];
-            if (score.startsWith("Purse: ")) ids.setLeft(i);
+            if (score.startsWith("Purse: ") || score.startsWith("Piggy: ")) ids.setLeft(i);
             if (score.startsWith(" ⏣ ")) ids.setRight(i);
         }
 
