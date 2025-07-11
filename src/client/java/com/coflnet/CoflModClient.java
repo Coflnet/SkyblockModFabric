@@ -17,6 +17,8 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.nbt.*;
 import net.minecraft.registry.RegistryWrapper;
+import net.minecraft.text.HoverEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.util.*;
 import org.lwjgl.glfw.GLFW;
 
@@ -290,6 +292,10 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             EventRegistry.onChatMessage(message.getString());
+            if(message.getStyle().getHoverEvent() != null
+                    && message.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest){
+                EventRegistry.onChatMessage(hest.value().getString());
+            }
             return true;
         });
 
