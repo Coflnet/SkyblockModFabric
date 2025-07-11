@@ -1,12 +1,8 @@
 package com.coflnet;
 
-import java.awt.*;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
@@ -15,25 +11,13 @@ import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.minecraft.GameVersion;
 import net.minecraft.MinecraftVersion;
 import net.minecraft.client.gui.screen.PopupScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
-import net.minecraft.component.Component;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.MergedComponentMap;
-import net.minecraft.item.Item;
 import net.minecraft.nbt.*;
-import net.minecraft.nbt.visitor.StringNbtWriter;
-import net.minecraft.registry.Registries;
 import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.storage.NbtReadView;
-import net.minecraft.storage.NbtWriteView;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.util.ErrorReporter;
-import net.minecraft.util.Urls;
-import net.minecraft.util.Util;
+import net.minecraft.util.*;
 import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
@@ -43,7 +27,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.Message;
 import com.mojang.brigadier.arguments.StringArgumentType;
 
@@ -59,7 +42,6 @@ import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
-import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
@@ -80,7 +62,6 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.component.ComponentType;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.inventory.Inventories;
 import net.minecraft.inventory.Inventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -93,7 +74,6 @@ import net.minecraft.scoreboard.Team;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
 import net.minecraft.util.collection.DefaultedList;
 
 public class CoflModClient implements ClientModInitializer {
@@ -104,6 +84,8 @@ public class CoflModClient implements ClientModInitializer {
     public static KeyBinding bestflipsKeyBinding;
     public static KeyBinding uploadItemKeyBinding;
     public static ArrayList<String> knownIds = new ArrayList<>();
+    public static Pair<Integer, Integer> indexesOfImportantScores = new Pair<>(0,0);
+    public static String importantScores = "";
 
     private String username = "";
     private static String lastNbtRequest = "";
@@ -334,6 +316,15 @@ public class CoflModClient implements ClientModInitializer {
                 );
             }
         });
+
+        ClientReceiveMessageEvents.GAME.register((text, b) -> {
+            String[] scores = getScoreboard().toArray(new String[0]);
+            if (scores == null || scores.length < 9) return;
+            updateIndexesOfImportantScores(scores);
+            if (importantScoresCSV(scores).equals(importantScores)) return;
+            System.out.println("Uploading Scoreboard...");
+            uploadScoreboard();
+        });
     }
 
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
@@ -422,7 +413,9 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     private static void uploadScoreboard() {
-        Command<String[]> data = new Command<>(CommandType.uploadScoreboard, CoflModClient.getScoreboard().toArray(new String[0]));
+        String[] scores = CoflModClient.getScoreboard().toArray(new String[0]);
+        if (scores.length > 8) importantScores = importantScoresCSV(scores);
+        Command<String[]> data = new Command<>(CommandType.uploadScoreboard, scores);
         CoflCore.Wrapper.SendMessage(data);
     }
 
@@ -689,5 +682,22 @@ public class CoflModClient implements ClientModInitializer {
         } catch (NoSuchMethodError e){
             return false;
         }
+    }
+
+    private static Pair<Integer, Integer> updateIndexesOfImportantScores(String[] scores){
+        Pair<Integer, Integer> ids = new Pair<>(0,0);
+
+        for (int i = 0; i < scores.length; i++) {
+            String score = scores[i];
+            if (score.startsWith("Purse: ")) ids.setLeft(i);
+            if (score.startsWith(" ⏣ ")) ids.setRight(i);
+        }
+
+        indexesOfImportantScores = ids;
+        return indexesOfImportantScores;
+    }
+
+    private static String importantScoresCSV(String[] scores){
+        return scores[indexesOfImportantScores.getLeft()]+";"+scores[indexesOfImportantScores.getRight()];
     }
 }
