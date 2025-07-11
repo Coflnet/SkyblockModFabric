@@ -669,7 +669,6 @@ public class CoflModClient implements ClientModInitializer {
                     // Get the display name (the text shown in the tab list)
                     if (playerListEntry.getDisplayName() != null) {
                         String displayName = playerListEntry.getDisplayName().getString();
-                         System.out.println(displayName);
                         tabList.add(displayName);
                     } else {
                         String playerName = playerListEntry.getProfile().getName();
