@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
 
-import CoflCore.classes.Position;
 import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
@@ -20,8 +19,6 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.nbt.*;
 import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.ScreenHandlerListener;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.util.*;
 import org.lwjgl.glfw.GLFW;
@@ -97,7 +94,7 @@ public class CoflModClient implements ClientModInitializer {
     private static String lastNbtRequest = "";
     private boolean uploadedScoreboard = false;
     private static boolean popupShown = false;
-    public static String posJson = null;
+    public static String posString = null;
     public static CoflModClient instance;
 
     public class TooltipMessage implements  Message{
@@ -348,12 +345,8 @@ public class CoflModClient implements ClientModInitializer {
 
         UseBlockCallback.EVENT.register((playerEntity, world, hand, blockHitResult) -> {
             if(world.getBlockEntity(blockHitResult.getBlockPos()) instanceof LootableContainerBlockEntity){
-                int x = blockHitResult.getBlockPos().getX();
-                int y = blockHitResult.getBlockPos().getY();
-                int z = blockHitResult.getBlockPos().getZ();
-
                 System.out.println("Lootable opened, saving position of lootable Block...");
-                posJson = gson.toJson(new Position(x,y,z));
+                posString = blockHitResult.getBlockPos().toImmutable().toString();
             }
             return ActionResult.SUCCESS;
         });
@@ -628,10 +621,8 @@ public class CoflModClient implements ClientModInitializer {
                 title,
                 nbtString,
                 userName,
-                posJson
+                posString
         );
-
-        System.out.println("Postion: "+posJson);
     }
 
     private static List<String> getScoreboard() {
