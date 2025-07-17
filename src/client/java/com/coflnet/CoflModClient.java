@@ -7,20 +7,24 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
 
+import CoflCore.classes.Position;
 import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.MinecraftVersion;
-import net.minecraft.block.entity.LootableContainerBlockEntity;
+import net.minecraft.block.entity.*;
 import net.minecraft.client.gui.screen.PopupScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.nbt.*;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.util.*;
+import net.minecraft.util.math.BlockPos;
 import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
@@ -94,7 +98,7 @@ public class CoflModClient implements ClientModInitializer {
     private static String lastNbtRequest = "";
     private boolean uploadedScoreboard = false;
     private static boolean popupShown = false;
-    public static String posString = null;
+    public static Position posToUpload = null;
     public static CoflModClient instance;
 
     public class TooltipMessage implements  Message{
@@ -344,12 +348,15 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         UseBlockCallback.EVENT.register((playerEntity, world, hand, blockHitResult) -> {
-            if(world.getBlockEntity(blockHitResult.getBlockPos()) instanceof LootableContainerBlockEntity){
+            if(world.getBlockEntity(blockHitResult.getBlockPos()) instanceof LootableContainerBlockEntity lcbe){
                 System.out.println("Lootable opened, saving position of lootable Block...");
-                posString = blockHitResult.getBlockPos().toImmutable().toString();
+                BlockPos pos = blockHitResult.getBlockPos();
+                posToUpload = new Position(pos.getX(), pos.getY(), pos.getZ());
             }
+
             return ActionResult.SUCCESS;
         });
+
     }
 
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
@@ -621,7 +628,7 @@ public class CoflModClient implements ClientModInitializer {
                 title,
                 nbtString,
                 userName,
-                posString
+                posToUpload
         );
     }
 

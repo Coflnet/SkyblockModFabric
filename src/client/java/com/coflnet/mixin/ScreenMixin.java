@@ -11,6 +11,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class ScreenMixin {
     @Inject(at = @At("HEAD"), method = "close")
     private void close(CallbackInfo ci){
-        CoflModClient.posString = null;
+        CoflModClient.posToUpload = null;
     }
 }
