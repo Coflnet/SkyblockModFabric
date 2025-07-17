@@ -1,15 +1,22 @@
 package com.coflnet.gui;
 
+import com.coflnet.CoflMod;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.platform.DepthTestFunction;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.entity.Entity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.opengl.GL11;
+import org.spongepowered.asm.mixin.injection.invoke.arg.ArgumentCountException;
 
 import java.awt.*;
 
@@ -22,6 +29,18 @@ public class RenderUtils {
     private static BufferBuilder buffer = null;
     public static TextRenderer textRenderer = null;
     public static int z = 0;
+    private static final RenderLayer.MultiPhase THROUGH_WALLS_LAYER = RenderLayer.of(
+            "filled_through_walls", RenderLayer.DEFAULT_BUFFER_SIZE, false, true,
+            RenderPipelines.register(
+                    RenderPipeline.builder(RenderPipelines.POSITION_COLOR_SNIPPET)
+                            .withLocation(Identifier.of(CoflMod.MOD_ID, "pipeline/debug_filled_box_through_walls"))
+                            .withVertexFormat(VertexFormats.POSITION_COLOR, VertexFormat.DrawMode.TRIANGLE_STRIP)
+                            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+                            .build()
+            ), RenderLayer.MultiPhaseParameters.builder()
+                    .layering(RenderPhase.VIEW_OFFSET_Z_LAYERING_FORWARD)
+                    .build(false)
+    );
 
     public static void init(){
         z = 0; // 401
@@ -356,6 +375,30 @@ public class RenderUtils {
                 "At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. " +
                 "Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi. " +
                 "Lorem ipsum dolor sit amet,";
+    }
+
+    public static void renderHighlightBox(WorldRenderContext context, double[] minXYZ, double[] maxXYZ, float[] rgba) {
+        if (minXYZ.length != 3) throw new ArgumentCountException(minXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
+        if (maxXYZ.length != 3) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
+        if (rgba.length != 4) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 4 values (r/g/b/a) in array");
+
+        MatrixStack matrices = context.matrixStack();
+        Entity player = MinecraftClient.getInstance().player;
+
+        matrices.push();
+        if (player.isSneaking()) player.setSneaking(false);
+        matrices.translate(-player.getX(), -player.getY(), -player.getZ());
+
+        VertexConsumer buffer = context.consumers().getBuffer(THROUGH_WALLS_LAYER);
+        VertexRendering.drawFilledBox(
+                matrices, buffer,
+                minXYZ[0], minXYZ[1], minXYZ[2],
+                maxXYZ[0], maxXYZ[1], maxXYZ[2],
+                rgba[0], rgba[1], rgba[2], rgba[3]
+        );
+
+        ((VertexConsumerProvider.Immediate)context.consumers()).draw(THROUGH_WALLS_LAYER);
+        matrices.pop();
     }
 }
 
