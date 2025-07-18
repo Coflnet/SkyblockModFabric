@@ -3,25 +3,28 @@ package com.coflnet;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.List;
 
+import CoflCore.classes.Position;
 import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.MinecraftVersion;
+import net.minecraft.block.entity.*;
 import net.minecraft.client.gui.screen.PopupScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.nbt.*;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.registry.RegistryWrapper;
-import net.minecraft.util.ErrorReporter;
-import net.minecraft.util.Util;
 import net.minecraft.text.HoverEvent;
-import net.minecraft.text.MutableText;
 import net.minecraft.util.*;
+import net.minecraft.util.math.BlockPos;
 import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
@@ -81,19 +84,21 @@ import net.minecraft.text.Text;
 import net.minecraft.util.collection.DefaultedList;
 
 public class CoflModClient implements ClientModInitializer {
-    public static final String targetVersion = "1.21.5";
+    public static final String targetVersion = "1.21.7";
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
     public static KeyBinding bestflipsKeyBinding;
     public static KeyBinding uploadItemKeyBinding;
     public static ArrayList<String> knownIds = new ArrayList<>();
-    public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
+    public static Pair<Integer, Integer> indexesOfImportantScores = new Pair<>(0,0);
+    public static String importantScores = "";
 
     private String username = "";
     private static String lastNbtRequest = "";
     private boolean uploadedScoreboard = false;
     private static boolean popupShown = false;
+    public static Position posToUpload = null;
     public static CoflModClient instance;
 
     public class TooltipMessage implements  Message{
@@ -325,7 +330,7 @@ public class CoflModClient implements ClientModInitializer {
                                 .button(Text.of("dismiss"), popupScreen -> popupScreen.close())
                                 .message(Text.of(
                                         "This version of the SkyCofl mod is meant for use in Minecraft "+
-                                                targetVersion+" and likely won't work."+
+                                                targetVersion+" and likely won't work on this version."+
                                                 "\nYou can find other versions of SkyCofl here:"
                                 ))
                                 .build()
@@ -336,11 +341,22 @@ public class CoflModClient implements ClientModInitializer {
         ClientReceiveMessageEvents.GAME.register((text, b) -> {
             String[] scores = getScoreboard().toArray(new String[0]);
             if (scores == null || scores.length < 9) return;
-            Pair<String,String> newData = updateIndexesOfImportantScores(scores);
-            if (newData.getLeft().equals(lastScoreboardUploaded.getLeft()) && newData.getRight().equals(lastScoreboardUploaded.getRight())) return;
+            updateIndexesOfImportantScores(scores);
+            if (importantScoresCSV(scores).equals(importantScores)) return;
             System.out.println("Uploading Scoreboard...");
             uploadScoreboard();
         });
+
+        UseBlockCallback.EVENT.register((playerEntity, world, hand, blockHitResult) -> {
+            if(world.getBlockEntity(blockHitResult.getBlockPos()) instanceof LootableContainerBlockEntity lcbe){
+                System.out.println("Lootable opened, saving position of lootable Block...");
+                BlockPos pos = blockHitResult.getBlockPos();
+                posToUpload = new Position(pos.getX(), pos.getY(), pos.getZ());
+            }
+
+            return ActionResult.SUCCESS;
+        });
+
     }
 
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
@@ -430,7 +446,7 @@ public class CoflModClient implements ClientModInitializer {
 
     private static void uploadScoreboard() {
         String[] scores = CoflModClient.getScoreboard().toArray(new String[0]);
-        lastScoreboardUploaded = updateIndexesOfImportantScores(scores);
+        if (scores.length > 8) importantScores = importantScoresCSV(scores);
         Command<String[]> data = new Command<>(CommandType.uploadScoreboard, scores);
         CoflCore.Wrapper.SendMessage(data);
     }
@@ -486,6 +502,7 @@ public class CoflModClient implements ClientModInitializer {
 
         try {
             nbtCompound = writeNbt(nbtCompound, itemStacks, player.getRegistryManager());
+            System.out.println(nbtCompound.get("i").asString());
 
             NbtIo.writeCompressed(nbtCompound, baos);
             return Base64.getEncoder().encodeToString(baos.toByteArray());
@@ -610,7 +627,9 @@ public class CoflModClient implements ClientModInitializer {
                 visibleItems,
                 title,
                 nbtString,
-                userName);
+                userName,
+                posToUpload
+        );
     }
 
     private static List<String> getScoreboard() {
@@ -696,21 +715,25 @@ public class CoflModClient implements ClientModInitializer {
             boolean b = v.compareTo(targetVersion) == 0;
 
             return b;
-        } catch (Exception e) {
-            if(targetVersion == "1.21.5")
-                return true; // the method is only available in 1.21.6 so we assume this is .5
+        } catch (NoSuchMethodError e){
             return false;
         }
     }
 
-    private static Pair<String, String> updateIndexesOfImportantScores(String[] scores){
-        Pair<String, String> ids = new Pair<>("","null");
+    private static Pair<Integer, Integer> updateIndexesOfImportantScores(String[] scores){
+        Pair<Integer, Integer> ids = new Pair<>(0,0);
 
-        for (String score : scores) {
-            if (score.startsWith("Purse: ") || score.startsWith("Piggy: ")) ids.setLeft(score);
-            if (score.startsWith(" ⏣ ")) ids.setRight(score);
+        for (int i = 0; i < scores.length; i++) {
+            String score = scores[i];
+            if (score.startsWith("Purse: ") || score.startsWith("Piggy: ")) ids.setLeft(i);
+            if (score.startsWith(" ⏣ ")) ids.setRight(i);
         }
 
-        return ids;
+        indexesOfImportantScores = ids;
+        return indexesOfImportantScores;
+    }
+
+    private static String importantScoresCSV(String[] scores){
+        return scores[indexesOfImportantScores.getLeft()]+";"+scores[indexesOfImportantScores.getRight()];
     }
 }
