@@ -43,6 +43,7 @@ public class EventSubscribers {
             }
         }
     };
+    public static List<Position> positions = null;
 
     @Subscribe
     public void WriteToChat(OnWriteToChatReceive command){
@@ -185,5 +186,10 @@ public class EventSubscribers {
         } catch (Exception e){
             System.out.println(e);
         }
+    }
+
+    @Subscribe
+    public void onHighlightBlocks(OnHighlightBlocks event){
+        positions = event.positions;
     }
 }

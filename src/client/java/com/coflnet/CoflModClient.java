@@ -357,6 +357,23 @@ public class CoflModClient implements ClientModInitializer {
             return ActionResult.SUCCESS;
         });
 
+        WorldRenderEvents.LAST.register(worldRenderContext -> {
+            if (EventSubscribers.positions == null || EventSubscribers.positions.size() == 0) return;
+            for (Position position : EventSubscribers.positions) {
+                RenderUtils.renderHighlightBox(
+                        worldRenderContext,
+                        new double[]{
+                                position.getX(),
+                                (double)position.getY() - 1.6,
+                                position.getZ() - 1
+                        }, new double[]{
+                                position.getX() - 1,
+                                (double)position.getY() - 0.6,
+                                position.getZ()
+                        },  new float[]{0.3f, 1f, 0.1f, 0.5f} // a=0.2f
+                );
+            }
+        });
     }
 
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
