@@ -57,7 +57,7 @@ public class EventSubscribers {
 
         net.minecraft.text.MutableText combinedMessage = net.minecraft.text.Text.empty();
 
-        for (ChatMessage message : event.ChatMessages) {
+        for (ChatMessageData message : event.ChatMessages) {
             if (message == null) {
                 continue;
             } 
@@ -122,30 +122,15 @@ public class EventSubscribers {
 
     @Subscribe
     public void onFlipReceive(OnFlipReceive event){
-        Flip f = event.FlipData;
-        FlipData fd = new FlipData(
-                Arrays.stream(f.getMessages().toArray(ChatMessage[]::new))
-                        .map(cm -> new ChatMessageData(
-                                cm.getText(),
-                                cm.getOnClick(),
-                                cm.getHover())
-                        ).toArray(ChatMessageData[]::new),
-                f.getId(),
-                f.getWorth(),
-                new SoundData(
-                        f.getSound().getSoundName(),
-                        f.getSound().getSoundPitch() == null ? 0 : f.getSound().getSoundPitch()
-                ),
-                f.getRender()
-        );
+        FlipData f = event.FlipData;
 
         if (CoflModClient.bestflipsKeyBinding.isPressed()) {
-            EventBus.getDefault().post(new OnOpenAuctionGUI("/viewauction "+fd.Id, fd));
+            EventBus.getDefault().post(new OnOpenAuctionGUI("/viewauction "+f.Id, f));
         } else 
-            CoflCore.flipHandler.fds.Insert(fd);
+            CoflCore.flipHandler.fds.Insert(f);
 
-        EventBus.getDefault().post(new OnChatMessageReceive(f.getMessages().toArray(ChatMessage[]::new)));
-        EventBus.getDefault().post(new OnPlaySoundReceive(f.getSound()));
+        EventBus.getDefault().post(new OnChatMessageReceive(f.Messages));
+        EventBus.getDefault().post(new OnPlaySoundReceive(new Sound(f.Sound.Name, (int) f.Sound.Pitch)));
     }
 
     @Subscribe
