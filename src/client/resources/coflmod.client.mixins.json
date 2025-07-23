@@ -5,7 +5,9 @@
   "client": [
     "NewItemInChestMixin",
     "ItemHighlightMixin",
-    "ScrollableWidgetMixin"
+    "ScrollableWidgetMixin",
+    "ClientPlayerEntityMixin",
+    "ScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

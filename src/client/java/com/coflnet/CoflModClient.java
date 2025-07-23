@@ -20,7 +20,6 @@ import net.minecraft.client.gui.screen.PopupScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
 import net.minecraft.nbt.*;
-import net.minecraft.particle.ParticleTypes;
 import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.util.*;
@@ -100,6 +99,7 @@ public class CoflModClient implements ClientModInitializer {
     private static boolean popupShown = false;
     public static Position posToUpload = null;
     public static CoflModClient instance;
+    public static SignBlockEntity sign = null;
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -223,8 +223,6 @@ public class CoflModClient implements ClientModInitializer {
                 if (!(client.currentScreen instanceof BinGUI) && isBINAuction(gcs)) {
                     if (CoflCore.config.purchaseOverlay == GUIType.COFL) client.setScreen(new CoflBinGUI(gcs));
                     if (CoflCore.config.purchaseOverlay == GUIType.TFM) client.setScreen(new TfmBinGUI(gcs));
-                } else if (false && isOwnAuction(gcs)) {
-
                 }
             }
         });
@@ -373,6 +371,10 @@ public class CoflModClient implements ClientModInitializer {
                         },  new float[]{0.3f, 1f, 0.1f, 0.5f} // a=0.2f
                 );
             }
+        });
+
+        ScreenEvents.AFTER_INIT.register((minecraftClient, screen, i, i1) -> {
+
         });
     }
 
@@ -751,5 +753,21 @@ public class CoflModClient implements ClientModInitializer {
 
     private static String importantScoresCSV(String[] scores){
         return scores[indexesOfImportantScores.getLeft()]+";"+scores[indexesOfImportantScores.getRight()];
+    }
+
+    public static String findPriceSuggestion(){
+        if(DescriptionHandler.tooltipItemIdMap == null || DescriptionHandler.tooltipItemIdMap.size() == 0) return "";
+
+        DescriptionHandler.DescModification[] last = null;
+        for (DescriptionHandler.DescModification[] value : DescriptionHandler.tooltipItemIdMap.values()) {
+            last = value;
+        }
+
+        if (last != null) for (DescriptionHandler.DescModification descModification : last) {
+            System.out.println(descModification.type+"|"+descModification.value);
+            if (descModification.type == "SUGGEST") return descModification.value;
+        }
+
+        return "";
     }
 }
