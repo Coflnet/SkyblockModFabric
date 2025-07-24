@@ -88,8 +88,7 @@ public class CoflModClient implements ClientModInitializer {
     public static KeyBinding bestflipsKeyBinding;
     public static KeyBinding uploadItemKeyBinding;
     public static ArrayList<String> knownIds = new ArrayList<>();
-    public static Pair<Integer, Integer> indexesOfImportantScores = new Pair<>(0,0);
-    public static String importantScores = "";
+    public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
 
     private String username = "";
     private static String lastNbtRequest = "";
@@ -337,8 +336,8 @@ public class CoflModClient implements ClientModInitializer {
         ClientReceiveMessageEvents.GAME.register((text, b) -> {
             String[] scores = getScoreboard().toArray(new String[0]);
             if (scores == null || scores.length < 9) return;
-            updateIndexesOfImportantScores(scores);
-            if (importantScoresCSV(scores).equals(importantScores)) return;
+            Pair<String,String> newData = updateIndexesOfImportantScores(scores);
+            if (newData.getLeft().equals(lastScoreboardUploaded.getLeft()) && newData.getRight().equals(lastScoreboardUploaded.getRight())) return;
             System.out.println("Uploading Scoreboard...");
             uploadScoreboard();
         });
@@ -431,7 +430,7 @@ public class CoflModClient implements ClientModInitializer {
 
     private static void uploadScoreboard() {
         String[] scores = CoflModClient.getScoreboard().toArray(new String[0]);
-        if (scores.length > 8) importantScores = importantScoresCSV(scores);
+        lastScoreboardUploaded = updateIndexesOfImportantScores(scores);
         Command<String[]> data = new Command<>(CommandType.uploadScoreboard, scores);
         CoflCore.Wrapper.SendMessage(data);
     }
@@ -704,20 +703,14 @@ public class CoflModClient implements ClientModInitializer {
         }
     }
 
-    private static Pair<Integer, Integer> updateIndexesOfImportantScores(String[] scores){
-        Pair<Integer, Integer> ids = new Pair<>(0,0);
+    private static Pair<String, String> updateIndexesOfImportantScores(String[] scores){
+        Pair<String, String> ids = new Pair<>("","null");
 
-        for (int i = 0; i < scores.length; i++) {
-            String score = scores[i];
-            if (score.startsWith("Purse: ") || score.startsWith("Piggy: ")) ids.setLeft(i);
-            if (score.startsWith(" ⏣ ")) ids.setRight(i);
+        for (String score : scores) {
+            if (score.startsWith("Purse: ") || score.startsWith("Piggy: ")) ids.setLeft(score);
+            if (score.startsWith(" ⏣ ")) ids.setRight(score);
         }
 
-        indexesOfImportantScores = ids;
-        return indexesOfImportantScores;
-    }
-
-    private static String importantScoresCSV(String[] scores){
-        return scores[indexesOfImportantScores.getLeft()]+";"+scores[indexesOfImportantScores.getRight()];
+        return ids;
     }
 }
