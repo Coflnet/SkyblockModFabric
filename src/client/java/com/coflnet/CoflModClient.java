@@ -8,7 +8,10 @@ import java.util.*;
 import java.util.List;
 
 import CoflCore.classes.Position;
+import CoflCore.configuration.Config;
 import CoflCore.configuration.GUIType;
+import CoflCore.network.QueryServerCommands;
+import CoflCore.network.WSClient;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -81,6 +84,7 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.collection.DefaultedList;
+import org.spongepowered.asm.mixin.injection.Desc;
 
 public class CoflModClient implements ClientModInitializer {
     public static final String targetVersion = "1.21.7";
@@ -100,6 +104,7 @@ public class CoflModClient implements ClientModInitializer {
     public static Position posToUpload = null;
     public static CoflModClient instance;
     public static SignBlockEntity sign = null;
+    private static final String COFL_EXTRA_SLOT_KEY = "COFL_ADDITIONAL_SLOT";
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -564,6 +569,8 @@ public class CoflModClient implements ClientModInitializer {
                 res.add("EMPTY_SLOT_" + i); // Add a placeholder for empty slots
         }
 
+        res.add(COFL_EXTRA_SLOT_KEY);
+
         return res.toArray(String[]::new);
     }
 
@@ -756,14 +763,9 @@ public class CoflModClient implements ClientModInitializer {
     public static String findPriceSuggestion(){
         if(DescriptionHandler.tooltipItemIdMap == null || DescriptionHandler.tooltipItemIdMap.size() == 0) return "";
 
-        DescriptionHandler.DescModification[] last = null;
-        for (DescriptionHandler.DescModification[] value : DescriptionHandler.tooltipItemIdMap.values()) {
-            last = value;
-        }
-
-        if (last != null) for (DescriptionHandler.DescModification descModification : last) {
-            System.out.println(descModification.type+"|"+descModification.value);
-            if (descModification.type == "SUGGEST") return descModification.value;
+        for (DescriptionHandler.DescModification descMod : DescriptionHandler.tooltipItemIdMap.get(COFL_EXTRA_SLOT_KEY)) {
+            System.out.println(descMod.type+"|"+descMod.value);
+            if (descMod.type.compareTo("SUGGEST") == 0) return descMod.value;
         }
 
         return "";
