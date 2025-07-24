@@ -20,8 +20,11 @@ public class ClientPlayerEntityMixin {
         Text[] lines = sign.getFrontText().getMessages(MinecraftClient.getInstance().shouldFilterText());
         String[] suggestionParts = toSuggest.split(":");
 
+        System.out.println(suggestionParts[0]);
+        System.out.println(lines[3].getString());
+
         if(toSuggest == "") return;
-        if(suggestionParts[0] != lines[3].getString()) return;
+        if(suggestionParts[0].compareTo(lines[3].getString()) != 0) return;
 
         lines[0] = Text.of(suggestionParts[1].trim());
         sign.changeText(signText -> new SignText(
