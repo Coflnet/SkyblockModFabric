@@ -763,11 +763,17 @@ public class CoflModClient implements ClientModInitializer {
     public static String findPriceSuggestion(){
         if(DescriptionHandler.tooltipItemIdMap == null || DescriptionHandler.tooltipItemIdMap.size() == 0) return "";
 
-        for (DescriptionHandler.DescModification descMod : DescriptionHandler.tooltipItemIdMap.get(COFL_EXTRA_SLOT_KEY)) {
+        for (DescriptionHandler.DescModification descMod : getExtraSlotDescMod()) {
             System.out.println(descMod.type+"|"+descMod.value);
             if (descMod.type.compareTo("SUGGEST") == 0) return descMod.value;
         }
 
         return "";
+    }
+
+    public static DescriptionHandler.DescModification[] getExtraSlotDescMod(){
+        if(DescriptionHandler.tooltipItemIdMap == null || DescriptionHandler.tooltipItemIdMap.size() == 0) return new DescriptionHandler.DescModification[]{};
+        return DescriptionHandler.tooltipItemIdMap.get(COFL_EXTRA_SLOT_KEY);
+
     }
 }
