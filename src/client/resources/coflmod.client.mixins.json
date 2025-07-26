@@ -3,11 +3,12 @@
   "package": "com.coflnet.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "NewItemInChestMixin",
-    "ItemHighlightMixin",
-    "ScrollableWidgetMixin",
     "ClientPlayerEntityMixin",
-    "ScreenMixin"
+    "HandledScreenMixin",
+    "ItemHighlightMixin",
+    "NewItemInChestMixin",
+    "ScreenMixin",
+    "ScrollableWidgetMixin"
   ],
   "injectors": {
     "defaultRequire": 1
