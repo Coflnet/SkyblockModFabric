@@ -532,6 +532,7 @@ public class CoflModClient implements ClientModInitializer {
             return Base64.getEncoder().encodeToString(baos.toByteArray());
 
         } catch (IOException e) {
+            e.printStackTrace();
         }
         return "";
     }
@@ -571,8 +572,6 @@ public class CoflModClient implements ClientModInitializer {
             } else
                 res.add("EMPTY_SLOT_" + i); // Add a placeholder for empty slots
         }
-
-        res.add(COFL_EXTRA_SLOT_KEY);
 
         return res.toArray(String[]::new);
     }
@@ -634,6 +633,7 @@ public class CoflModClient implements ClientModInitializer {
                     }
                 }
             } catch (Exception e) {
+                e.printStackTrace();
                 System.out.println("Failed to load descriptions for inventory: " + e + " "
                         + inventoryToNBT(itemStacks));
             }
@@ -774,8 +774,6 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static DescriptionHandler.DescModification[] getExtraSlotDescMod(){
-        if(DescriptionHandler.tooltipItemIdMap == null || DescriptionHandler.tooltipItemIdMap.size() == 0) return new DescriptionHandler.DescModification[]{};
-        return DescriptionHandler.tooltipItemIdMap.get(COFL_EXTRA_SLOT_KEY);
-
+        return DescriptionHandler.getInfoDisplay();
     }
 }
