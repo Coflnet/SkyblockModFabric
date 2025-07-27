@@ -3,6 +3,7 @@ package com.coflnet;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
@@ -87,7 +88,7 @@ import net.minecraft.util.collection.DefaultedList;
 import org.spongepowered.asm.mixin.injection.Desc;
 
 public class CoflModClient implements ClientModInitializer {
-    public static final String targetVersion = "1.21.7";
+    public static final String targetVersion = "1.21.5";
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
@@ -104,7 +105,6 @@ public class CoflModClient implements ClientModInitializer {
     public static Position posToUpload = null;
     public static CoflModClient instance;
     public static SignBlockEntity sign = null;
-    private static final String COFL_EXTRA_SLOT_KEY = "COFL_ADDITIONAL_SLOT";
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -738,7 +738,9 @@ public class CoflModClient implements ClientModInitializer {
             boolean b = v.compareTo(targetVersion) == 0;
 
             return b;
-        } catch (NoSuchMethodError e){
+        } catch (Exception e) {
+            if(targetVersion == "1.21.5")
+                return true; // the method is only available in 1.21.6 so we assume this is .5
             return false;
         }
     }
