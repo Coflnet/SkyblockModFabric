@@ -87,7 +87,7 @@ import net.minecraft.util.collection.DefaultedList;
 import org.spongepowered.asm.mixin.injection.Desc;
 
 public class CoflModClient implements ClientModInitializer {
-    public static final String targetVersion = "1.21.7";
+    public static final String targetVersion = "1.21.8";
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
@@ -104,7 +104,6 @@ public class CoflModClient implements ClientModInitializer {
     public static Position posToUpload = null;
     public static CoflModClient instance;
     public static SignBlockEntity sign = null;
-    private static final String COFL_EXTRA_SLOT_KEY = "COFL_ADDITIONAL_SLOT";
 
     public class TooltipMessage implements  Message{
         private final String text;
