@@ -70,12 +70,12 @@ public abstract class HandledScreenMixin {
 
     @Inject(at = @At("RETURN"), method = "render")
     public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
+        DescriptionHandler.DescModification[] currentText = CoflModClient.getExtraSlotDescMod();
+        if(currentText.length == 0)
+            return;
         if(sideTextWidget != null)
             sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
-        if(openedWith == null) {
-            DescriptionHandler.DescModification[] currentText = CoflModClient.getExtraSlotDescMod();
-            if(currentText.length == 0)
-                return;
+        if(openedWith == null || openedWith != currentText) {
             updateText(currentText);
             System.out.println("Updating side text widget with new data");
             openedWith = currentText;

@@ -761,8 +761,6 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static String findPriceSuggestion(){
-        if(DescriptionHandler.tooltipItemIdMap == null || DescriptionHandler.tooltipItemIdMap.size() == 0) return "";
-
         for (DescriptionHandler.DescModification descMod : getExtraSlotDescMod()) {
             System.out.println(descMod.type+"|"+descMod.value);
             if (descMod.type.compareTo("SUGGEST") == 0) return descMod.value;
