@@ -9,10 +9,8 @@ import java.util.*;
 import java.util.List;
 
 import CoflCore.classes.Position;
-import CoflCore.configuration.Config;
+import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.configuration.GUIType;
-import CoflCore.network.QueryServerCommands;
-import CoflCore.network.WSClient;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -88,7 +86,6 @@ import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.collection.DefaultedList;
-import org.spongepowered.asm.mixin.injection.Desc;
 
 public class CoflModClient implements ClientModInitializer {
 
@@ -100,6 +97,8 @@ public class CoflModClient implements ClientModInitializer {
     private static int counter = 0;
     public static KeyBinding bestflipsKeyBinding;
     public static KeyBinding uploadItemKeyBinding;
+    public static List<KeyBinding> additionalKeyBindings = new ArrayList<KeyBinding>();
+    public static Map<KeyBinding, HotkeyRegister> keybindingsToHotkeys = new HashMap<KeyBinding, HotkeyRegister>();
     public static ArrayList<String> knownIds = new ArrayList<>();
     public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
 
@@ -157,9 +156,25 @@ public class CoflModClient implements ClientModInitializer {
             } else {
                 counter = 0;
             }
+
             if(uploadItemKeyBinding.wasPressed())
                 handleGetHoveredItem(client);
 
+            if (additionalKeyBindings == null) return;
+            try{
+                for (KeyBinding additionalKeyBinding : additionalKeyBindings) {
+                    if(additionalKeyBinding.wasPressed()){
+                        String keyName = keybindingsToHotkeys.get(additionalKeyBinding).Name;
+                        String toAppend = getContextToAppend(client.player.getInventory().getStack(client.player.getInventory().getSelectedSlot()));
+
+                        System.out.println("Exec hotkey "+ keyName + toAppend);
+                        CoflSkyCommand.processCommand(new String[]{"hotkey", keyName+toAppend},
+                                MinecraftClient.getInstance().getSession().getUsername());
+                    }
+                }
+            } catch (ConcurrentModificationException e) {
+                System.out.println("Additional Keybindings currently in use somewhere else, retrying...");
+            }
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
@@ -834,5 +849,37 @@ public class CoflModClient implements ClientModInitializer {
 
     public static DescriptionHandler.DescModification[] getExtraSlotDescMod(){
         return DescriptionHandler.getInfoDisplay();
+    }
+
+    public static void setHotKeys(HotkeyRegister[] keys) {
+        additionalKeyBindings.clear();
+        keybindingsToHotkeys.clear();
+        for (int i = 0; i < keys.length; i++) {
+            int keyIndex = getKeyIndex(keys[i].DefaultKey.toUpperCase());
+
+            HotkeyRegister hotkey = keys[i];
+            KeyBinding keyBinding = new KeyBinding(hotkey.Name, keyIndex, "SkyCofl (unchangeable)");
+            additionalKeyBindings.add(keyBinding);
+            keybindingsToHotkeys.put(keyBinding, hotkey);
+            System.out.println("Registered Key: " + hotkey.Name + " with key " + hotkey.DefaultKey.toUpperCase() + " (" +keyIndex+")");
+            //KeyBindingHelper.registerKeyBinding(additionalKeyBindings.get(i));
+        }
+    }
+
+    public static int getKeyIndex(String name){
+        int result = -1;
+        String prefix = "GLFW_KEY_";
+        for (Field f : GLFW.class.getDeclaredFields()) {
+            if (f.getName().startsWith(prefix) && f.getName().substring(prefix.length()).equals(name)) {
+                try {
+                    result = (int) f.get(int.class);
+                } catch (IllegalAccessException e) {
+                    System.out.println("Key inaccessible. This shouldn't happen");
+                }
+                break;
+            }
+        }
+
+        return result;
     }
 }

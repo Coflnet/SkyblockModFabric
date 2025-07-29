@@ -3,12 +3,8 @@ package com.coflnet;
 import java.util.*;
 
 import CoflCore.classes.*;
-import CoflCore.configuration.ConfigurationManager;
-import CoflCore.configuration.LocalConfig;
+import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.events.*;
-import CoflCore.handlers.EventRegistry;
-import CoflCore.network.WSClient;
-import net.fabricmc.fabric.impl.networking.client.ClientNetworkingImpl;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.collection.DefaultedList;
@@ -18,10 +14,8 @@ import org.greenrobot.eventbus.Subscribe;
 import static com.coflnet.Utils.ChatComponent;
 
 import CoflCore.CoflCore;
-import CoflCore.commands.CommandType;
 import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
-import CoflCore.commands.models.SoundData;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.sound.SoundCategory;
@@ -176,5 +170,10 @@ public class EventSubscribers {
     @Subscribe
     public void onHighlightBlocks(OnHighlightBlocks event){
         positions = event.positions;
+    }
+
+    @Subscribe
+    public void onHotkeyRegister(HotkeyRegister[] hotkeys){
+        CoflModClient.setHotKeys(hotkeys);
     }
 }
