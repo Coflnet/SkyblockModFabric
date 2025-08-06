@@ -461,14 +461,16 @@ public class CoflModClient implements ClientModInitializer {
 
     private static void uploadTabList() {
         Command<String[]> data = new Command<>(CommandType.uploadTab, CoflModClient.getTabList().toArray(new String[0]));
-        CoflCore.Wrapper.SendMessage(data);
+        if(CoflCore.Wrapper != null)
+            CoflCore.Wrapper.SendMessage(data);
     }
 
     private static void uploadScoreboard() {
         String[] scores = CoflModClient.getScoreboard().toArray(new String[0]);
         lastScoreboardUploaded = getRelevantLinesFromScoreboard(scores);
         Command<String[]> data = new Command<>(CommandType.uploadScoreboard, scores);
-        CoflCore.Wrapper.SendMessage(data);
+        if(CoflCore.Wrapper != null)
+            CoflCore.Wrapper.SendMessage(data);
     }
 
     public static FlipData popFlipData() {
