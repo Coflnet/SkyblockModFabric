@@ -46,6 +46,8 @@ public abstract class ItemHighlightMixin {
         if (!slot.hasStack())
             return;
         DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(slot.getStack()));
+        if(tooltips == null)
+            return;
         for (DescriptionHandler.DescModification tooltip : tooltips) {
             if (tooltip.type.equals("HIGHLIGHT")) {
                 int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000; // Ensure alpha is set to fully opaque
