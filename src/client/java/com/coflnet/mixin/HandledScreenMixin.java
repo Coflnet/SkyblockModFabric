@@ -30,7 +30,13 @@ public abstract class HandledScreenMixin {
 
     @Inject(at = @At("TAIL"), method = "init")
     public void init(CallbackInfo ci){
-        System.out.println("Injecting side text widget into HandledScreen");
+        // init to whatever text is present
+        updateText(CoflModClient.getExtraSlotDescMod());
+        DescriptionHandler.setRefreshCallback((lines, title) -> {
+
+            System.out.println("Updating info for " + title);
+            updateText(CoflModClient.getExtraSlotDescMod());
+        });
     }
 
     private void updateText(DescriptionHandler.DescModification[] lines) {
