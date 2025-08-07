@@ -20,6 +20,8 @@ import net.minecraft.block.entity.*;
 import net.minecraft.client.gui.screen.PopupScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.item.Item;
+import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.nbt.*;
 import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.text.HoverEvent;
@@ -85,6 +87,7 @@ import net.minecraft.util.collection.DefaultedList;
 
 public class CoflModClient implements ClientModInitializer {
     public static final String targetVersion = "1.21.8";
+    public static final int InventorysizeWithOffHand = 5 * 9 + 1;
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
@@ -259,13 +262,15 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
-            if (knownIds.indexOf(getIdFromStack(stack)) == -1
+            String stackId = getIdFromStack(stack);
+            if (!knownIds.contains(stackId)
                     && MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
-                loadDescriptionsForInv(hs);
+                if(!stack.isEmpty())
+                    loadDescriptionsForInv(hs);
                 return;
             }
 
-            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(getIdFromStack(stack));
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(stackId);
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type) {
                     case "APPEND":
@@ -415,7 +420,6 @@ public class CoflModClient implements ClientModInitializer {
                             "crafts", "craft", "upgradeplan", "updatecurrentconfig", "settimezone", "cheapmuseum", "cm",
                             "replayflips", "lowball", "ahtax", "sethotkey"};
 
-                    System.out.println(inputArgs.length + currentWord);
                     // Check if the command is "s" or "set" and suggest specific subcommands
                     if (inputArgs.length == 3 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
                         suggestions = new String[] {"lbin", "finders", "onlyBin", "whitelistAftermain", "DisableFlips",
@@ -478,7 +482,7 @@ public class CoflModClient implements ClientModInitializer {
 
     private static void uploadTabList() {
         Command<String[]> data = new Command<>(CommandType.uploadTab, CoflModClient.getTabList().toArray(new String[0]));
-        if(CoflCore.Wrapper != null)
+        if (CoflCore.Wrapper != null)
             CoflCore.Wrapper.SendMessage(data);
     }
 
@@ -541,8 +545,6 @@ public class CoflModClient implements ClientModInitializer {
 
         try {
             nbtCompound = writeNbt(nbtCompound, itemStacks, player.getRegistryManager());
-            System.out.println(nbtCompound.get("i").asString());
-
             NbtIo.writeCompressed(nbtCompound, baos);
             return Base64.getEncoder().encodeToString(baos.toByteArray());
 
@@ -614,34 +616,55 @@ public class CoflModClient implements ClientModInitializer {
                 .contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}"))
             return;
         Thread.startVirtualThread(() -> {
+            DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();;
             try {
-                Thread.sleep(100); // wait for the screen to load
-                // TODO: check if items are already loaded earlier
+                Thread.sleep(100);
+                System.out.println("Total size of itemStacks: " + itemStacks.size());
+                for (int i = 0; i < 20; i++) {
+                    if(itemStacks.size() <= InventorysizeWithOffHand || !itemStacks.get(itemStacks.size() - InventorysizeWithOffHand).isEmpty())
+                        break;
+                    Thread.sleep(50); // wait for the screen to load
+                    System.out.println("Waiting for itemStacks to load, current size: " + getIdFromStack(itemStacks.get(itemStacks.size() - InventorysizeWithOffHand)));
+                    itemStacks = screen.getScreenHandler().getStacks();
+                }
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
             try {
                 knownIds.clear();
                 String title = screen.getTitle().getString();
                 String[] visibleItems = getItemIdsFromInventory(itemStacks);
                 loadDescriptionsForItems(title, itemStacks);
-                if(title.contains("Bazaar"))
+                boolean refresh = false;
+                if(title.contains("Auctions"))
                 {
-                    System.out.println("Bazaar data: "
-                            + inventoryToNBT(itemStacks));
+                    for (ItemStack itemStack : itemStacks) {
+                        String lore = "";
+                        for (Text line : itemStack.getTooltip(Item.TooltipContext.DEFAULT, null, TooltipType.BASIC)) {
+                            if(line.getString().contains("Refreshing..."))
+                            {
+                                System.out.println("Unnamed item found" + getIdFromStack(itemStack));
+                                refresh = true;
+                                break;
+                            }
+                        }
+                    }
+                    if(refresh)
+                        Thread.sleep(1000); // wait extra for names to load
                 }
                 Thread.sleep(1000);
                 // check all items in the inventory for descriptions
                 String[] itemIds = getItemIdsFromInventory(screen.getScreenHandler().getStacks());
                 List<String> visibleList = Arrays.asList(visibleItems);
                 for (String itemId : itemIds) {
-                    if (!visibleList.contains((itemId))) {
-                        loadDescriptionsForItems(title, screen.getScreenHandler().getStacks());
-                        System.out.println("items changed, descriptions reloaded for " + itemId + " count: "
-                        + itemIds.length + " visible: " + visibleItems.length);
+                    if (!visibleList.contains(itemId) && !itemId.startsWith("EMPTY_SLOT_")) {
+                        refresh = true;
                         break;
                     }
+                }
+                if (refresh) {
+                    System.out.println("Refreshing descriptions for inventory: " + title);
+                    loadDescriptionsForItems(title, itemStacks);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
