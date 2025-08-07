@@ -20,6 +20,7 @@ import net.minecraft.block.entity.*;
 import net.minecraft.client.gui.screen.PopupScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.Item;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.nbt.*;
@@ -601,6 +602,16 @@ public class CoflModClient implements ClientModInitializer {
             }
         }
         String itemName = stack.getCustomName() == null ? stack.getItem().getName().getString() : stack.getCustomName().getString();
+        if(itemName.contains("BUY") || itemName.contains("SELL"))
+        {
+            // bazaar order, separate by price per unit as well
+            for (Text line : stack.get(DataComponentTypes.LORE).lines()) {
+                if(line.getString().contains("Price per unit"))
+                {
+                    return itemName + line.getString();
+                }
+            }
+        }
         if (stackJson == null)
             return itemName + ";" + stack.getCount();
 
@@ -639,8 +650,9 @@ public class CoflModClient implements ClientModInitializer {
                 if(title.contains("Auctions"))
                 {
                     for (ItemStack itemStack : itemStacks) {
-                        String lore = "";
-                        for (Text line : itemStack.getTooltip(Item.TooltipContext.DEFAULT, null, TooltipType.BASIC)) {
+                        if(itemStack.get(DataComponentTypes.LORE) == null)
+                            continue;
+                        for (Text line : itemStack.get(DataComponentTypes.LORE).lines()) {
                             if(line.getString().contains("Refreshing..."))
                             {
                                 System.out.println("Unnamed item found" + getIdFromStack(itemStack));
