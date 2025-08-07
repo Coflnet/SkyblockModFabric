@@ -263,6 +263,8 @@ public class CoflModClient implements ClientModInitializer {
             List<Text> ogLoreLines = stack.get(DataComponentTypes.LORE).lines();
 
             DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(stackId);
+            if(tooltips == null)
+                return;
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type) {
                     case "APPEND":
