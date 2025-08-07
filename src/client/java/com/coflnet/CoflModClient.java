@@ -268,8 +268,11 @@ public class CoflModClient implements ClientModInitializer {
                     && MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
                 if(!stack.isEmpty())
                     loadDescriptionsForInv(hs);
+                knownIds.add(stackId);
+                System.out.println("Missing descriptions for " + stackId);
                 return;
             }
+            List<Text> ogLoreLines = stack.get(DataComponentTypes.LORE).lines();
 
             DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(stackId);
             for (DescriptionHandler.DescModification tooltip : tooltips) {
@@ -282,8 +285,13 @@ public class CoflModClient implements ClientModInitializer {
                             System.out.println("Invalid line index: " + tooltip.line + " for tooltip: " + tooltip.value);
                             continue; // Skip if the line index is invalid
                         }
-                        lines.remove(tooltip.line);
-                        lines.add(tooltip.line, Text.of(tooltip.value));
+                        int targetLine = tooltip.line;
+                        if(targetLine != 0 && Formatting.strip(ogLoreLines.get(targetLine).toString()).equals(Formatting.strip(lines.get(targetLine).toString()))) {
+                            System.out.println("lines differ `" + Formatting.strip(ogLoreLines.get(targetLine +1).toString()) + "` to `" + Formatting.strip(lines.get(targetLine).toString())  + "`");
+                            targetLine++; // assume another mod added a line and move this down
+                        }
+                        lines.remove(targetLine);
+                        lines.add(targetLine, Text.of(tooltip.value));
                         break;
                     case "INSERT":
                         lines.add(tooltip.line, Text.of(tooltip.value));
@@ -292,9 +300,7 @@ public class CoflModClient implements ClientModInitializer {
                         lines.remove(tooltip.line);
                         break;
                     case "HIGHLIGHT":
-                        if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
-                            // hs.getScreenHandler().getSlot(hs.getScreenHandler().getStacks().indexOf(stack));
-                        }
+                        // handled in mixin
                         break;
                     default:
                         System.out.println("Unknown type: " + tooltip.type);
@@ -630,7 +636,6 @@ public class CoflModClient implements ClientModInitializer {
             DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();;
             try {
                 Thread.sleep(100);
-                System.out.println("Total size of itemStacks: " + itemStacks.size());
                 for (int i = 0; i < 20; i++) {
                     if(itemStacks.size() <= InventorysizeWithOffHand || !itemStacks.get(itemStacks.size() - InventorysizeWithOffHand).isEmpty())
                         break;
@@ -642,7 +647,6 @@ public class CoflModClient implements ClientModInitializer {
                 e.printStackTrace();
             }
             try {
-                knownIds.clear();
                 String title = screen.getTitle().getString();
                 String[] visibleItems = getItemIdsFromInventory(itemStacks);
                 loadDescriptionsForItems(title, itemStacks);
@@ -655,14 +659,13 @@ public class CoflModClient implements ClientModInitializer {
                         for (Text line : itemStack.get(DataComponentTypes.LORE).lines()) {
                             if(line.getString().contains("Refreshing..."))
                             {
-                                System.out.println("Unnamed item found" + getIdFromStack(itemStack));
                                 refresh = true;
                                 break;
                             }
                         }
                     }
                     if(refresh)
-                        Thread.sleep(1000); // wait extra for names to load
+                        Thread.sleep(500); // wait extra for names to load
                 }
                 Thread.sleep(1000);
                 // check all items in the inventory for descriptions
