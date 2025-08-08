@@ -58,3 +58,6 @@ jobs:
           game-version: "1.21.8"
           java-versions: "21"
           version-type: release
+
+          dependencies: |
+            fabric@0.131.0+1.21.8(required){modrinth:P7dR8mSH}{curseforge:306612}#(ignore:github)
