@@ -55,8 +55,8 @@ jobs:
           changelog: "➡️ Bug Fixes and Improvements\n${{ github.event.release.body }}"
 
           loaders: fabric
-          game-version: "1.21.8"
-          java-versions: "21"
+          game-versions: "1.21.8"
+          java: "21"
           version-type: release
 
           dependencies: |
