@@ -52,8 +52,10 @@ jobs:
           # general settings
           name: "SkyCofl ${{ github.ref_name }}-Fabric 1.21.8"
           version: ${{ github.ref_name }}
-          changelog: "➡️ Bug Fixes and Improvements\n${{ github.event.release.body }}"
-
+          changelog: |
+            "➡️ Bug Fixes and Improvements"
+            ${{ github.event.release.body }}
+            [View on GitHub Releases](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})
           loaders: fabric
           game-versions: "1.21.8"
           java: "21"
