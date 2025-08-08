@@ -46,7 +46,7 @@ jobs:
           modrinth-id: yso5yMlC
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
 
-          curseforge-id: 394468
+          curseforge-id: 1286702
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           # general settings
