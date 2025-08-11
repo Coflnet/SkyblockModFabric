@@ -50,7 +50,7 @@ jobs:
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           # general settings
-          name: "SkyCofl ${{ github.ref_name }}-Fabric 1.21.8"
+          name: "SkyCofl ${{ github.ref_name }} Fabric 1.21.8"
           version: ${{ github.ref_name }}
           changelog: |
             "➡️ Bug Fixes and Improvements"
@@ -61,5 +61,7 @@ jobs:
           java: "21"
           version-type: release
 
+          files: |
+            build/libs/!(*-@(dev|sources|javadoc)).jar
           dependencies: |
             fabric@0.131.0+1.21.8(required){modrinth:P7dR8mSH}{curseforge:306612}#(ignore:github)
