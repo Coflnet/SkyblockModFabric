@@ -283,7 +283,7 @@ public class CoflModClient implements ClientModInitializer {
                         lines.add(Text.of(tooltip.value + " "));
                         break;
                     case "REPLACE":
-                        if (tooltip.line < 0 || tooltip.line >= lines.size()) {
+                        if (tooltip.line < 0 || tooltip.line >= lines.size() || tooltip.line >= ogLoreLines.size()) {
                             System.out.println("Invalid line index: " + tooltip.line + " for tooltip: " + tooltip.value);
                             continue; // Skip if the line index is invalid
                         }
