@@ -372,7 +372,7 @@ public class CoflModClient implements ClientModInitializer {
                 posToUpload = new Position(pos.getX(), pos.getY(), pos.getZ());
             }
 
-            return ActionResult.SUCCESS;
+            return ActionResult.PASS;
         });
 
         WorldRenderEvents.LAST.register(worldRenderContext -> {
