@@ -250,7 +250,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-            if (screen instanceof HandledScreen hs) {
+            if (screen instanceof HandledScreen<?> hs) {
                 knownIds.clear();
                 loadDescriptionsForInv(hs);
                 if(!uploadedScoreboard)
@@ -272,11 +272,14 @@ public class CoflModClient implements ClientModInitializer {
                 System.out.println("Missing descriptions for " + stackId);
                 return;
             }
-            List<Text> ogLoreLines = stack.get(DataComponentTypes.LORE).lines();
 
             DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(stackId);
             if(tooltips == null)
                 return;
+
+            var text = stack.get(DataComponentTypes.LORE);
+            List<Text> ogLoreLines = text == null ? new ArrayList<>() : text.lines();
+
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type) {
                     case "APPEND":
@@ -307,7 +310,7 @@ public class CoflModClient implements ClientModInitializer {
                     default:
                         System.out.println("Unknown type: " + tooltip.type);
                 }
-            }
+            }            
         });
 
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
