@@ -305,14 +305,20 @@ public class CoflModClient implements ClientModInitializer {
             if (EventSubscribers.showCountdown && EventSubscribers.countdownData != null
                     && (MinecraftClient.getInstance().currentScreen == null
                             || MinecraftClient.getInstance().currentScreen instanceof ChatScreen)) {
+                int heightPercentage = EventSubscribers.countdownData.getHeightPercentage();
+                int widthPercentage = EventSubscribers.countdownData.getWidthPercentage();
+                int screenWidth = drawContext.getScaledWindowWidth();
+                int screenHeight = drawContext.getScaledWindowHeight();
+
+                int x = (screenWidth * widthPercentage) / 100;
+                int y = (screenHeight * heightPercentage) / 100;
+
                 RenderUtils.drawStringWithShadow(
                         drawContext,
-                        EventSubscribers.countdownData.getPrefix() + "New flips in: "
-                                + String.format("%.1f", EventSubscribers.countdown),
-                        MinecraftClient.getInstance().getWindow().getWidth()
-                                / EventSubscribers.countdownData.getWidthPercentage(),
-                        MinecraftClient.getInstance().getWindow().getHeight()
-                                / EventSubscribers.countdownData.getHeightPercentage(),
+                        EventSubscribers.countdownData.getPrefix()
+                                + getStringFromDouble(EventSubscribers.countdown, EventSubscribers.countdownData.getMaxPrecision()),
+                        x,
+                        y,
                         0xFFFFFFFF, EventSubscribers.countdownData.getScale());
             }
         });
@@ -396,6 +402,20 @@ public class CoflModClient implements ClientModInitializer {
             }
         });
 
+    }
+
+    private static String getStringFromDouble(double seconds, int currentPrecision) {
+        String render;
+
+        if (seconds > 100) {
+            render = String.valueOf((int) seconds);
+        } else {
+            render = String.format(Locale.US, "%.3f", seconds).substring(0, currentPrecision);
+            if(render.charAt(render.length() - 1) == '.')
+                render = render.substring(0, currentPrecision -1);
+        }
+
+        return render + "s";
     }
 
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
