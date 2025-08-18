@@ -5,6 +5,7 @@
   "client": [
     "ClientPlayerEntityMixin",
     "HandledScreenMixin",
+    "InventoryScreenMixin",
     "ItemHighlightMixin",
     "NewItemInChestMixin",
     "ScreenMixin",
