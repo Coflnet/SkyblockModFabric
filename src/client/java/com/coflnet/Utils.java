@@ -20,6 +20,13 @@ public class Utils {
                         return style;
                     }
                 });
+            }
+            if(cmd.OnClick.startsWith("suggest:")){
+                String suggestion = cmd.OnClick.substring("suggest:".length());
+                message.styled((style) -> style.withClickEvent(new ClickEvent.SuggestCommand(suggestion)));
+            } else if(cmd.OnClick.startsWith("copy:")) {
+                String copyText = cmd.OnClick.substring("copy:".length());
+                message.styled((style) -> style.withClickEvent(new ClickEvent.CopyToClipboard(copyText)));
             } else {
                 message.styled((style) -> style.withClickEvent(new ClickEvent.RunCommand(cmd.OnClick)));
             }
