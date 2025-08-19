@@ -656,7 +656,9 @@ public class CoflModClient implements ClientModInitializer {
     public void loadDescriptionsForInv(HandledScreen screen) {
         String menuSlot = MinecraftClient.getInstance().player.getInventory().getStack(8).getComponents().toString();
         if (!menuSlot.contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")
-            && !menuSlot.contains("Scaffolding") && !menuSlot.contains("Quiver"))
+            && !menuSlot.contains("Scaffolding") && !menuSlot.contains("Quiver")
+            && !menuSlot.contains("Your Score Summary") // dungeon completion
+            )
             return;
         Thread.startVirtualThread(() -> {
             DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();;
