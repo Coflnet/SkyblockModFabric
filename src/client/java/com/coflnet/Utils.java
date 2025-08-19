@@ -21,7 +21,7 @@ public class Utils {
                     }
                 });
             }
-            if(cmd.OnClick.startsWith("suggest:")){
+            else if(cmd.OnClick.startsWith("suggest:")){
                 String suggestion = cmd.OnClick.substring("suggest:".length());
                 message.styled((style) -> style.withClickEvent(new ClickEvent.SuggestCommand(suggestion)));
             } else if(cmd.OnClick.startsWith("copy:")) {
