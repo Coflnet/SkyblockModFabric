@@ -405,11 +405,11 @@ public class CoflModClient implements ClientModInitializer {
                         worldRenderContext,
                         new double[]{
                                 position.getX(),
-                                (double)position.getY() - 1.6,
-                                position.getZ() - 1
+                                (double)position.getY() +1,
+                                position.getZ() + 1
                         }, new double[]{
-                                position.getX() - 1,
-                                (double)position.getY() - 0.6,
+                                position.getX() + 1,
+                                (double)position.getY(),
                                 position.getZ()
                         },  new float[]{0.3f, 1f, 0.1f, 0.5f} // a=0.2f
                 );
