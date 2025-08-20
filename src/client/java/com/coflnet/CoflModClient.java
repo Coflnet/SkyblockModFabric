@@ -181,8 +181,10 @@ public class CoflModClient implements ClientModInitializer {
                     }
                 });
             }
+            // reset cached data for different island
             DescriptionHandler.emptyTooltipData();
             uploadedScoreboard = false;
+            EventSubscribers.positions = null;
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
