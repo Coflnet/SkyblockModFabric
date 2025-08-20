@@ -14,7 +14,6 @@ import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.entity.Entity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.NotNull;
@@ -400,11 +399,10 @@ public class RenderUtils {
         if (rgba.length != 4) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 4 values (r/g/b/a) in array");
 
         MatrixStack matrices = context.matrixStack();
-        Entity player = MinecraftClient.getInstance().player;
+        Camera camera = context.camera();
 
         matrices.push();
-        if (player.isSneaking()) player.setSneaking(false);
-        matrices.translate(-player.getX(), -player.getY(), -player.getZ());
+        matrices.translate(-camera.getPos().x, -camera.getPos().y, -camera.getPos().z);
 
         VertexConsumer buffer = context.consumers().getBuffer(THROUGH_WALLS_LAYER);
         VertexRendering.drawFilledBox(
