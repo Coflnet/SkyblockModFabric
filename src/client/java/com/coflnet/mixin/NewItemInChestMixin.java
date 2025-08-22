@@ -19,8 +19,10 @@ public class NewItemInChestMixin {
         try {
             String itemTitle = packet.getStack().getCustomName() != null ? packet.getStack().getCustomName().getString() : "";
             if (!itemTitle.isEmpty() && (
-                    itemTitle.contains("Pending their confirm") || itemTitle.contains("Deal timer!")
-            || itemTitle.contains("AUCTION FOR"))) {
+                    itemTitle.contains("Pending their confirm") || itemTitle.contains("Deal timer!") // trade window
+                    || itemTitle.contains("Combine Items") // anvil result
+            || itemTitle.contains("AUCTION FOR") // putting item in auction create
+            )) {
                 if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs)
                     CoflModClient.instance.loadDescriptionsForInv(hs);
                 System.out.println("Trade Slot Update Packet received." + packet.getStack().getCustomName());
