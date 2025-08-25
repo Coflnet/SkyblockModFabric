@@ -271,7 +271,8 @@ public class CoflModClient implements ClientModInitializer {
             String stackId = getIdFromStack(stack);
             if (!knownIds.contains(stackId)
                     && MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
-                if(!stack.isEmpty())
+                        
+                if(!stack.isEmpty() && !stackId.equals("Go Back;1"))
                     loadDescriptionsForInv(hs);
                 knownIds.add(stackId);
                 System.out.println("Missing descriptions for " + stackId);
@@ -663,7 +664,8 @@ public class CoflModClient implements ClientModInitializer {
             )
             return;
         Thread.startVirtualThread(() -> {
-            DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();;
+            DefaultedList<ItemStack> itemStacks = screen.getScreenHandler().getStacks();
+            String title = screen.getTitle().getString();
             try {
                 Thread.sleep(100);
                 for (int i = 0; i < 20; i++) {
@@ -677,7 +679,11 @@ public class CoflModClient implements ClientModInitializer {
                 e.printStackTrace();
             }
             try {
-                String title = screen.getTitle().getString();
+                HandledScreen currentScreen = MinecraftClient.getInstance().currentScreen instanceof HandledScreen ? (HandledScreen) MinecraftClient.getInstance().currentScreen : null;
+                if (currentScreen == null || currentScreen.getScreenHandler() != screen.getScreenHandler()){
+                    System.out.println("Inventory changed already, not refreshing descriptions");
+                    return; // inventory changed, don't refresh
+                }
                 String[] visibleItems = getItemIdsFromInventory(itemStacks);
                 loadDescriptionsForItems(title, itemStacks);
                 boolean refresh = false;
@@ -708,6 +714,16 @@ public class CoflModClient implements ClientModInitializer {
                     }
                 }
                 if (refresh) {
+                    currentScreen = MinecraftClient.getInstance().currentScreen instanceof HandledScreen ? (HandledScreen) MinecraftClient.getInstance().currentScreen : null;
+                    if (currentScreen == null || currentScreen.getScreenHandler() != screen.getScreenHandler()){
+                        System.out.println("Inventory changed, not refreshing descriptions");
+                        return; // inventory changed, don't refresh 
+                        }
+                    if(!title.equals(screen.getTitle().getString()))
+                    {
+                        System.out.println("Title changed, not refreshing descriptions");
+                        return;
+                    }
                     System.out.println("Refreshing descriptions for inventory: " + title);
                     loadDescriptionsForItems(title, itemStacks);
                 }
@@ -721,13 +737,13 @@ public class CoflModClient implements ClientModInitializer {
 
     public static void loadDescriptionsForItems(String title, DefaultedList<ItemStack> items)
     {
-        String[] visibleItems = getItemIdsFromInventory(items);
         String userName = MinecraftClient.getInstance().getSession().getUsername();
         String nbtString = inventoryToNBT(items);
         if(nbtString.equals(lastNbtRequest)) {
             return;
         }
         lastNbtRequest = nbtString;
+        String[] visibleItems = getItemIdsFromInventory(items);
         DescriptionHandler.loadDescriptionForInventory(
                 visibleItems,
                 title,
