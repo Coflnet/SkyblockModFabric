@@ -15,4 +15,10 @@ public abstract class InventoryScreenMixin extends HandledScreenMixin{
         if(sideTextWidget != null)
             sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
     }
+
+
+    @Inject(at = @At("TAIL"), method = "render")
+    public void renderMain(DrawContext context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
+        super.renderMain(context, mouseX, mouseY, deltaTicks, ci);
+    }
 }
