@@ -2,6 +2,7 @@ package com.coflnet.mixin;
 
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
+import com.coflnet.config.TextWidgetPositionConfig;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.models.TextElement;
 import com.google.gson.Gson;
@@ -16,6 +17,7 @@ import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,6 +33,7 @@ import java.util.List;
 public abstract class HandledScreenMixin {
     
     private static final Gson gson = new Gson();
+    
     @Shadow
     protected int x;
     @Shadow
@@ -41,9 +44,18 @@ public abstract class HandledScreenMixin {
     protected int backgroundHeight;
     protected MultilineTextWidget sideTextWidget;
     protected List<MutableText> interactiveTextLines;
+    
+    // Dragging and position storage
+    private boolean isDragging = false;
+    private double dragStartX, dragStartY;
+    private double widgetStartX, widgetStartY;
+    private TextWidgetPositionConfig positionConfig;
 
     @Inject(at = @At("TAIL"), method = "init")
     public void init(CallbackInfo ci){
+        // Load saved position
+        positionConfig = TextWidgetPositionConfig.load();
+        
         // init to whatever text is present
         DescriptionHandler.DescModification[] extraSlotDesc = CoflModClient.getExtraSlotDescMod();
         updateText(extraSlotDesc);
@@ -194,8 +206,12 @@ public abstract class HandledScreenMixin {
             combinedText.append(interactiveTextLines.get(i));
         }
         
-        int widgetX = x - maxWidth - 5;
-        int widgetY = y + 5;
+        // Use custom position relative to GUI
+        int widgetX = x + positionConfig.offsetX;
+        if(positionConfig.offsetX <= 0) {
+            widgetX = widgetX - maxWidth;
+        }
+        int widgetY = y + positionConfig.offsetY;
         
         sideTextWidget = new MultilineTextWidget(
                 widgetX, widgetY,
@@ -230,8 +246,12 @@ public abstract class HandledScreenMixin {
             return;
         }
 
-        int widgetX = x - maxWidth - 5;
-        int widgetY = y + 5;
+        // Use custom position relative to GUI
+        int widgetX = x + positionConfig.offsetX;
+        if(positionConfig.offsetX <= 0) {
+            widgetX = widgetX - maxWidth;
+        }
+        int widgetY = y + positionConfig.offsetY;
         
         sideTextWidget = new MultilineTextWidget(
                 widgetX, widgetY,
@@ -340,6 +360,62 @@ public abstract class HandledScreenMixin {
         sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
     }
 
+    @Inject(at = @At("HEAD"), method = "mouseDragged", cancellable = true)
+    public void onMouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY, CallbackInfoReturnable<Boolean> cir) {
+        if (isDragging && button == 1) { // Right mouse button
+            // Update widget position based on drag
+            double newX = widgetStartX + (mouseX - dragStartX);
+            double newY = widgetStartY + (mouseY - dragStartY);
+            
+            // Calculate relative offsets to GUI
+            positionConfig.offsetX = (int) (newX - x);
+            positionConfig.offsetY = (int) (newY - y);
+            
+            // Update widget position if it exists
+            if (sideTextWidget != null) {
+                updateWidgetPosition();
+            }
+            
+            cir.setReturnValue(true);
+        }
+    }
+    
+    @Inject(at = @At("HEAD"), method = "mouseReleased", cancellable = true)  
+    public void onMouseReleased(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
+        if (isDragging && button == 1) { // Right mouse button
+            isDragging = false;
+            positionConfig.save(); // Save the new position
+            cir.setReturnValue(true);
+        }
+    }
+    
+    private void updateWidgetPosition() {
+        if (sideTextWidget != null) {
+            // Create a new widget at the new position
+            MutableText currentText = Text.empty();
+            if (interactiveTextLines != null && !interactiveTextLines.isEmpty()) {
+                for (int i = 0; i < interactiveTextLines.size(); i++) {
+                    if (i > 0) currentText.append("\n");
+                    currentText.append(interactiveTextLines.get(i));
+                }
+            } else {
+                // For legacy text, we need to recreate from current widget text
+                return; // Skip update for legacy text during drag
+            }
+            
+            int newX = x + positionConfig.offsetX;
+            int newY = y + positionConfig.offsetY;
+            
+            sideTextWidget = new MultilineTextWidget(
+                    newX, newY,
+                    currentText,
+                    MinecraftClient.getInstance().textRenderer
+            );
+            sideTextWidget.setDimensions(sideTextWidget.getWidth(), sideTextWidget.getHeight());
+            sideTextWidget.setAlpha(0.9f);
+        }
+    }
+
     @Inject(at = @At("HEAD"), method = "mouseClicked", cancellable = true)
     public void onMouseClicked(double mouseX, double mouseY, int button, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
         if (interactiveTextLines == null || interactiveTextLines.isEmpty() || sideTextWidget == null) {
@@ -350,42 +426,73 @@ public abstract class HandledScreenMixin {
         int startY = sideTextWidget.getY();
         int lineHeight = 12;
         
-        for (int i = 0; i < interactiveTextLines.size(); i++) {
-            MutableText line = interactiveTextLines.get(i);
-            int lineY = startY + (i * lineHeight);
-            int textWidth = MinecraftClient.getInstance().textRenderer.getWidth(line);
-            
-            // Check if mouse is over this line
-            if (mouseX < startX || mouseX > startX + textWidth || 
-                mouseY < lineY || mouseY > lineY + lineHeight) {
-                continue;
+        // Check if mouse is over the text widget area
+        boolean overWidget = false;
+        int widgetWidth = 0;
+        int widgetHeight = interactiveTextLines.size() * lineHeight;
+        
+        for (MutableText line : interactiveTextLines) {
+            int lineWidth = MinecraftClient.getInstance().textRenderer.getWidth(line);
+            if (lineWidth > widgetWidth) {
+                widgetWidth = lineWidth;
             }
-            
-            // Find which text component was clicked by checking character positions
-            int currentX = startX;
-            for (Text sibling : line.getSiblings()) {
-                if (!(sibling instanceof MutableText mutableSibling)) {
+        }
+        
+        if (mouseX >= startX && mouseX <= startX + widgetWidth && 
+            mouseY >= startY && mouseY <= startY + widgetHeight) {
+            overWidget = true;
+        }
+        
+        // Handle right-click for dragging
+        if (button == 1 && overWidget) { // Right mouse button
+            isDragging = true;
+            dragStartX = mouseX;
+            dragStartY = mouseY;
+            widgetStartX = startX;
+            widgetStartY = startY;
+            cir.setReturnValue(true);
+            return;
+        }
+        
+        // Handle left-click for text interactions (existing functionality)
+        if (button == 0) { // Left mouse button
+            for (int i = 0; i < interactiveTextLines.size(); i++) {
+                MutableText line = interactiveTextLines.get(i);
+                int lineY = startY + (i * lineHeight);
+                int textWidth = MinecraftClient.getInstance().textRenderer.getWidth(line);
+                
+                // Check if mouse is over this line
+                if (mouseX < startX || mouseX > startX + textWidth || 
+                    mouseY < lineY || mouseY > lineY + lineHeight) {
                     continue;
                 }
-
-                int siblingWidth = MinecraftClient.getInstance().textRenderer.getWidth(mutableSibling);
                 
-                if (mouseX >= currentX && mouseX <= currentX + siblingWidth) {
-                    // Handle the click event
-                    boolean handled = ((HandledScreen<?>) (Object) this).handleTextClick(mutableSibling.getStyle());
-                    if (handled) {
-                        cir.setReturnValue(true);
-                        return;
+                // Find which text component was clicked by checking character positions
+                int currentX = startX;
+                for (Text sibling : line.getSiblings()) {
+                    if (!(sibling instanceof MutableText mutableSibling)) {
+                        continue;
                     }
+
+                    int siblingWidth = MinecraftClient.getInstance().textRenderer.getWidth(mutableSibling);
+                    
+                    if (mouseX >= currentX && mouseX <= currentX + siblingWidth) {
+                        // Handle the click event
+                        boolean handled = ((HandledScreen<?>) (Object) this).handleTextClick(mutableSibling.getStyle());
+                        if (handled) {
+                            cir.setReturnValue(true);
+                            return;
+                        }
+                    }
+                    currentX += siblingWidth;
                 }
-                currentX += siblingWidth;
-            }
-            
-            // If no sibling was clicked, try the main text
-            boolean handled = ((HandledScreen<?>) (Object) this).handleTextClick(line.getStyle());
-            if (handled) {
-                cir.setReturnValue(true);
-                return;
+                
+                // If no sibling was clicked, try the main text
+                boolean handled = ((HandledScreen<?>) (Object) this).handleTextClick(line.getStyle());
+                if (handled) {
+                    cir.setReturnValue(true);
+                    return;
+                }
             }
         }
     }
