@@ -444,20 +444,9 @@ public class CoflModClient implements ClientModInitializer {
                     String[] inputArgs = input.split(" ");;
                     String currentWord = inputArgs.length > 0 ? inputArgs[inputArgs.length - 1] : "";
 
-                    String[] suggestions = {"start", "stop", "vps", "report", "online", "delay", "blacklist", "bl", "whitelist", "wl",
-                            "mute", "blocked", "chat", "c", "nickname", "nick", "profit", "worstflips", "bestflips",
-                            "leaderboard", "lb", "loserboard", "buyspeedboard", "trades", "flips", "set", "s",
-                            "purchase", "buy", "transactions", "balance", "help", "h", "logout", "backup", "restore",
-                            "captcha", "importtfm", "replayactive", "reminder", "filters", "emoji", "addremindertime",
-                            "lore", "fact", "flip", "preapi", "transfercoins", "ping", "setgui tfm", "setgui cofl", "setgui off", "bazaar", "bz",
-                            "switchregion", "craftbreakdown", "cheapattrib", "ca", "ownconfigs",
-                            "configs", "config", "licenses", "license", "verify", "unverify", "attributeflip", "forge",
-                            "crafts", "craft", "upgradeplan", "updatecurrentconfig", "settimezone", "cheapmuseum", "cm",
-                            "replayflips", "lowball", "ahtax", "sethotkey"};
-
                     // Check if the command is "s" or "set" and suggest specific subcommands
                     if (inputArgs.length == 3 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
-                        suggestions = new String[] {"lbin", "finders", "onlyBin", "whitelistAftermain", "DisableFlips",
+                        String[] suggestions = new String[] {"lbin", "finders", "onlyBin", "whitelistAftermain", "DisableFlips",
                                 "DebugMode", "blockHighCompetition", "minProfit", "minProfitPercent", "minVolume", "maxCost",
                                 "modjustProfit", "modsoundOnFlip", "modshortNumbers", "modshortNames", "modblockTenSecMsg",
                                 "modformat", "modblockedFormat", "modchat", "modcountdown", "modhideNoBestFlip", "modtimerX",
@@ -476,13 +465,30 @@ public class CoflModClient implements ClientModInitializer {
                         }
                     } else if(inputArgs.length > 3)
                         return builder.buildFuture();
-                    else
-                        for (String suggestion : suggestions) {
-                            if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())
-                             || inputArgs.length == 1 // just /cofl should show all
-                            )
-                                builder.suggest(suggestion);
+                    else {
+                        if(CoflCore.config.knownCommands == null)
+                        {
+                            System.out.println("No known commands loaded yet, cannot suggest");
+                            return builder.buildFuture();
                         }
+                        for (String suggestion : CoflCore.config.knownCommands.keySet()) {
+                            if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())
+                                    || inputArgs.length == 1 // just /cofl should show all
+                            ){
+                                String messageText = CoflCore.config.knownCommands.get(suggestion);
+                                if(messageText == null)
+                                    builder.suggest(suggestion);
+                                else
+                                    builder.suggest(suggestion, new Message() {
+                                        @Override
+                                        public String getString() {
+                                            // Replace line breaks with spaces for single-line display
+                                            return messageText.split("\n")[0];
+                                        }
+                                    });
+                            }
+                        }
+                    }
                     return builder.buildFuture();
                 })
                 .executes(context -> {
