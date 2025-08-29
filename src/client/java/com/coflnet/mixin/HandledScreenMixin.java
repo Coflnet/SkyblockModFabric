@@ -50,6 +50,7 @@ public abstract class HandledScreenMixin {
     private double dragStartX, dragStartY;
     private double widgetStartX, widgetStartY;
     private TextWidgetPositionConfig positionConfig;
+    private int currentMaxWidth = 100;
 
     @Inject(at = @At("TAIL"), method = "init")
     public void init(CallbackInfo ci){
@@ -75,20 +76,7 @@ public abstract class HandledScreenMixin {
             return;
         }
 
-        // Check if any line contains JSON format
-        boolean hasJsonFormat = false;
-        for (DescriptionHandler.DescModification descModification : lines) {
-            if (descModification.value != null && descModification.value.trim().startsWith("[") && descModification.value.trim().endsWith("]")) {
-                hasJsonFormat = true;
-                break;
-            }
-        }
-
-        if (hasJsonFormat) {
-            updateTextWithJson(lines);
-        } else {
-            updateTextLegacy(lines);
-        }
+        updateTextWithJson(lines);
     }
 
     protected void updateTextWithJson(DescriptionHandler.DescModification[] lines) {
@@ -208,9 +196,10 @@ public abstract class HandledScreenMixin {
         
         // Use custom position relative to GUI
         int widgetX = x + positionConfig.offsetX;
-        if(positionConfig.offsetX <= 0) {
+        if(positionConfig.offsetX < 0) { // if it hasn't been respositioned move start over
             widgetX = widgetX - maxWidth;
         }
+        currentMaxWidth = maxWidth;
         int widgetY = y + positionConfig.offsetY;
         
         sideTextWidget = new MultilineTextWidget(
@@ -220,47 +209,6 @@ public abstract class HandledScreenMixin {
         );
         sideTextWidget.setDimensions(maxWidth + 10, interactiveTextLines.size() * 12);
         sideTextWidget.setAlpha(0.9f);
-    }
-
-    protected void updateTextLegacy(DescriptionHandler.DescModification[] lines) {
-        String temp = "";
-        int maxWidth = 0;
-        int lineCount = 0;
-        for (DescriptionHandler.DescModification descModification : lines) {
-            if(descModification.type.equals("APPEND")) {
-                temp = temp + "\n" + descModification.value;
-                int width = MinecraftClient.getInstance().textRenderer.getWidth(descModification.value);
-                if(width > maxWidth) {
-                    maxWidth = width;
-                }
-                lineCount++;
-            }
-            else if(descModification.type.equals("SUGGEST")) {
-                temp += "\n§7Will suggest: §r" +descModification.value.split(": ")[1].trim();
-                lineCount++;
-            }
-        }
-        
-        if (lineCount == 0) {
-            interactiveTextLines = null;
-            return;
-        }
-
-        // Use custom position relative to GUI
-        int widgetX = x + positionConfig.offsetX;
-        if(positionConfig.offsetX <= 0) {
-            widgetX = widgetX - maxWidth;
-        }
-        int widgetY = y + positionConfig.offsetY;
-        
-        sideTextWidget = new MultilineTextWidget(
-                widgetX, widgetY,
-                Text.of(temp),
-                MinecraftClient.getInstance().textRenderer
-        );
-        sideTextWidget.setDimensions(maxWidth + 10, lineCount * 20);
-        sideTextWidget.setAlpha(0.9f);
-        interactiveTextLines = null;
     }
 
     @Inject(at = @At("TAIL"), method = "render")
@@ -366,9 +314,12 @@ public abstract class HandledScreenMixin {
             // Update widget position based on drag
             double newX = widgetStartX + (mouseX - dragStartX);
             double newY = widgetStartY + (mouseY - dragStartY);
+            System.out.println("Dragging to: " + newX + ", " + newY);
             
             // Calculate relative offsets to GUI
             positionConfig.offsetX = (int) (newX - x);
+            if(positionConfig.offsetX < -5)
+                positionConfig.offsetX += currentMaxWidth; // adjust for left side start
             positionConfig.offsetY = (int) (newY - y);
             
             // Update widget position if it exists
@@ -404,6 +355,9 @@ public abstract class HandledScreenMixin {
             }
             
             int newX = x + positionConfig.offsetX;
+            if(positionConfig.offsetX < 0) {
+                newX = newX - currentMaxWidth;
+            }
             int newY = y + positionConfig.offsetY;
             
             sideTextWidget = new MultilineTextWidget(
