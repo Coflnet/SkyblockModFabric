@@ -305,7 +305,6 @@ public abstract class HandledScreenMixin {
                 }
             }
         }
-        sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
     }
 
     @Inject(at = @At("HEAD"), method = "mouseDragged", cancellable = true)
