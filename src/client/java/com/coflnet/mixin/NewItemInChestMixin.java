@@ -27,9 +27,13 @@ public class NewItemInChestMixin {
                     || itemTitle.equals("§aFlip Order") // bazaar order flip prices loaded
             || itemTitle.contains("AUCTION FOR") // putting item in auction create
             )) {
-                if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs)
-                    CoflModClient.instance.loadDescriptionsForInv(hs);
-                System.out.println("Trade Slot Update Packet received." + packet.getStack().getCustomName());
+                try {
+                    if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs)
+                        CoflModClient.instance.loadDescriptionsForInv(hs);
+                    System.out.println("Trade Slot Update Packet received." + packet.getStack().getCustomName());
+                } catch (Exception inner) {
+                    System.out.println("[NewItemInChestMixin] loadDescriptionsForInv failed: " + inner.getMessage());
+                }
             }
 
             if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler != null) {
@@ -46,7 +50,7 @@ public class NewItemInChestMixin {
         } catch (Exception e) {
             // If it fails, it might be a custom packet or a different type.
             // You can log the exception or handle it as needed.
-            System.out.println("Failed to process packet: " + e.getMessage());
+            System.out.println("[NewItemInChestMixin] Failed to process packet: " + e.getMessage());
         }
     }
 }
