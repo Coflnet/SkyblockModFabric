@@ -9,7 +9,11 @@ import org.spongepowered.asm.mixin.injection.ModifyArg;
 public class ScrollableWidgetMixin {
     @ModifyArg(method = "drawScrollbar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Ljava/util/function/Function;Lnet/minecraft/util/Identifier;IIII)V"), index = 4)
     private int drawBox(int x){
-        x = 2;
-        return x;
+        try {
+            return MinecraftClient.getInstance().currentScreen instanceof BinGUI ? 2 : x;
+        } catch (Exception e) {
+            System.out.println("[ScrollableWidgetMixin] drawBox failed: " + e.getMessage());
+            return x;
+        }
     }
 }

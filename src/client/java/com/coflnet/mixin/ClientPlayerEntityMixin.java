@@ -15,30 +15,33 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class ClientPlayerEntityMixin {
     @Inject(method = "openEditSignScreen", at = @At("HEAD"))
     private void openEditSignScreen(SignBlockEntity sign, boolean front, CallbackInfo ci){
-        // Handle bazaar search first
-        if (CoflModClient.pendingBazaarSearch != null) {
-            handleBazaarSearch(sign, front);
-            return;
+        try {
+            // Handle bazaar search first
+            if (CoflModClient.pendingBazaarSearch != null) {
+                handleBazaarSearch(sign, front);
+                return;
+            }
+
+            // Handle existing price suggestion logic
+            String toSuggest = CoflModClient.findPriceSuggestion();
+            System.out.println("Value to suggest: '"+toSuggest+"'");
+            Text[] lines = sign.getFrontText().getMessages(MinecraftClient.getInstance().shouldFilterText());
+            String[] suggestionParts = toSuggest.split(": ");
+
+            if(toSuggest == "") return;
+            if(suggestionParts.length == 0) return;
+            if(lines.length < 4) return;
+            if(!suggestionParts[0].equals(lines[3].getString())) return;
+
+            lines[0] = Text.of(suggestionParts[1].trim());
+            sign.changeText(signText -> new SignText(
+                    lines, lines,
+                    signText.getColor(),
+                    signText.isGlowing()
+            ), true);
+        } catch (Exception e) {
+            System.out.println("[ClientPlayerEntityMixin] openEditSignScreen failed: " + e.getMessage());
         }
-
-        // Handle existing price suggestion logic
-        String toSuggest = CoflModClient.findPriceSuggestion();
-        System.out.println("Value to suggest: '"+toSuggest+"'");
-        Text[] lines = sign.getFrontText().getMessages(MinecraftClient.getInstance().shouldFilterText());
-        String[] suggestionParts = toSuggest.split(": ");
-
-        System.out.println(suggestionParts[0]);
-        System.out.println(lines[3].getString());
-
-        if(toSuggest == "") return;
-        if(suggestionParts[0].compareTo(lines[3].getString()) != 0) return;
-
-        lines[0] = Text.of(suggestionParts[1].trim());
-        sign.changeText(signText -> new SignText(
-                lines, lines,
-                signText.getColor(),
-                signText.isGlowing()
-        ), true);
     }
 
     /**

@@ -11,6 +11,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class ScreenMixin {
     @Inject(at = @At("HEAD"), method = "close")
     private void close(CallbackInfo ci){
-        CoflModClient.posToUpload = null;
+        try {
+            CoflModClient.posToUpload = null;
+        } catch (Exception e) {
+            System.out.println("[ScreenMixin] close failed: " + e.getMessage());
+        }
     }
 }

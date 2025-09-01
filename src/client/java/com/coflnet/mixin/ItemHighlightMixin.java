@@ -34,25 +34,33 @@ public abstract class ItemHighlightMixin {
 
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void onKeyPressed(int keyCode, int scanCode, int modifiers, CallbackInfoReturnable<Boolean> cir) {
-        if (CoflModClient.uploadItemKeyBinding.matchesKey(keyCode, scanCode)) {
-            if (focusedSlot != null && focusedSlot.hasStack()) {
-                CoflModClient.uploadItem(focusedSlot.getStack());
+        try {
+            if (CoflModClient.uploadItemKeyBinding.matchesKey(keyCode, scanCode)) {
+                if (focusedSlot != null && focusedSlot.hasStack()) {
+                    CoflModClient.uploadItem(focusedSlot.getStack());
+                }
             }
+        } catch (Exception e) {
+            System.out.println("[ItemHighlightMixin] keyPressed failed: " + e.getMessage());
         }
     }
 
     @Inject(method = "drawSlot", at = @At("RETURN")) // drawBackground is a good place
     private void yourmodid_onDrawBackground(DrawContext context, Slot slot, CallbackInfo ci) {
-        if (!slot.hasStack())
-            return;
-        DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(slot.getStack()));
-        if(tooltips == null)
-            return;
-        for (DescriptionHandler.DescModification tooltip : tooltips) {
-            if (tooltip.type.equals("HIGHLIGHT")) {
-                int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000; // Ensure alpha is set to fully opaque
-                RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, hexColor);
+        try {
+            if (!slot.hasStack())
+                return;
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(slot.getStack()));
+            if(tooltips == null)
+                return;
+            for (DescriptionHandler.DescModification tooltip : tooltips) {
+                if (tooltip.type.equals("HIGHLIGHT")) {
+                    int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000; // Ensure alpha is set to fully opaque
+                    RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, hexColor);
+                }
             }
+        } catch (Exception e) {
+            System.out.println("[ItemHighlightMixin] drawSlot failed: " + e.getMessage());
         }
 
     }

@@ -12,13 +12,21 @@ public abstract class InventoryScreenMixin extends HandledScreenMixin{
 
     @Inject(at = @At("HEAD"), method = "render")
     public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
-        if(sideTextWidget != null)
-            sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
+        try {
+            if(sideTextWidget != null)
+                sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
+        } catch (Exception e) {
+            System.out.println("[InventoryScreenMixin] render HEAD failed: " + e.getMessage());
+        }
     }
 
 
     @Inject(at = @At("TAIL"), method = "render")
     public void renderMain(DrawContext context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
-        super.renderMain(context, mouseX, mouseY, deltaTicks, ci);
+        try {
+            super.renderMain(context, mouseX, mouseY, deltaTicks, ci);
+        } catch (Exception e) {
+            System.out.println("[InventoryScreenMixin] render TAIL failed: " + e.getMessage());
+        }
     }
 }
