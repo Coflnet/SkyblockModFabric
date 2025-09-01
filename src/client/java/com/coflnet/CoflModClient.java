@@ -81,6 +81,7 @@ import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.ScoreboardDisplaySlot;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.scoreboard.Team;
+import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.sound.SoundEvent;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
@@ -106,6 +107,7 @@ public class CoflModClient implements ClientModInitializer {
     public static Position posToUpload = null;
     public static CoflModClient instance;
     public static SignBlockEntity sign = null;
+    public static String pendingBazaarSearch = null;
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -209,6 +211,25 @@ public class CoflModClient implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             registerDefaultCommands(dispatcher, "cofl");
             registerDefaultCommands(dispatcher, "cl");
+            
+            // Add bazaar search command
+            dispatcher.register(ClientCommandManager.literal("bazaarsearch")
+                    .then(ClientCommandManager.argument("item", StringArgumentType.greedyString())
+                    .executes(context -> {
+                        String searchTerm = context.getArgument("item", String.class);
+                        searchInBazaarSmart(searchTerm);
+                        return 1;
+                    })));
+            
+            // Add short form of bazaar search command
+            dispatcher.register(ClientCommandManager.literal("bs")
+                    .then(ClientCommandManager.argument("item", StringArgumentType.greedyString())
+                    .executes(context -> {
+                        String searchTerm = context.getArgument("item", String.class);
+                        searchInBazaarSmart(searchTerm);
+                        return 1;
+                    })));
+            
             dispatcher.register(ClientCommandManager.literal("fc")
                     .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
                     .suggests((context, builder) -> {
@@ -832,6 +853,176 @@ public class CoflModClient implements ClientModInitializer {
     public static boolean isOwnAuction(GenericContainerScreen gcs) {
         ItemStack stack = gcs.getScreenHandler().getInventory().getStack(31);
         return (BinGUI.isAuctionInit(gcs) && (stack.getItem() == Items.GRAY_STAINED_GLASS_PANE || stack.getItem() == Items.GOLD_BLOCK));
+    }
+
+    /**
+     * Determines if the given screen is the bazaar.
+     * @param gcs instance of {@link GenericContainerScreen}
+     * @return {@code true} if the screen is the bazaar, otherwise {@code false}
+     */
+    public static boolean isBazaar(GenericContainerScreen gcs) {
+        String title = gcs.getTitle().getString();
+        return title.contains("Bazaar") && gcs.getScreenHandler().getInventory().size() == 9 * 6;
+    }
+
+    /**
+     * Automatically searches for an item in the bazaar.
+     * This function clicks on the "Search" item, fills in the search content, and closes the sign.
+     * 
+     * Usage examples:
+     * - searchInBazaar("Iron Ingot") - searches for iron ingots
+     * - searchInBazaar("Enchanted Diamond") - searches for enchanted diamonds
+     * 
+     * The function will:
+     * 1. Verify the player is currently on the bazaar
+     * 2. Find the search item in the GUI (typically a name tag or paper)
+     * 3. Click on the search item to open the sign editor
+     * 4. Fill in the search term automatically 
+     * 5. Close the sign to execute the search
+     * 
+     * @param searchTerm the item name to search for
+     */
+    public static void searchInBazaar(String searchTerm) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (!(client.currentScreen instanceof GenericContainerScreen gcs)) {
+            System.out.println("Current screen is not a container screen");
+            return;
+        }
+
+        if (!isBazaar(gcs)) {
+            System.out.println("Current screen is not the bazaar");
+            return;
+        }
+
+        // Find the "Search" item in the bazaar GUI
+        int searchSlot = findSearchSlotInBazaar(gcs);
+        if (searchSlot == -1) {
+            System.out.println("Could not find Search item in bazaar");
+            return;
+        }
+
+        System.out.println("Found Search item at slot: " + searchSlot + ", searching for: " + searchTerm);
+
+        // Store the search term for the sign editing
+        pendingBazaarSearch = searchTerm;
+
+        // Click on the search item
+        clickSlotInContainer(gcs, searchSlot);
+    }
+
+    /**
+     * Enhanced bazaar search that also handles item name cleaning.
+     * @param rawItemName the raw item name that may need cleaning
+     */
+    public static void searchInBazaarSmart(String rawItemName) {
+        // Clean the item name (remove formatting codes, etc.)
+        String cleanedName = cleanItemNameForSearch(rawItemName);
+        searchInBazaar(cleanedName);
+    }
+
+    /**
+     * Cleans an item name for bazaar search by removing Minecraft formatting codes and other artifacts.
+     * @param rawName the raw item name
+     * @return cleaned item name suitable for bazaar search
+     */
+    private static String cleanItemNameForSearch(String rawName) {
+        if (rawName == null) return "";
+        
+        // Remove Minecraft formatting codes (§ followed by any character)
+        String cleaned = rawName.replaceAll("§.", "");
+        
+        // Remove common prefixes/suffixes that might interfere with search
+        cleaned = cleaned.replaceAll("\\[.*?\\]", ""); // Remove brackets
+        cleaned = cleaned.replaceAll("\\(.*?\\)", ""); // Remove parentheses
+        
+        // Trim whitespace
+        cleaned = cleaned.trim();
+        
+        return cleaned;
+    }
+
+    /**
+     * Finds the slot containing the "Search" item in the bazaar.
+     * @param gcs the bazaar container screen
+     * @return the slot index of the search item, or -1 if not found
+     */
+    private static int findSearchSlotInBazaar(GenericContainerScreen gcs) {
+        for (int i = 0; i < gcs.getScreenHandler().getInventory().size(); i++) {
+            ItemStack stack = gcs.getScreenHandler().getInventory().getStack(i);
+            
+            // Skip empty slots
+            if (stack.isEmpty()) {
+                continue;
+            }
+            
+            // Check for common search item types
+            if (stack.getItem() == Items.NAME_TAG || 
+                stack.getItem() == Items.PAPER || 
+                stack.getItem() == Items.WRITABLE_BOOK ||
+                stack.getItem() == Items.COMPASS) {
+                
+                // Check if the item has a custom name containing "Search"
+                if (stack.getCustomName() != null) {
+                    String customName = stack.getCustomName().getString().toLowerCase();
+                    if (customName.contains("search")) {
+                        return i;
+                    }
+                }
+                
+                // Check lore for search functionality
+                if (stack.get(DataComponentTypes.LORE) != null) {
+                    for (Text line : stack.get(DataComponentTypes.LORE).lines()) {
+                        String loreText = line.getString().toLowerCase();
+                        if (loreText.contains("search") || loreText.contains("find") || loreText.contains("look for")) {
+                            return i;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback: look for any item with "search" in the name or lore
+        for (int i = 0; i < gcs.getScreenHandler().getInventory().size(); i++) {
+            ItemStack stack = gcs.getScreenHandler().getInventory().getStack(i);
+            
+            if (stack.isEmpty()) continue;
+            
+            if (stack.getCustomName() != null) {
+                String customName = stack.getCustomName().getString().toLowerCase();
+                if (customName.contains("search")) {
+                    return i;
+                }
+            }
+            
+            if (stack.get(DataComponentTypes.LORE) != null) {
+                for (Text line : stack.get(DataComponentTypes.LORE).lines()) {
+                    String loreText = line.getString().toLowerCase();
+                    if (loreText.contains("search") && (loreText.contains("click") || loreText.contains("use"))) {
+                        return i;
+                    }
+                }
+            }
+        }
+        
+        return -1;
+    }
+
+    /**
+     * Clicks a slot in a container screen.
+     * @param gcs the container screen
+     * @param slotId the slot index to click
+     */
+    private static void clickSlotInContainer(GenericContainerScreen gcs, int slotId) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        PlayerEntity player = client.player;
+
+        client.interactionManager.clickSlot(
+                gcs.getScreenHandler().syncId,
+                slotId,
+                0,
+                SlotActionType.PICKUP,
+                player
+        );
     }
 
     private boolean checkVersionCompability() {

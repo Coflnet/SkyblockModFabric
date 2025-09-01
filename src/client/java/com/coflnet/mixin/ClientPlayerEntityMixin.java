@@ -15,6 +15,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class ClientPlayerEntityMixin {
     @Inject(method = "openEditSignScreen", at = @At("HEAD"))
     private void openEditSignScreen(SignBlockEntity sign, boolean front, CallbackInfo ci){
+        // Handle bazaar search first
+        if (CoflModClient.pendingBazaarSearch != null) {
+            handleBazaarSearch(sign, front);
+            return;
+        }
+
+        // Handle existing price suggestion logic
         String toSuggest = CoflModClient.findPriceSuggestion();
         System.out.println("Value to suggest: '"+toSuggest+"'");
         Text[] lines = sign.getFrontText().getMessages(MinecraftClient.getInstance().shouldFilterText());
@@ -32,5 +39,50 @@ public class ClientPlayerEntityMixin {
                 signText.getColor(),
                 signText.isGlowing()
         ), true);
+    }
+
+    /**
+     * Handles filling in the bazaar search term and closing the sign.
+     */
+    private void handleBazaarSearch(SignBlockEntity sign, boolean front) {
+        System.out.println("Filling bazaar search with: " + CoflModClient.pendingBazaarSearch);
+        
+        Text[] lines = sign.getFrontText().getMessages(MinecraftClient.getInstance().shouldFilterText());
+        
+        // Fill the first line with the search term
+        lines[0] = Text.of(CoflModClient.pendingBazaarSearch);
+        
+        // Clear other lines
+        lines[1] = Text.of("");
+        lines[2] = Text.of("");
+        lines[3] = Text.of("");
+        
+        // Apply the changes to the sign
+        sign.changeText(signText -> new SignText(
+                lines, lines,
+                signText.getColor(),
+                signText.isGlowing()
+        ), front);
+        
+        System.out.println("Applied bazaar search text to sign");
+        
+        // Clear the pending search term
+        CoflModClient.pendingBazaarSearch = null;
+        
+        // Schedule closing the sign after a short delay to ensure the text is saved
+        MinecraftClient client = MinecraftClient.getInstance();
+        Thread.startVirtualThread(() -> {
+            try {
+                Thread.sleep(200); // Increased delay to ensure sign text is processed
+                client.execute(() -> {
+                    if (client.currentScreen != null) {
+                        System.out.println("Closing sign screen to complete bazaar search");
+                        client.currentScreen.close();
+                    }
+                });
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
     }
 }
