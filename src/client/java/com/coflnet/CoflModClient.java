@@ -214,29 +214,30 @@ public class CoflModClient implements ClientModInitializer {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             registerDefaultCommands(dispatcher, "cofl");
             registerDefaultCommands(dispatcher, "cl");
-            
-            // Add bazaar search command
-            dispatcher.register(ClientCommandManager.literal("bazaarsearch")
-                    .then(ClientCommandManager.argument("item", StringArgumentType.greedyString())
-                    .executes(context -> {
-                        String searchTerm = context.getArgument("item", String.class);
-                        searchInBazaarSmart(searchTerm);
-                        return 1;
-                    })));
-            
-            // Add short form of bazaar search command
-            dispatcher.register(ClientCommandManager.literal("bs")
-                    .then(ClientCommandManager.argument("item", StringArgumentType.greedyString())
-                    .executes(context -> {
-                        String searchTerm = context.getArgument("item", String.class);
-                        searchInBazaarSmart(searchTerm);
-                        return 1;
-                    })));
-            
-            dispatcher.register(ClientCommandManager.literal("fc")
-                    .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
-                    .suggests((context, builder) -> {
 
+            // Add bazaarsearch as a subcommand to /cofl
+            dispatcher.register(
+                ClientCommandManager.literal("cofl")
+                    .then(ClientCommandManager.literal("bazaarsearch")
+                        .then(ClientCommandManager.argument("item", StringArgumentType.greedyString())
+                            .executes(context -> {
+                                String searchTerm = context.getArgument("item", String.class);
+                                searchInBazaarSmart(searchTerm);
+                                return 1;
+                            })
+                        )
+                    )
+            );
+
+
+            dispatcher.register(ClientCommandManager.literal("fc")
+                .executes(context -> {
+                    // /fc with no arguments (toggles the chat server side)
+                    CoflSkyCommand.processCommand(new String[]{"chat"}, username);
+                    return 1;
+                })
+                .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
+                    .suggests((context, builder) -> {
                         String[] suggestions = {":tableflip:", ":sad:", ":smile:", ":grin:", ":heart:", ":skull:", ":airplane:", ":check:", "<3",
                                 ":star:", ":yes:", ":no:", ":java:", ":arrow", ":shrug:", "o/", ":123:", ":totem:", ":typing:",
                                 ":maths:", ":snail:", ":thinking:", ":gimme:", ":wizard:", ":pvp:", ":peace:", ":oof:", ":puffer:",
@@ -262,7 +263,9 @@ public class CoflModClient implements ClientModInitializer {
                         newArgs[0] = "chat";
                         CoflSkyCommand.processCommand(newArgs, username);
                         return 1;
-                    })));
+                    })
+                )
+            );
         });
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
