@@ -1,5 +1,7 @@
 package com.coflnet.mixin;
 
+import com.coflnet.gui.BinGUI;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.widget.ScrollableWidget;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
