@@ -75,7 +75,6 @@ public class TfmBinGUI extends BinGUI {
                     cancelClickableWidget.onClick(mouseX,mouseY);
                 } else {
                     if(auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_BUY_SLOT);
-                    else if(auctionStatus == AuctionStatus.AUCTION_WAITING) MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal("[§1C§6oflnet§f]§7: waiting for auction grace period "));
                     else clickSlot(AUCTION_CONFIRM_SLOT);
                 }
             }
