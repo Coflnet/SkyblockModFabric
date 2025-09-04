@@ -326,7 +326,6 @@ public abstract class HandledScreenMixin {
                     }
                 }
             }
-            sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
         } catch (Exception e) {
             System.out.println("[HandledScreenMixin] renderMain failed: " + e.getMessage());
         }
