@@ -9,7 +9,8 @@
     "ItemHighlightMixin",
     "NewItemInChestMixin",
     "ScreenMixin",
-    "ScrollableWidgetMixin"
+    "ScrollableWidgetMixin",
+    "SellProtectionMixin"
   ],
   "injectors": {
     "defaultRequire": 1
