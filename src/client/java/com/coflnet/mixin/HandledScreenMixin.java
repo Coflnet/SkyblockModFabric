@@ -225,7 +225,7 @@ public abstract class HandledScreenMixin {
                 combinedText,
                 MinecraftClient.getInstance().textRenderer
         );
-    sideTextWidget.setDimensions(maxWidth + 10, linesSnapshot.size() * 12);
+        sideTextWidget.setDimensions(maxWidth + 10, linesSnapshot.size() * MinecraftClient.getInstance().textRenderer.fontHeight);
         sideTextWidget.setAlpha(0.9f);
     }
 
@@ -246,7 +246,7 @@ public abstract class HandledScreenMixin {
             // Render interactive text using proper text component rendering
             int startX = sideTextWidget.getX();
             int startY = sideTextWidget.getY();
-            int lineHeight = 12;
+            int lineHeight = MinecraftClient.getInstance().textRenderer.fontHeight;
 
             for (int i = 0; i < linesSnapshot.size(); i++) {
                 MutableText line = linesSnapshot.get(i);
@@ -326,6 +326,7 @@ public abstract class HandledScreenMixin {
                     }
                 }
             }
+            // for an unknown reason the single lines don't render anymore on 1.21.8 so we render the widget as well
             sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
         } catch (Exception e) {
             System.out.println("[HandledScreenMixin] renderMain failed: " + e.getMessage());
@@ -413,7 +414,7 @@ public abstract class HandledScreenMixin {
 
             int startX = sideTextWidget.getX();
             int startY = sideTextWidget.getY();
-            int lineHeight = 12;
+            int lineHeight = MinecraftClient.getInstance().textRenderer.fontHeight;
 
             // Check if mouse is over the text widget area
             boolean overWidget = false;
