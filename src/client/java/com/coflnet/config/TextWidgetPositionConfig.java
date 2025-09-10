@@ -16,31 +16,43 @@ public class TextWidgetPositionConfig {
     public int offsetY = 5;
     
     public static TextWidgetPositionConfig load() {
+        // Try to load from combined config first
+        CoflModConfig combinedConfig = CoflModConfig.load();
+        TextWidgetPositionConfig config = new TextWidgetPositionConfig();
+        config.offsetX = combinedConfig.textWidgetOffsetX;
+        config.offsetY = combinedConfig.textWidgetOffsetY;
+        
+        // Check if old config exists and migrate
         try {
             if (POSITION_CONFIG_FILE.exists()) {
                 FileReader reader = new FileReader(POSITION_CONFIG_FILE);
-                TextWidgetPositionConfig config = gson.fromJson(reader, TextWidgetPositionConfig.class);
+                TextWidgetPositionConfig oldConfig = gson.fromJson(reader, TextWidgetPositionConfig.class);
                 reader.close();
-                if (config != null) {
-                    return config;
+                if (oldConfig != null) {
+                    // Migrate to new config
+                    combinedConfig.textWidgetOffsetX = oldConfig.offsetX;
+                    combinedConfig.textWidgetOffsetY = oldConfig.offsetY;
+                    combinedConfig.save();
+                    
+                    // Delete old config file
+                    POSITION_CONFIG_FILE.delete();
+                    
+                    config.offsetX = oldConfig.offsetX;
+                    config.offsetY = oldConfig.offsetY;
                 }
             }
         } catch (IOException e) {
             // Use default values if loading fails
         }
         
-        // Return default config if loading fails or file doesn't exist
-        return new TextWidgetPositionConfig();
+        return config;
     }
     
     public void save() {
-        try {
-            POSITION_CONFIG_FILE.getParentFile().mkdirs();
-            FileWriter writer = new FileWriter(POSITION_CONFIG_FILE);
-            gson.toJson(this, writer);
-            writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        // Save to combined config instead
+        CoflModConfig combinedConfig = CoflModConfig.load();
+        combinedConfig.textWidgetOffsetX = this.offsetX;
+        combinedConfig.textWidgetOffsetY = this.offsetY;
+        combinedConfig.save();
     }
 }

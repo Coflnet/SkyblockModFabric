@@ -337,7 +337,10 @@ public class CoflModClient implements ClientModInitializer {
                     default:
                         System.out.println("Unknown type: " + tooltip.type);
                 }
-            }            
+            }
+
+            // Add sell protection warnings to tooltips
+            addSellProtectionTooltip(stack, lines);
         });
 
         HudRenderCallback.EVENT.register((drawContext, tickCounter) -> {
@@ -481,7 +484,7 @@ public class CoflModClient implements ClientModInitializer {
                                 "showslbin", "showmedPrice", "showseller", "showvolume", "showextraFields", "showprofitPercent",
                                 "showprofit", "showsellerOpenBtn", "showlore", "showhideSold", "showhideManipulated",
                                 "privacyExtendDescriptions", "privacyAutoStart", "loreHighlightFilterMatch",
-                                "loreMinProfitForHighlight", "loreDisableHighlighting"};
+                                "loreMinProfitForHighlight", "loreDisableHighlighting", "sellProtectionEnabled", "sellProtectionMaxAmount"};
 
                         for (String suggestion : suggestions) {
                             if (suggestion.toLowerCase().contains(currentWord.toLowerCase()))
@@ -490,6 +493,16 @@ public class CoflModClient implements ClientModInitializer {
                     } else if(inputArgs.length > 3)
                         return builder.buildFuture();
                     else {
+                        // Add sell protection command suggestion
+                        if ("sellprotection".startsWith(currentWord.toLowerCase()) || inputArgs.length == 1) {
+                            builder.suggest("sellprotection", new Message() {
+                                @Override
+                                public String getString() {
+                                    return "Configure sell protection settings";
+                                }
+                            });
+                        }
+                        
                         if(CoflCore.config.knownCommands == null)
                         {
                             System.out.println("No known commands loaded yet, cannot suggest");
@@ -517,6 +530,49 @@ public class CoflModClient implements ClientModInitializer {
                 })
                 .executes(context -> {
                     String[] args = context.getArgument("args", String.class).split(" ");
+                    
+                    // Handle sell protection commands locally
+                    if (args.length >= 2 && args[0].equals("set")) {
+                        if (args[1].equals("sellProtectionEnabled")) {
+                            if (args.length >= 3) {
+                                boolean enabled = args[2].equalsIgnoreCase("true") || args[2].equals("1");
+                                com.coflnet.config.SellProtectionManager.setEnabled(enabled);
+                                sendChatMessage("§aSell Protection " + (enabled ? "enabled" : "disabled"));
+                                return 1;
+                            } else {
+                                sendChatMessage("§cUsage: /cofl set sellProtectionEnabled <true/false>");
+                                return 1;
+                            }
+                        } else if (args[1].equals("sellProtectionMaxAmount")) {
+                            if (args.length >= 3) {
+                                try {
+                                    long amount = Long.parseLong(args[2]);
+                                    com.coflnet.config.SellProtectionManager.setMaxAmount(amount);
+                                    sendChatMessage("§aSell Protection max amount set to " + formatCoins(amount) + " coins");
+                                    return 1;
+                                } catch (NumberFormatException e) {
+                                    sendChatMessage("§cInvalid number: " + args[2]);
+                                    return 1;
+                                }
+                            } else {
+                                sendChatMessage("§cUsage: /cofl set sellProtectionMaxAmount <amount>");
+                                return 1;
+                            }
+                        }
+                    } else if (args.length >= 1 && args[0].equals("sellprotection")) {
+                        if (args.length == 1) {
+                            // Show current settings
+                            com.coflnet.config.CoflModConfig config = com.coflnet.config.SellProtectionManager.getConfig();
+                            sendChatMessage("§6=== Sell Protection Settings ===");
+                            sendChatMessage("§7Enabled: " + (config.sellProtectionEnabled ? "§aYes" : "§cNo"));
+                            sendChatMessage("§7Max Amount: §6" + formatCoins(config.sellProtectionMaxAmount) + " coins");
+                            sendChatMessage("§7Usage: §e/cofl set sellProtectionEnabled <true/false>");
+                            sendChatMessage("§7Usage: §e/cofl set sellProtectionMaxAmount <amount>");
+                            return 1;
+                        }
+                    }
+                    
+                    // Pass to CoflSkyCommand for other commands
                     CoflSkyCommand.processCommand(args, username);
                     return 1;
                 })));
@@ -1094,5 +1150,75 @@ public class CoflModClient implements ClientModInitializer {
         }
 
         return result;
+    }
+
+    /**
+     * Adds sell protection warnings to item tooltips
+     */
+    private static void addSellProtectionTooltip(ItemStack stack, List<Text> lines) {
+        try {
+            // Check if sell protection is enabled
+            if (!com.coflnet.config.SellProtectionManager.isEnabled()) {
+                return;
+            }
+
+            // Check if we're in a screen with "➜" in title
+            MinecraftClient client = MinecraftClient.getInstance();
+            if (client.currentScreen instanceof HandledScreen<?> screen) {
+                String screenTitle = screen.getTitle().getString();
+                if (!screenTitle.contains("➜")) {
+                    return;
+                }
+            } else {
+                return;
+            }
+
+            String itemName = "";
+            if (stack.getCustomName() != null) {
+                itemName = stack.getCustomName().getString();
+            } else {
+                itemName = stack.getItem().getDefaultStack().getName().getString();
+            }
+
+            // Get threshold for display
+            long threshold = com.coflnet.config.SellProtectionManager.getMaxAmount();
+            String formattedThreshold = formatCoins(threshold);
+
+            // Add protection warnings for sell items
+            if (itemName.contains("Sell Instantly")) {
+                lines.add(Text.literal(""));
+                lines.add(Text.literal("§c⚠ §lSell Protection §c⚠"));
+                lines.add(Text.literal("§7Left clicks blocked if > §6" + formattedThreshold + " coins"));
+                lines.add(Text.literal("§bHold Ctrl§7 to override."));
+                lines.add(Text.literal("§8/cofl set sellProtectionMaxAmount <amount>"));
+            } else if (itemName.contains("Sell Sacks Now") || itemName.contains("Sell Inventory Now")) {
+                lines.add(Text.literal(""));
+                lines.add(Text.literal("§c⚠ §lSell Protection §c⚠"));
+                lines.add(Text.literal("§7All clicks blocked if > §6" + formattedThreshold + " coins"));
+                lines.add(Text.literal("§bHold Ctrl§7 to override."));
+                lines.add(Text.literal("§8/cofl set sellProtectionMaxAmount <amount>"));
+            }
+        } catch (Exception e) {
+            System.out.println("[CoflModClient] addSellProtectionTooltip failed: " + e.getMessage());
+        }
+    }
+
+    private static String formatCoins(long coins) {
+        if (coins >= 1000000000) {
+            return String.format(java.util.Locale.US, "%.1fB", coins / 1000000000.0);
+        } else if (coins >= 1000000) {
+            return String.format(java.util.Locale.US, "%.1fM", coins / 1000000.0);
+        } else if (coins >= 1000) {
+            return String.format(java.util.Locale.US, "%.1fK", coins / 1000.0);
+        } else {
+            return String.valueOf(coins);
+        }
+    }
+
+    private static void sendChatMessage(String message) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player != null) {
+            client.player.sendMessage(Text.literal(message), false);
+        }
     }
 }
