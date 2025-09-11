@@ -18,7 +18,7 @@ public class CoflModConfig {
     
     // Sell protection settings
     public boolean sellProtectionEnabled = true;
-    public long sellProtectionMaxAmount = 1000000; // Default: 1 million coins
+    public long sellProtectionThreshold = 1000000; // Default: 1 million coins
     
     public static CoflModConfig load() {
         try {

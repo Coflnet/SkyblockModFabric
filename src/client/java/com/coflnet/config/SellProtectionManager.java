@@ -22,7 +22,7 @@ public class SellProtectionManager {
     }
     
     public static long getMaxAmount() {
-        return getConfig().sellProtectionMaxAmount;
+        return getConfig().sellProtectionThreshold;
     }
     
     public static void setEnabled(boolean enabled) {
@@ -34,7 +34,7 @@ public class SellProtectionManager {
     
     public static void setMaxAmount(long amount) {
         CoflModConfig cfg = getConfig();
-        cfg.sellProtectionMaxAmount = amount;
+        cfg.sellProtectionThreshold = amount;
         cfg.save();
         reloadConfig();
     }
