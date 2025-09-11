@@ -484,7 +484,7 @@ public class CoflModClient implements ClientModInitializer {
                                 "showslbin", "showmedPrice", "showseller", "showvolume", "showextraFields", "showprofitPercent",
                                 "showprofit", "showsellerOpenBtn", "showlore", "showhideSold", "showhideManipulated",
                                 "privacyExtendDescriptions", "privacyAutoStart", "loreHighlightFilterMatch",
-                                "loreMinProfitForHighlight", "loreDisableHighlighting", "sellProtectionEnabled", "sellProtectionMaxAmount"};
+                                "loreMinProfitForHighlight", "loreDisableHighlighting", "sellProtectionEnabled", "sellProtectionThreshold"};
 
                         for (String suggestion : suggestions) {
                             if (suggestion.toLowerCase().contains(currentWord.toLowerCase()))
@@ -543,7 +543,7 @@ public class CoflModClient implements ClientModInitializer {
                                 sendChatMessage("§cUsage: /cofl set sellProtectionEnabled <true/false>");
                                 return 1;
                             }
-                        } else if (args[1].equals("sellProtectionMaxAmount")) {
+                        } else if (args[1].equals("sellProtectionThreshold")) {
                             if (args.length >= 3) {
                                 try {
                                     long amount = Long.parseLong(args[2]);
@@ -555,7 +555,7 @@ public class CoflModClient implements ClientModInitializer {
                                     return 1;
                                 }
                             } else {
-                                sendChatMessage("§cUsage: /cofl set sellProtectionMaxAmount <amount>");
+                                sendChatMessage("§cUsage: /cofl set sellProtectionThreshold <amount>");
                                 return 1;
                             }
                         }
@@ -565,9 +565,9 @@ public class CoflModClient implements ClientModInitializer {
                             com.coflnet.config.CoflModConfig config = com.coflnet.config.SellProtectionManager.getConfig();
                             sendChatMessage("§6=== Sell Protection Settings ===");
                             sendChatMessage("§7Enabled: " + (config.sellProtectionEnabled ? "§aYes" : "§cNo"));
-                            sendChatMessage("§7Max Amount: §6" + formatCoins(config.sellProtectionMaxAmount) + " coins");
+                            sendChatMessage("§7Max Amount: §6" + formatCoins(config.sellProtectionThreshold) + " coins");
                             sendChatMessage("§7Usage: §e/cofl set sellProtectionEnabled <true/false>");
-                            sendChatMessage("§7Usage: §e/cofl set sellProtectionMaxAmount <amount>");
+                            sendChatMessage("§7Usage: §e/cofl set sellProtectionThreshold <amount>");
                             return 1;
                         }
                     }
@@ -1193,13 +1193,13 @@ public class CoflModClient implements ClientModInitializer {
                 lines.add(Text.literal("§c⚠ §lSell Protection §c⚠"));
                 lines.add(Text.literal("§7Left clicks blocked if > §6" + formattedThreshold + " coins"));
                 lines.add(Text.literal("§bHold Ctrl§7 to override."));
-                lines.add(Text.literal("§8/cofl set sellProtectionMaxAmount <amount>"));
+                lines.add(Text.literal("§8/cofl set sellProtectionThreshold <amount>"));
             } else if (itemName.contains("Sell Sacks Now") || itemName.contains("Sell Inventory Now")) {
                 lines.add(Text.literal(""));
                 lines.add(Text.literal("§c⚠ §lSell Protection §c⚠"));
                 lines.add(Text.literal("§7All clicks blocked if > §6" + formattedThreshold + " coins"));
                 lines.add(Text.literal("§bHold Ctrl§7 to override."));
-                lines.add(Text.literal("§8/cofl set sellProtectionMaxAmount <amount>"));
+                lines.add(Text.literal("§8/cofl set sellProtectionThreshold <amount>"));
             }
         } catch (Exception e) {
             System.out.println("[CoflModClient] addSellProtectionTooltip failed: " + e.getMessage());
