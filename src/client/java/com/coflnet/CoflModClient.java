@@ -1183,23 +1183,40 @@ public class CoflModClient implements ClientModInitializer {
                 itemName = stack.getItem().getDefaultStack().getName().getString();
             }
 
-            // Get threshold for display
+            // Get threshold for comparison
             long threshold = com.coflnet.config.SellProtectionManager.getMaxAmount();
             String formattedThreshold = formatCoins(threshold);
 
-            // Add protection warnings for sell items
+            // Extract coin amount and only show warning if over threshold
+            long sellAmount = 0;
+            boolean shouldShowWarning = false;
+
             if (itemName.contains("Sell Instantly")) {
-                lines.add(Text.literal(""));
-                lines.add(Text.literal("§c⚠ §lSell Protection §c⚠"));
-                lines.add(Text.literal("§7Left clicks blocked if > §6" + formattedThreshold + " coins"));
-                lines.add(Text.literal("§bHold Ctrl§7 to override."));
-                lines.add(Text.literal("§8/cofl set sellProtectionThreshold <amount>"));
+                sellAmount = com.coflnet.utils.SellAmountParser.extractSellInstantlyAmountFromTooltip(lines);
+                // Only show warning if we successfully parsed an amount and it's over threshold
+                // Don't show warning for the default protection amount (Long.MAX_VALUE)
+                shouldShowWarning = sellAmount > threshold && sellAmount != com.coflnet.utils.SellAmountParser.getDefaultProtectionAmount();
+                
+                if (shouldShowWarning) {
+                    lines.add(Text.literal(""));
+                    lines.add(Text.literal("§c⚠ §lSell Protection §c⚠"));
+                    lines.add(Text.literal("§7Left clicks blocked if > §6" + formattedThreshold + " coins"));
+                    lines.add(Text.literal("§bHold Ctrl§7 to override."));
+                    lines.add(Text.literal("§8/cofl set sellProtectionThreshold <amount>"));
+                }
             } else if (itemName.contains("Sell Sacks Now") || itemName.contains("Sell Inventory Now")) {
-                lines.add(Text.literal(""));
-                lines.add(Text.literal("§c⚠ §lSell Protection §c⚠"));
-                lines.add(Text.literal("§7All clicks blocked if > §6" + formattedThreshold + " coins"));
-                lines.add(Text.literal("§bHold Ctrl§7 to override."));
-                lines.add(Text.literal("§8/cofl set sellProtectionThreshold <amount>"));
+                sellAmount = com.coflnet.utils.SellAmountParser.extractInventorySackAmountFromTooltip(lines);
+                // Only show warning if we successfully parsed an amount and it's over threshold
+                // Don't show warning for the default protection amount (Long.MAX_VALUE)
+                shouldShowWarning = sellAmount > threshold && sellAmount != com.coflnet.utils.SellAmountParser.getDefaultProtectionAmount();
+                
+                if (shouldShowWarning) {
+                    lines.add(Text.literal(""));
+                    lines.add(Text.literal("§c⚠ §lSell Protection §c⚠"));
+                    lines.add(Text.literal("§7All clicks blocked if > §6" + formattedThreshold + " coins"));
+                    lines.add(Text.literal("§bHold Ctrl§7 to override."));
+                    lines.add(Text.literal("§8/cofl set sellProtectionThreshold <amount>"));
+                }
             }
         } catch (Exception e) {
             System.out.println("[CoflModClient] addSellProtectionTooltip failed: " + e.getMessage());

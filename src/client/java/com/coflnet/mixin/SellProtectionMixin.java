@@ -1,9 +1,9 @@
 package com.coflnet.mixin;
 
 import com.coflnet.config.SellProtectionManager;
+import com.coflnet.utils.SellAmountParser;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.Slot;
 import net.minecraft.text.Text;
@@ -15,19 +15,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 @Mixin(HandledScreen.class)
 public abstract class SellProtectionMixin {
 
     @Shadow @Nullable protected Slot focusedSlot;
     @Shadow public abstract @Nullable Slot getSlotAt(double x, double y);
-    
-    // Patterns for extracting coin amounts
-    private static final Pattern INVENTORY_SACK_PATTERN = Pattern.compile("You earn: ([0-9,]+(?:\\.[0-9]+)?) coins");
-    private static final Pattern SELL_INSTANTLY_PATTERN = Pattern.compile("Total: ([0-9,]+(?:\\.[0-9]+)?) coins");
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onSellProtectionMouseClicked(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
@@ -71,16 +63,16 @@ public abstract class SellProtectionMixin {
             // Check for sell protection patterns and extract amounts
             boolean shouldBlock = false;
             String protection = "";
-            long sellAmount = 1000000; // Default value
+            long sellAmount = SellAmountParser.getDefaultProtectionAmount(); // Default to trigger protection
 
             if (itemName.contains("Sell Instantly")) {
-                sellAmount = extractSellInstantlyAmount(clickedItem);
+                sellAmount = SellAmountParser.extractSellInstantlyAmount(clickedItem);
                 if (button == 0 && !ctrlPressed && sellAmount > SellProtectionManager.getMaxAmount()) { // Left click without ctrl
                     shouldBlock = true;
                     protection = "Sell Instantly";
                 }
             } else if (itemName.contains("Sell Sacks Now") || itemName.contains("Sell Inventory Now")) {
-                sellAmount = extractInventorySackAmount(clickedItem);
+                sellAmount = SellAmountParser.extractInventorySackAmount(clickedItem);
                 // Block both left and right clicks for these items if amount exceeds threshold
                 if (!ctrlPressed && sellAmount > SellProtectionManager.getMaxAmount()) {
                     shouldBlock = true;
@@ -106,56 +98,6 @@ public abstract class SellProtectionMixin {
         } catch (Exception e) {
             System.out.println("[SellProtectionMixin] mouseClicked failed: " + e.getMessage());
         }
-    }
-
-    private long extractSellInstantlyAmount(ItemStack item) {
-        try {
-            List<Text> tooltip = item.getTooltip(
-                Item.TooltipContext.DEFAULT,
-                MinecraftClient.getInstance().player, 
-                net.minecraft.item.tooltip.TooltipType.BASIC
-            );
-            
-            for (Text line : tooltip) {
-                String lineText = line.getString();
-                Matcher matcher = SELL_INSTANTLY_PATTERN.matcher(lineText);
-                if (matcher.find()) {
-                    String amountStr = matcher.group(1).replace(",", "");
-                    long amount = (long) (Double.parseDouble(amountStr));
-                    System.out.println("[SellProtectionMixin] Found sell instantly amount: " + amount + " from text: " + lineText);
-                    return amount;
-                }
-            }
-        } catch (Exception e) {
-            System.out.println("[SellProtectionMixin] Failed to extract sell instantly amount: " + e.getMessage());
-        }
-        System.out.println("[SellProtectionMixin] No sell instantly amount found, using default: 1000000");
-        return 1000000; // Default value if parsing fails
-    }
-
-    private long extractInventorySackAmount(ItemStack item) {
-        try {
-            List<Text> tooltip = item.getTooltip(
-                Item.TooltipContext.DEFAULT,
-                MinecraftClient.getInstance().player, 
-                net.minecraft.item.tooltip.TooltipType.BASIC
-            );
-            
-            for (Text line : tooltip) {
-                String lineText = line.getString();
-                Matcher matcher = INVENTORY_SACK_PATTERN.matcher(lineText);
-                if (matcher.find()) {
-                    String amountStr = matcher.group(1).replace(",", "");
-                    long amount = (long) (Double.parseDouble(amountStr));
-                    System.out.println("[SellProtectionMixin] Found inventory/sack amount: " + amount + " from text: " + lineText);
-                    return amount;
-                }
-            }
-        } catch (Exception e) {
-            System.out.println("[SellProtectionMixin] Failed to extract inventory/sack amount: " + e.getMessage());
-        }
-        System.out.println("[SellProtectionMixin] No inventory/sack amount found, using default: 1000000");
-        return 1000000; // Default value if parsing fails
     }
 
     private String formatCoins(long coins) {
