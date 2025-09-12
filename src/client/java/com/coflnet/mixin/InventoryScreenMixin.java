@@ -10,17 +10,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(InventoryScreen.class)
 public abstract class InventoryScreenMixin extends HandledScreenMixin{
 
-    @Inject(at = @At("HEAD"), method = "render")
-    public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
-        try {
-            if(sideTextWidget != null)
-                sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
-        } catch (Exception e) {
-            System.out.println("[InventoryScreenMixin] render HEAD failed: " + e.getMessage());
-        }
-    }
-
-
     @Inject(at = @At("TAIL"), method = "render")
     public void renderMain(DrawContext context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
         try {
