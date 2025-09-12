@@ -143,7 +143,7 @@ public class EventSubscribers {
 
     @Subscribe
     public void onSettingsReceive(OnSettingsReceive event){
-        System.out.println("SETTINGS RECEIVED: "+event.Settings.getSettingName());
+        System.out.println("SETTINGS RECEIVED: "+event.Settings.size());
     }
 
     @Subscribe

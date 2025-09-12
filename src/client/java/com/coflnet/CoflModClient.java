@@ -8,6 +8,7 @@ import java.util.*;
 import java.util.List;
 
 import CoflCore.classes.Position;
+import CoflCore.classes.Settings;
 import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
@@ -113,7 +114,7 @@ public class CoflModClient implements ClientModInitializer {
         private final String text;
 
         public TooltipMessage(String text) {
-            this.text = text;
+            this.text = text != null ? text : "";
         }
         @Override
         public String getString() {
@@ -472,37 +473,40 @@ public class CoflModClient implements ClientModInitializer {
                     String currentWord = inputArgs.length > 0 ? inputArgs[inputArgs.length - 1] : "";
 
                     // Check if the command is "s" or "set" and suggest specific subcommands
-                    if (inputArgs.length == 3 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
-                        String[] suggestions = new String[] {"lbin", "finders", "onlyBin", "whitelistAftermain", "DisableFlips",
-                                "DebugMode", "blockHighCompetition", "minProfit", "minProfitPercent", "minVolume", "maxCost",
-                                "modjustProfit", "modsoundOnFlip", "modshortNumbers", "modshortNames", "modblockTenSecMsg",
-                                "modformat", "modblockedFormat", "modchat", "modcountdown", "modhideNoBestFlip", "modtimerX",
-                                "modtimerY", "modtimerSeconds", "modtimerScale", "modtimerPrefix", "modtimerPrecision",
-                                "modblockedMsg", "modmaxPercentOfPurse", "modnoBedDelay", "modstreamerMode", "modautoStartFlipper",
-                                "modnormalSoldFlips", "modtempBlacklistSpam", "moddataOnlyMode", "modahListHours", "modquickSell",
-                                "modmaxItemsInInventory", "moddisableSpamProtection", "showcost", "showestProfit", "showlbin",
-                                "showslbin", "showmedPrice", "showseller", "showvolume", "showextraFields", "showprofitPercent",
-                                "showprofit", "showsellerOpenBtn", "showlore", "showhideSold", "showhideManipulated",
-                                "privacyExtendDescriptions", "privacyAutoStart", "loreHighlightFilterMatch",
-                                "loreMinProfitForHighlight", "loreDisableHighlighting", "sellProtectionEnabled", "sellProtectionThreshold"};
-
-                        for (String suggestion : suggestions) {
-                            if (suggestion.toLowerCase().contains(currentWord.toLowerCase()))
-                                builder.suggest("set " + suggestion);
+                    if (inputArgs.length == 2 && (input.contains("set ") || input.equals("s "))
+                        || inputArgs.length == 3 && (inputArgs[1].equals("s") || inputArgs[1].equals("set"))) {
+                        if("sellprotectionenabled".contains(currentWord.toLowerCase()) || currentWord.equals("set"))
+                            builder.suggest("set sellProtectionEnabled", new Message() {
+                                @Override
+                                public String getString() {
+                                    return "Enable or disable sell protection (true/false)";
+                                }
+                            });
+                        if("sellprotectionthreshold".contains(currentWord.toLowerCase()) || currentWord.equals("set"))
+                            builder.suggest("set sellProtectionThreshold", new Message() {
+                                @Override
+                                public String getString() {
+                                    return "Set max coin amount before sell protection blocks sells (e.g. 1000, 2k, 3m)";
+                                }
+                            });
+                        for (Settings suggestion : CoflCore.config.knownSettings) {
+                            if (suggestion.getSettingKey().toLowerCase().contains(currentWord.toLowerCase()) || currentWord.equals("set") || currentWord.equals("s")) {
+                                String settingInfo = suggestion.getSettingInfo();
+                                if (settingInfo == null) {
+                                    builder.suggest("set " + suggestion.getSettingKey());
+                                } else {
+                                    builder.suggest("set " + suggestion.getSettingKey(), new Message() {
+                                        @Override
+                                        public String getString() {
+                                            return settingInfo;
+                                        }
+                                    });
+                                }
+                            }
                         }
                     } else if(inputArgs.length > 3)
                         return builder.buildFuture();
-                    else {
-                        // Add sell protection command suggestion
-                        if ("sellprotection".startsWith(currentWord.toLowerCase()) || inputArgs.length == 1) {
-                            builder.suggest("sellprotection", new Message() {
-                                @Override
-                                public String getString() {
-                                    return "Configure sell protection settings";
-                                }
-                            });
-                        }
-                        
+                    else {                        
                         if(CoflCore.config.knownCommands == null)
                         {
                             System.out.println("No known commands loaded yet, cannot suggest");
@@ -520,7 +524,8 @@ public class CoflModClient implements ClientModInitializer {
                                         @Override
                                         public String getString() {
                                             // Replace line breaks with spaces for single-line display
-                                            return messageText.split("\n")[0];
+                                            String[] parts = messageText.split("\n");
+                                            return parts.length > 0 ? parts[0] : "";
                                         }
                                     });
                             }
