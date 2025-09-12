@@ -546,16 +546,17 @@ public class CoflModClient implements ClientModInitializer {
                         } else if (args[1].equals("sellProtectionThreshold")) {
                             if (args.length >= 3) {
                                 try {
-                                    long amount = Long.parseLong(args[2]);
+                                    long amount = parseAmountString(args[2]);
                                     com.coflnet.config.SellProtectionManager.setMaxAmount(amount);
                                     sendChatMessage("§aSell Protection max amount set to " + formatCoins(amount) + " coins");
                                     return 1;
                                 } catch (NumberFormatException e) {
-                                    sendChatMessage("§cInvalid number: " + args[2]);
+                                    sendChatMessage("§cInvalid number: " + args[2] + ". Use formats like: 1000, 2k, 3m, 1.5b");
                                     return 1;
                                 }
                             } else {
                                 sendChatMessage("§cUsage: /cofl set sellProtectionThreshold <amount>");
+                                sendChatMessage("§7Examples: 1000, 2k, 3m, 1.5b");
                                 return 1;
                             }
                         }
@@ -568,6 +569,7 @@ public class CoflModClient implements ClientModInitializer {
                             sendChatMessage("§7Max Amount: §6" + formatCoins(config.sellProtectionThreshold) + " coins");
                             sendChatMessage("§7Usage: §e/cofl set sellProtectionEnabled <true/false>");
                             sendChatMessage("§7Usage: §e/cofl set sellProtectionThreshold <amount>");
+                            sendChatMessage("§7Examples: §e1000§7, §e2k§7, §e3m§7, §e1.5b");
                             return 1;
                         }
                     }
@@ -1221,6 +1223,57 @@ public class CoflModClient implements ClientModInitializer {
         } catch (Exception e) {
             System.out.println("[CoflModClient] addSellProtectionTooltip failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Parses amount strings with k/m/b suffixes (e.g., "2k", "3m", "1.5b")
+     * @param amountStr the string to parse (e.g., "1000", "2k", "3m", "1.5b")
+     * @return the parsed amount as a long
+     * @throws NumberFormatException if the string cannot be parsed
+     */
+    private static long parseAmountString(String amountStr) throws NumberFormatException {
+        if (amountStr == null || amountStr.trim().isEmpty()) {
+            throw new NumberFormatException("Empty amount string");
+        }
+        
+        String input = amountStr.trim().toLowerCase();
+        
+        // Handle plain numbers first
+        if (input.matches("^[0-9]+$")) {
+            return Long.parseLong(input);
+        }
+        
+        // Handle numbers with decimal points (e.g., "1.5")
+        if (input.matches("^[0-9]+\\.[0-9]+$")) {
+            return (long) (Double.parseDouble(input));
+        }
+        
+        // Handle suffixed numbers
+        if (input.matches("^[0-9]+\\.?[0-9]*[kmb]$")) {
+            char suffix = input.charAt(input.length() - 1);
+            String numberPart = input.substring(0, input.length() - 1);
+            
+            double value;
+            try {
+                value = Double.parseDouble(numberPart);
+            } catch (NumberFormatException e) {
+                throw new NumberFormatException("Invalid number part: " + numberPart);
+            }
+            
+            switch (suffix) {
+                case 'k':
+                    return (long) (value * 1_000);
+                case 'm':
+                    return (long) (value * 1_000_000);
+                case 'b':
+                    return (long) (value * 1_000_000_000);
+                default:
+                    throw new NumberFormatException("Invalid suffix: " + suffix);
+            }
+        }
+        
+        // If we get here, the format is not recognized
+        throw new NumberFormatException("Invalid format: " + amountStr + ". Use formats like: 1000, 2k, 3m, 1.5b");
     }
 
     private static String formatCoins(long coins) {
