@@ -81,9 +81,22 @@ public class TfmBinGUI extends BinGUI {
                 if (cancelClickableWidget.isMouseOver(mouseX, mouseY)){
                     cancelClickableWidget.onClick(mouseX,mouseY);
                 } else {
-                    if(auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_BUY_SLOT);
-                    else if(auctionStatus == AuctionStatus.AUCTION_WAITING) MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal("[§1C§6oflnet§f]§7: waiting for auction grace period "));
-                    else clickSlot(AUCTION_CONFIRM_SLOT);
+                    switch (auctionStatus){
+                        case INIT:
+                        case AUCTION_BUYING:
+                        case AUCTION_WAITING:
+                            clickSlot(AUCTION_BUY_SLOT);
+                            break;
+                        case AUCTION_CONFIRMING:
+                            clickSlot(AUCTION_CONFIRM_SLOT);
+                            break;
+                        case OWN_AUCTION_CLAIMING:
+                            clickSlot(OWN_AUCTION_CLAIM_SLOT);
+                            break;
+                        case OWN_AUCTION_CANCELING:
+                            clickSlot(OWN_AUCTION_CANCEL_SLOT);
+                            break;
+                    }
                 }
             }
 
@@ -128,7 +141,13 @@ public class TfmBinGUI extends BinGUI {
         super.renderBackground(drawContext, mouseX, mouseY, delta);
 
         if(!gcsh.getInventory().isEmpty()){
-            if (gcsh.getInventory().getStack(AUCTION_ITEM_SLOT).getItem() != Items.AIR) setItem(gcsh.getInventory().getStack(AUCTION_ITEM_SLOT));
+            if (gcsh.getInventory().getStack(AUCTION_ITEM_SLOT).getItem() != Items.AIR){ 
+                setItem(gcsh.getInventory().getStack(AUCTION_ITEM_SLOT));
+                 updateAuctionStatus(
+                        gcsh.getInventory()
+                                .getStack(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
+                );
+            }
         }
 
         RenderUtils.drawRectOutline(
