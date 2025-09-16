@@ -138,6 +138,9 @@ public abstract class BinGUI extends Screen {
             return auctionStatus;
         }
 
+        if(itemStack.getCustomName() == null)
+            return auctionStatus;
+
         String customName = itemStack.getCustomName().getString();
         String loreString = itemStack.getComponents().get(DataComponentTypes.LORE).toString();
 
