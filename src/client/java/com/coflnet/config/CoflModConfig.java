@@ -19,6 +19,8 @@ public class CoflModConfig {
     // Sell protection settings
     public boolean sellProtectionEnabled = true;
     public long sellProtectionThreshold = 1000000; // Default: 1 million coins
+
+    public boolean angryCoopProtectionEnabled = true;
     
     public static CoflModConfig load() {
         try {
