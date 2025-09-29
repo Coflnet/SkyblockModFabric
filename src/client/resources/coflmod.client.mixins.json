@@ -10,6 +10,7 @@
     "NewItemInChestMixin",
     "ScreenMixin",
     "ScrollableWidgetMixin",
+    "AuctionProtectionMixin",
     "SellProtectionMixin"
   ],
   "injectors": {

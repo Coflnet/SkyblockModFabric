@@ -489,6 +489,13 @@ public class CoflModClient implements ClientModInitializer {
                                     return "Set max coin amount before sell protection blocks sells (e.g. 1000, 2k, 3m)";
                                 }
                             });
+                        if("angrycoopprotectionenabled".contains(currentWord.toLowerCase()) || currentWord.equals("set"))
+                            builder.suggest("set angryCoopProtectionEnabled", new Message() {
+                                @Override
+                                public String getString() {
+                                    return "Enable or disable angry co-op protection (true/false)";
+                                }
+                            });
                         for (Settings suggestion : CoflCore.config.knownSettings) {
                             if (suggestion.getSettingKey().toLowerCase().contains(currentWord.toLowerCase()) || currentWord.equals("set") || currentWord.equals("s")) {
                                 String settingInfo = suggestion.getSettingInfo();
@@ -564,6 +571,16 @@ public class CoflModClient implements ClientModInitializer {
                                 sendChatMessage("§7Examples: 1000, 2k, 3m, 1.5b");
                                 return 1;
                             }
+                        } else if (args[1].equals("angryCoopProtectionEnabled")) {
+                            if (args.length >= 3) {
+                                boolean enabled = args[2].equalsIgnoreCase("true") || args[2].equals("1");
+                                com.coflnet.config.AngryCoopProtectionManager.setEnabled(enabled);
+                                sendChatMessage("§aAngry Co-op Protection " + (enabled ? "enabled" : "disabled"));
+                                return 1;
+                            } else {
+                                sendChatMessage("§cUsage: /cofl set angryCoopProtectionEnabled <true/false>");
+                                return 1;
+                            }
                         }
                     } else if (args.length >= 1 && args[0].equals("sellprotection")) {
                         if (args.length == 1) {
@@ -575,6 +592,14 @@ public class CoflModClient implements ClientModInitializer {
                             sendChatMessage("§7Usage: §e/cofl set sellProtectionEnabled <true/false>");
                             sendChatMessage("§7Usage: §e/cofl set sellProtectionThreshold <amount>");
                             sendChatMessage("§7Examples: §e1000§7, §e2k§7, §e3m§7, §e1.5b");
+                            return 1;
+                        }
+                    } else if (args.length >= 1 && args[0].equals("angrycoop")) {
+                        if (args.length == 1) {
+                            com.coflnet.config.CoflModConfig config = com.coflnet.config.AngryCoopProtectionManager.getConfig();
+                            sendChatMessage("§6=== Angry Co-op Protection Settings ===");
+                            sendChatMessage("§7Enabled: " + (config.angryCoopProtectionEnabled ? "§aYes" : "§cNo"));
+                            sendChatMessage("§7Usage: §e/cofl set angryCoopProtectionEnabled <true/false>");
                             return 1;
                         }
                     }
