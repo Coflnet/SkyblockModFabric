@@ -106,12 +106,9 @@ public class CoflBinGUI extends BinGUI {
                 } else {
                     switch (auctionStatus){
                         case INIT:
+                        case AUCTION_WAITING:
                         case AUCTION_BUYING:
                             clickSlot(AUCTION_BUY_SLOT);
-                            break;
-                        case AUCTION_WAITING:
-                            MinecraftClient.getInstance().inGameHud.getChatHud()
-                                    .addMessage(Text.literal("[§1C§6oflnet§f]§7: waiting for auction grace period "));
                             break;
                         case AUCTION_CONFIRMING:
                             clickSlot(AUCTION_CONFIRM_SLOT);
