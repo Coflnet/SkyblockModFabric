@@ -6,7 +6,6 @@ import com.coflnet.config.TextWidgetPositionConfig;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.models.TextElement;
 import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
@@ -25,7 +24,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.List;
 
@@ -126,12 +124,20 @@ public abstract class HandledScreenMixin {
             }
 
             try {
-                Type listType = new TypeToken<List<TextElement>>(){}.getType();
-                List<TextElement> textElements = gson.fromJson(jsonText, listType);
-                
+                TextElement[] textElements = gson.fromJson(jsonText, TextElement[].class);
+                if (textElements == null || textElements.length == 0) {
+                    MutableText fallbackText = Text.literal(descModification.value);
+                    interactiveTextLines.add(fallbackText);
+                    int width = MinecraftClient.getInstance().textRenderer.getWidth(fallbackText);
+                    if (width > maxWidth) {
+                        maxWidth = width;
+                    }
+                    continue;
+                }
+
                 MutableText lineText = Text.empty();
-                for (int i = 0; i < textElements.size(); i++) {
-                    TextElement element = textElements.get(i);
+                for (int i = 0; i < textElements.length; i++) {
+                    TextElement element = textElements[i];
                     MutableText elementText = Text.literal(element.text);
                     
                     // Add click event
