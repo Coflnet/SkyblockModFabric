@@ -216,19 +216,6 @@ public class CoflModClient implements ClientModInitializer {
             registerDefaultCommands(dispatcher, "cofl");
             registerDefaultCommands(dispatcher, "cl");
 
-            // Add bazaarsearch as a subcommand to /cofl
-            dispatcher.register(
-                ClientCommandManager.literal("cofl")
-                    .then(ClientCommandManager.literal("bazaarsearch")
-                        .then(ClientCommandManager.argument("item", StringArgumentType.greedyString())
-                            .executes(context -> {
-                                String searchTerm = context.getArgument("item", String.class);
-                                searchInBazaarSmart(searchTerm);
-                                return 1;
-                            })
-                        )
-                    )
-            );
 
 
             dispatcher.register(ClientCommandManager.literal("fc")
@@ -604,6 +591,21 @@ public class CoflModClient implements ClientModInitializer {
                         }
                     }
                     
+                    // Special internal-only commands
+                    if (args.length >= 1 && args[0].equalsIgnoreCase("bazaarsearch")) {
+                        if (args.length >= 2) {
+                            // Join remaining args as the search term
+                            String[] part = new String[args.length - 1];
+                            System.arraycopy(args, 1, part, 0, part.length);
+                            String searchTerm = String.join(" ", part);
+                            searchInBazaarSmart(searchTerm);
+                            return 1;
+                        } else {
+                            sendChatMessage("§cUsage: /cofl bazaarsearch <item>");
+                            return 1;
+                        }
+                    }
+
                     // Pass to CoflSkyCommand for other commands
                     CoflSkyCommand.processCommand(args, username);
                     return 1;
