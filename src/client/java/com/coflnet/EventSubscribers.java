@@ -41,7 +41,9 @@ public class EventSubscribers {
 
     @Subscribe
     public void WriteToChat(OnWriteToChatReceive command){
-        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(command.ChatMessage));
+        MinecraftClient.getInstance().execute(() -> 
+            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(command.ChatMessage))
+        );
     }
 
     @Subscribe
@@ -61,12 +63,16 @@ public class EventSubscribers {
                 combinedMessage.append(styledPart);
             }
         }
-        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(combinedMessage);
+        MinecraftClient.getInstance().execute(() -> 
+            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(combinedMessage)
+        );
     }
 
     @Subscribe
     public void onModChatMessage(OnModChatMessage event){
-        MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(event.message));
+        MinecraftClient.getInstance().execute(() -> 
+            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(event.message))
+        );
     }
 
     @Subscribe
@@ -82,13 +88,18 @@ public class EventSubscribers {
             default -> soundName = "";
         }
 
-        PlayerEntity player = MinecraftClient.getInstance().player;
-        player.getWorld().playSound(
-                player, player.getBlockPos(),
-                CoflModClient.findByName(soundName),
-                SoundCategory.MASTER, 1f,
-                event.Sound.getSoundPitch() == null ? 1f : (float) event.Sound.getSoundPitch()
-        );
+        String finalSoundName = soundName;
+        MinecraftClient.getInstance().execute(() -> {
+            PlayerEntity player = MinecraftClient.getInstance().player;
+            if (player != null) {
+                player.getEntityWorld().playSound(
+                        player, player.getBlockPos(),
+                        CoflModClient.findByName(finalSoundName),
+                        SoundCategory.MASTER, 1f,
+                        event.Sound.getSoundPitch() == null ? 1f : (float) event.Sound.getSoundPitch()
+                );
+            }
+        });
     }
 
     @Subscribe
@@ -148,10 +159,12 @@ public class EventSubscribers {
 
     @Subscribe
     public void onCloseGUI(OnCloseGUI event){
-        if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
-            System.out.println("Closing GUI: " + hs.getClass().getName());
-            hs.close();
-        }
+        MinecraftClient.getInstance().execute(() -> {
+            if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
+                System.out.println("Closing GUI: " + hs.getClass().getName());
+                hs.close();
+            }
+        });
     }
 
     @Subscribe
