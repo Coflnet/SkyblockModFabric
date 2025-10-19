@@ -3,6 +3,7 @@ package com.coflnet.mixin;
 import com.coflnet.config.SellProtectionManager;
 import com.coflnet.utils.SellAmountParser;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.slot.Slot;
@@ -22,7 +23,7 @@ public abstract class SellProtectionMixin {
     @Shadow public abstract @Nullable Slot getSlotAt(double x, double y);
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    private void onSellProtectionMouseClicked(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
+    private void onSellProtectionMouseClicked(Click click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
         try {
             // Check if sell protection is enabled
             if (!SellProtectionManager.isEnabled()) {
@@ -30,6 +31,7 @@ public abstract class SellProtectionMixin {
             }
 
             // Only check left and right clicks
+            int button = click.button();
             if (button != 0 && button != 1) {
                 return;
             }
@@ -41,6 +43,8 @@ public abstract class SellProtectionMixin {
             }
 
             // Get the slot being clicked
+            double mouseX = click.x();
+            double mouseY = click.y();
             Slot clickedSlot = getSlotAt(mouseX, mouseY);
             if (clickedSlot == null || !clickedSlot.hasStack()) {
                 return;

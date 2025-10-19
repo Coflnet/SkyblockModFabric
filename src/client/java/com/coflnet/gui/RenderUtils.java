@@ -4,8 +4,8 @@ import com.coflnet.CoflMod;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.DepthTestFunction;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.render.Camera;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
@@ -376,18 +376,16 @@ public class RenderUtils {
                 "Lorem ipsum dolor sit amet,";
     }
 
-    public static void renderHighlightBox(WorldRenderContext context, double[] minXYZ, double[] maxXYZ, float[] rgba) {
+    public static void renderHighlightBox(MatrixStack matrices, Camera camera, double[] minXYZ, double[] maxXYZ, float[] rgba) {
         if (minXYZ.length != 3) throw new ArgumentCountException(minXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
         if (maxXYZ.length != 3) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
         if (rgba.length != 4) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 4 values (r/g/b/a) in array");
 
-        MatrixStack matrices = context.matrixStack();
-        Camera camera = context.camera();
-
         matrices.push();
         matrices.translate(-camera.getPos().x, -camera.getPos().y, -camera.getPos().z);
 
-        VertexConsumer buffer = context.consumers().getBuffer(THROUGH_WALLS_LAYER);
+        VertexConsumerProvider.Immediate consumers = MinecraftClient.getInstance().getBufferBuilders().getEntityVertexConsumers();
+        VertexConsumer buffer = consumers.getBuffer(THROUGH_WALLS_LAYER);
         VertexRendering.drawFilledBox(
                 matrices, buffer,
                 minXYZ[0], minXYZ[1], minXYZ[2],
@@ -395,7 +393,7 @@ public class RenderUtils {
                 rgba[0], rgba[1], rgba[2], rgba[3]
         );
 
-        ((VertexConsumerProvider.Immediate)context.consumers()).draw(THROUGH_WALLS_LAYER);
+        consumers.draw(THROUGH_WALLS_LAYER);
         matrices.pop();
     }
 }

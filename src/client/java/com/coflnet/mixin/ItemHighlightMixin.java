@@ -4,6 +4,7 @@ import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
 import com.coflnet.gui.RenderUtils;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.input.KeyInput;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.screen.slot.Slot;
@@ -30,9 +31,10 @@ public abstract class ItemHighlightMixin {
     @Shadow public abstract @Nullable Slot getSlotAt(double x, double y);
 
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
-    private void onKeyPressed(int keyCode, int scanCode, int modifiers, CallbackInfoReturnable<Boolean> cir) {
+    private void onKeyPressed(KeyInput input, CallbackInfoReturnable<Boolean> cir) {
         try {
-            if (CoflModClient.uploadItemKeyBinding.matchesKey(keyCode, scanCode)) {
+            // The keyPressed method now receives a KeyInput record object.
+            if (CoflModClient.uploadItemKeyBinding.matchesKey(input)) {
                 if (focusedSlot != null && focusedSlot.hasStack()) {
                     CoflModClient.uploadItem(focusedSlot.getStack());
                 }

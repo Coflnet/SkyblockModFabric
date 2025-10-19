@@ -11,7 +11,8 @@
     "ScreenMixin",
     "ScrollableWidgetMixin",
     "AuctionProtectionMixin",
-    "SellProtectionMixin"
+    "SellProtectionMixin",
+    "WorldRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

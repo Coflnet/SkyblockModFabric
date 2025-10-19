@@ -332,7 +332,7 @@ public abstract class HandledScreenMixin {
                     }
                 }
             }
-            // for an unknown reason the single lines don't render anymore on 1.21.8 so we render the widget as well
+            // for an unknown reason the single lines don't render anymore on 1.21.8+ so we render the widget as well
             sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
         } catch (Exception e) {
             System.out.println("[HandledScreenMixin] renderMain failed: " + e.getMessage());
@@ -340,8 +340,13 @@ public abstract class HandledScreenMixin {
     }
 
     @Inject(at = @At("HEAD"), method = "mouseDragged", cancellable = true)
-    public void onMouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY, CallbackInfoReturnable<Boolean> cir) {
+    public void onMouseDragged(net.minecraft.client.gui.Click click, double deltaX, double deltaY, CallbackInfoReturnable<Boolean> cir) {
         try {
+            // The Click object contains the mouse coordinates and button used for the drag
+            int button = click.button();
+            double mouseX = click.x();
+            double mouseY = click.y();
+
             if (isDragging && button == 1) { // Right mouse button
                 // Update widget position based on drag
                 double newX = widgetStartX + (mouseX - dragStartX);
@@ -367,8 +372,9 @@ public abstract class HandledScreenMixin {
     }
     
     @Inject(at = @At("HEAD"), method = "mouseReleased", cancellable = true)  
-    public void onMouseReleased(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
+    public void onMouseReleased(net.minecraft.client.gui.Click click, CallbackInfoReturnable<Boolean> cir) {
         try {
+            int button = click.button();
             if (isDragging && button == 1) { // Right mouse button
                 isDragging = false;
                 positionConfig.save(); // Save the new position
@@ -411,8 +417,12 @@ public abstract class HandledScreenMixin {
     }
 
     @Inject(at = @At("HEAD"), method = "mouseClicked", cancellable = true)
-    public void onMouseClicked(double mouseX, double mouseY, int button, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
+    public void onMouseClicked(net.minecraft.client.gui.Click click, boolean doubleClick, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
         try {
+            double mouseX = click.x();
+            double mouseY = click.y();
+            int button = click.button();
+            
             List<MutableText> linesSnapshot = this.interactiveTextLines;
             if (linesSnapshot == null || linesSnapshot.isEmpty() || sideTextWidget == null) {
                 return;

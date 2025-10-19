@@ -14,7 +14,6 @@ import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.MinecraftVersion;
 import net.minecraft.block.entity.*;
@@ -89,11 +88,12 @@ import net.minecraft.text.Text;
 import net.minecraft.util.collection.DefaultedList;
 
 public class CoflModClient implements ClientModInitializer {
-    public static final String targetVersion = "1.21.8";
+    public static final String targetVersion = "1.21.10";
     public static final int InventorysizeWithOffHand = 5 * 9 + 1;
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static int counter = 0;
+    private static final KeyBinding.Category SKYCOFL_CATEGORY = KeyBinding.Category.create(Identifier.of("coflnet", "skycofl"));
     public static KeyBinding bestflipsKeyBinding;
     public static KeyBinding uploadItemKeyBinding;
     public static List<KeyBinding> additionalKeyBindings = new ArrayList<KeyBinding>();
@@ -139,12 +139,12 @@ public class CoflModClient implements ClientModInitializer {
                 "keybinding.coflmod.bestflips",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_B,
-                "SkyCofl"));
+                SKYCOFL_CATEGORY));
         uploadItemKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "keybinding.coflmod.uploaditem",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_I,
-                "SkyCofl"));
+                SKYCOFL_CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (bestflipsKeyBinding.isPressed()) {
@@ -412,24 +412,6 @@ public class CoflModClient implements ClientModInitializer {
             }
 
             return ActionResult.PASS;
-        });
-
-        WorldRenderEvents.LAST.register(worldRenderContext -> {
-            if (EventSubscribers.positions == null || EventSubscribers.positions.size() == 0) return;
-            for (Position position : EventSubscribers.positions) {
-                RenderUtils.renderHighlightBox(
-                        worldRenderContext,
-                        new double[]{
-                                position.getX(),
-                                (double)position.getY() +1,
-                                position.getZ() + 1
-                        }, new double[]{
-                                position.getX() + 1,
-                                (double)position.getY(),
-                                position.getZ()
-                        },  new float[]{0.3f, 1f, 0.1f, 0.5f} // a=0.2f
-                );
-            }
         });
 
         ScreenEvents.AFTER_INIT.register((minecraftClient, screen, i, i1) -> {
@@ -885,7 +867,7 @@ public class CoflModClient implements ClientModInitializer {
             return scoreboardAsText;
         }
 
-        Scoreboard scoreboard = player.getScoreboard();
+        Scoreboard scoreboard = MinecraftClient.getInstance().world.getScoreboard();
         ScoreboardObjective objective = scoreboard.getObjectiveForSlot(ScoreboardDisplaySlot.FROM_ID.apply(1));
 
         for (ScoreHolder scoreHolder : scoreboard.getKnownScoreHolders()) {
@@ -930,7 +912,7 @@ public class CoflModClient implements ClientModInitializer {
                         String displayName = playerListEntry.getDisplayName().getString();
                         tabList.add(displayName);
                     } else {
-                        String playerName = playerListEntry.getProfile().getName();
+                        String playerName = playerListEntry.getProfile().name();
                         tabList.add(playerName);
                     }
                 }
@@ -1120,7 +1102,7 @@ public class CoflModClient implements ClientModInitializer {
 
     private boolean checkVersionCompability() {
         try {
-            String v = MinecraftVersion.CURRENT.name();
+            String v = net.minecraft.SharedConstants.getGameVersion().id();
             System.out.println("Detected Minecraft version:" + v);
             boolean b = v.compareTo(targetVersion) == 0;
 
@@ -1161,7 +1143,8 @@ public class CoflModClient implements ClientModInitializer {
             int keyIndex = getKeyIndex(keys[i].DefaultKey.toUpperCase());
 
             HotkeyRegister hotkey = keys[i];
-            KeyBinding keyBinding = new KeyBinding(hotkey.Name, keyIndex, "SkyCofl (unchangeable)");
+            KeyBinding.Category unchangeableCategory = KeyBinding.Category.create(Identifier.of("coflnet", "skycofl_unchangeable"));
+            KeyBinding keyBinding = new KeyBinding(hotkey.Name, keyIndex, unchangeableCategory);
             additionalKeyBindings.add(keyBinding);
             keybindingsToHotkeys.put(keyBinding, hotkey);
             System.out.println("Registered Key: " + hotkey.Name + " with key " + hotkey.DefaultKey.toUpperCase() + " (" +keyIndex+")");

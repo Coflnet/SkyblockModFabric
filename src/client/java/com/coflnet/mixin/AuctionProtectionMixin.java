@@ -2,6 +2,7 @@ package com.coflnet.mixin;
 
 import com.coflnet.config.AngryCoopProtectionManager;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.entity.player.PlayerInventory;
@@ -31,12 +32,13 @@ public abstract class AuctionProtectionMixin {
     @Shadow public abstract @Nullable Slot getSlotAt(double x, double y);
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    private void onAngryCoopMouseClicked(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
+    private void onAngryCoopMouseClicked(Click click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
         try {
             if (!AngryCoopProtectionManager.isEnabled()) {
                 return;
             }
 
+            int button = click.button();
             if (button != 0 && button != 1) {
                 return;
             }
@@ -53,6 +55,8 @@ public abstract class AuctionProtectionMixin {
                 return;
             }
 
+            double mouseX = click.x();
+            double mouseY = click.y();
             Slot clickedSlot = getSlotAt(mouseX, mouseY);
             if (clickedSlot == null || !clickedSlot.hasStack()) {
                 return;
@@ -66,7 +70,7 @@ public abstract class AuctionProtectionMixin {
             boolean ctrlPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
                     || GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
 
-            String playerNameLower = client.player.getGameProfile().getName().toLowerCase(Locale.ROOT);
+            String playerNameLower = client.player.getGameProfile().name().toLowerCase(Locale.ROOT);
             String clickedName = stripFormatting(clickedStack.getName().getString()).trim();
 
             if (isClaimAll(clickedName)) {

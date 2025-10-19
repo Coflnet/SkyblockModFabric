@@ -50,18 +50,18 @@ jobs:
          # curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           # general settings
-          name: "SkyCofl ${{ github.ref_name }} Fabric 1.21.8"
+          name: "SkyCofl ${{ github.ref_name }} Fabric 1.21.10"
           version: ${{ github.ref_name }}
           changelog: |
             ➡️ Bug Fixes and Improvements
             ${{ github.event.release.body }}
             [View on GitHub Releases](https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }})
           loaders: fabric
-          game-versions: "1.21.8"
+          game-versions: "1.21.10"
           java: "21"
           version-type: release
 
           files: |
             build/libs/!(*-@(dev|sources|javadoc)).jar
           dependencies: |
-            fabric@0.131.0+1.21.8(required){modrinth:P7dR8mSH}{curseforge:306612}#(ignore:github)
+            fabric@0.131.0+1.21.10(required){modrinth:P7dR8mSH}{curseforge:306612}#(ignore:github)

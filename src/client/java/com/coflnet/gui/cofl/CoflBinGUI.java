@@ -59,14 +59,17 @@ public class CoflBinGUI extends BinGUI {
             protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
 
             @Override
-            public void onClick(double mouseX, double mouseY) {
+            public void onClick(net.minecraft.client.gui.Click click, boolean fromScreen) {
+                double mouseX = click.x();
+                double mouseY = click.y();
                 if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
                 else clickSlot(AUCTION_CONFIRMATION_CANCEL_SLOT);
             }
 
             @Override
-            protected boolean isValidClickButton(int button) {
-                return button == 0 || button == 1;
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseInput mi) {
+                int b = mi.button();
+                return b == 0 || b == 1;
             }
         };
 
@@ -106,9 +109,13 @@ public class CoflBinGUI extends BinGUI {
             protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
 
             @Override
-            public void onClick(double mouseX, double mouseY) {
+            public void onClick(net.minecraft.client.gui.Click click, boolean fromScreen) {
+                double mouseX = click.x();
+                double mouseY = click.y();
                 if (leftClickableWidget.isMouseOver(mouseX, mouseY)) {
-                    leftClickableWidget.onClick(mouseX, mouseY);
+                    // No explicit button provided here; default to left mouse button (0) and no modifiers.
+                    net.minecraft.client.input.MouseInput mi = new net.minecraft.client.input.MouseInput(0, 0);
+                    leftClickableWidget.onClick(new net.minecraft.client.gui.Click(mouseX, mouseY, mi), true);
                 } else {
                     switch (auctionStatus){
                         case INIT:
@@ -130,8 +137,9 @@ public class CoflBinGUI extends BinGUI {
             }
 
             @Override
-            protected boolean isValidClickButton(int button) {
-                return button == 0 || button == 1;
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseInput mi) {
+                int b = mi.button();
+                return b == 0 || b == 1;
             }
         };
 
@@ -141,7 +149,7 @@ public class CoflBinGUI extends BinGUI {
                 width - p*2 - 4, 10,
                 Text.of(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
                 MinecraftClient.getInstance().textRenderer
-        ).alignLeft();
+        );
 
         loreScrollableTextWidget = new ScrollableTextWidget(
                 screenWidth / 2 - width / 2 + p + 20 + p + 4,
@@ -153,15 +161,17 @@ public class CoflBinGUI extends BinGUI {
             protected void drawBox(DrawContext context) {}
 
             @Override
-            public boolean mouseClicked(double mouseX, double mouseY, int button) {
-                boolean clicked = super.mouseClicked(mouseX, mouseY, button);
-                if (clicked) rightClickableWidget.onClick(mouseX, mouseY);
+            public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean fromScreen) {
+                // Use the click's embedded MouseInput when available.
+                boolean clicked = super.mouseClicked(click, fromScreen);
+                if (clicked) rightClickableWidget.onClick(click, true);
                 return clicked;
             }
 
             @Override
-            protected boolean isValidClickButton(int button) {
-                return button == 0 || button == 1;
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseInput mi) {
+                int b = mi.button();
+                return b == 0 || b == 1;
             }
         };
 

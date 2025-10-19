@@ -41,7 +41,7 @@ public class TfmBinGUI extends BinGUI {
                 width - 12, 10,
                 Text.of("Cofl - Auction View"),
                 MinecraftClient.getInstance().textRenderer
-        ).alignLeft();
+        );
 
         loreMultilineTextWidget = new MultilineTextWidget(
                 screenWidth / 2 - width / 2 + 12,
@@ -49,7 +49,6 @@ public class TfmBinGUI extends BinGUI {
                 Text.of(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
                 MinecraftClient.getInstance().textRenderer
         ){
-            @Override
             protected boolean isValidClickButton(int button) {
                 return button == 0 || button == 1;
             }
@@ -69,11 +68,15 @@ public class TfmBinGUI extends BinGUI {
                 );
             }
 
-            @Override
-            public void onClick(double mouseX, double mouseY) {
-                if (cancelClickableWidget.isMouseOver(mouseX, mouseY)){
-                    cancelClickableWidget.onClick(mouseX,mouseY);
-                } else {
+        @Override
+        public void onClick(net.minecraft.client.gui.Click click, boolean fromScreen) {
+        double mouseX = click.x();
+        double mouseY = click.y();
+        if (cancelClickableWidget.isMouseOver(mouseX, mouseY)){
+            net.minecraft.client.input.MouseInput mi = new net.minecraft.client.input.MouseInput(0, 0);
+            net.minecraft.client.gui.Click c = new net.minecraft.client.gui.Click(mouseX, mouseY, mi);
+            cancelClickableWidget.onClick(c, true);
+        } else {
                     switch (auctionStatus){
                         case INIT:
                         case AUCTION_BUYING:
@@ -96,7 +99,6 @@ public class TfmBinGUI extends BinGUI {
             @Override
             protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
 
-            @Override
             protected boolean isValidClickButton(int button) {
                 return button == 0 || button == 1;
             }
@@ -119,14 +121,17 @@ public class TfmBinGUI extends BinGUI {
             protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
 
             @Override
-            public void onClick(double mouseX, double mouseY) {
+            public void onClick(net.minecraft.client.gui.Click click, boolean fromScreen) {
+                double mouseX = click.x();
+                double mouseY = click.y();
                 if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
                 else clickSlot(AUCTION_CONFIRMATION_CANCEL_SLOT);
             }
 
             @Override
-            protected boolean isValidClickButton(int button) {
-                return button == 0 || button == 1;
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseInput mi) {
+                int b = mi.button();
+                return b == 0 || b == 1;
             }
         };
 

@@ -83,7 +83,7 @@ public class EventSubscribers {
         }
 
         PlayerEntity player = MinecraftClient.getInstance().player;
-        player.getWorld().playSound(
+        player.getEntityWorld().playSound(
                 player, player.getBlockPos(),
                 CoflModClient.findByName(soundName),
                 SoundCategory.MASTER, 1f,
