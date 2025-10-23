@@ -71,7 +71,6 @@ public class SellAmountParser {
                 String amountStr = matcher.group(1).replace(",", "");
                 try {
                     long amount = (long) (Double.parseDouble(amountStr));
-                    System.out.println("[SellAmountParser] Found sell instantly amount: " + amount + " from text: " + lineText);
                     return amount;
                 } catch (NumberFormatException e) {
                     System.out.println("[SellAmountParser] Failed to parse sell instantly amount: " + amountStr);
@@ -96,7 +95,6 @@ public class SellAmountParser {
                 String amountStr = matcher.group(1).replace(",", "");
                 try {
                     long amount = (long) (Double.parseDouble(amountStr));
-                    System.out.println("[SellAmountParser] Found inventory/sack amount: " + amount + " from text: " + lineText);
                     return amount;
                 } catch (NumberFormatException e) {
                     System.out.println("[SellAmountParser] Failed to parse inventory/sack amount: " + amountStr);
