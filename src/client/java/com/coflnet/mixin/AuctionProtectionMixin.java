@@ -23,7 +23,7 @@ import java.util.Optional;
 @Mixin(HandledScreen.class)
 public abstract class AuctionProtectionMixin {
 
-    private enum ScreenMode {
+    public enum ScreenMode {
         SELLER,
         BIDDER
     }
