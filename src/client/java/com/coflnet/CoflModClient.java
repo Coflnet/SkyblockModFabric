@@ -381,8 +381,8 @@ public class CoflModClient implements ClientModInitializer {
                                 .button(Text.literal("Modrinth"), popupScreen -> {
                                     Util.getOperatingSystem().open("https://modrinth.com/mod/skycofl/versions");
                                 })
-                                .button(Text.of("GitHub"), popupScreen -> {
-                                    Util.getOperatingSystem().open("https://github.com/Coflnet/SkyblockModFabric/releases");
+                                .button(Text.of("Curseforge"), popupScreen -> {
+                                    Util.getOperatingSystem().open("https://www.curseforge.com/minecraft/mc-mods/skycofl/files/all?page=1&pageSize=20");
                                 })
                                 .button(Text.of("dismiss"), popupScreen -> popupScreen.close())
                                 .message(Text.of(

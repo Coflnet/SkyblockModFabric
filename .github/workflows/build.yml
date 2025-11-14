@@ -46,8 +46,8 @@ jobs:
           modrinth-id: yso5yMlC
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
 
-         # curseforge-id: 1286702
-         # curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          curseforge-id: 1286702
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           # general settings
           name: "SkyCofl ${{ github.ref_name }} Fabric 1.21.10"
