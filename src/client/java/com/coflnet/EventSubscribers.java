@@ -91,14 +91,14 @@ public class EventSubscribers {
         String finalSoundName = soundName;
         MinecraftClient.getInstance().execute(() -> {
             PlayerEntity player = MinecraftClient.getInstance().player;
-            if (player != null) {
-                player.getEntityWorld().playSound(
-                        player, player.getBlockPos(),
-                        CoflModClient.findByName(finalSoundName),
-                        SoundCategory.MASTER, 1f,
-                        event.Sound.getSoundPitch() == null ? 1f : (float) event.Sound.getSoundPitch()
-                );
-            }
+        if (player != null) {
+            MinecraftClient.getInstance().world.playSound(
+                player, player.getBlockPos(),
+                CoflModClient.findByName(finalSoundName),
+                SoundCategory.MASTER, 1f,
+                event.Sound.getSoundPitch() == null ? 1f : (float) event.Sound.getSoundPitch()
+            );
+        }
         });
     }
 
