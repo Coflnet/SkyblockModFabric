@@ -346,7 +346,7 @@ public class CoflModClient implements ClientModInitializer {
                 RenderUtils.drawStringWithShadow(
                         drawContext,
                         EventSubscribers.countdownData.getPrefix()
-                                + getStringFromDouble(EventSubscribers.countdown, EventSubscribers.countdownData.getMaxPrecision()),
+                                + getStringFromDouble(EventSubscribers.getCountdown(), EventSubscribers.countdownData.getMaxPrecision()),
                         x,
                         y,
                         0xFFFFFFFF, EventSubscribers.countdownData.getScale());
