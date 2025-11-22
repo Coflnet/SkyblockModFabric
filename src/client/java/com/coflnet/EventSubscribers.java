@@ -24,20 +24,27 @@ import net.minecraft.text.Text;
 public class EventSubscribers {
     public static FlipData flipData = null;
     public static Countdown countdownData = null;
-    public static float countdown = 0.0f;
+    public static long countdownExpiryTime = 0L; // Target time when countdown expires (in milliseconds)
     public static boolean showCountdown = false;
-    public static Timer timer = new Timer();
-    public static TimerTask task = new TimerTask() {
-        @Override
-        public void run() {
-            countdown -= 0.1f;
-            if(countdown < 0.0) {
-                showCountdown = false;
-                timer.cancel();
-            }
-        }
-    };
     public static List<Position> positions = null;
+    
+    /**
+     * Gets the current remaining countdown time in seconds.
+     * Calculates based on the difference between the target expiry time and current time.
+     */
+    public static float getCountdown() {
+        if (!showCountdown || countdownExpiryTime == 0L) {
+            return 0.0f;
+        }
+        
+        long remainingMs = countdownExpiryTime - System.currentTimeMillis();
+        if (remainingMs <= 0) {
+            showCountdown = false;
+            return 0.0f;
+        }
+        
+        return remainingMs / 1000.0f;
+    }
 
     @Subscribe
     public void WriteToChat(OnWriteToChatReceive command){
@@ -109,21 +116,10 @@ public class EventSubscribers {
 
     @Subscribe
     public void onCountdownReceive(OnCountdownReceive event){
-        countdown = event.CountdownData.getDuration();
         countdownData = event.CountdownData;
+        // Calculate the target expiry time based on current time + duration
+        countdownExpiryTime = System.currentTimeMillis() + (long)(event.CountdownData.getDuration() * 1000);
         showCountdown = true;
-
-        timer = new Timer();
-        timer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                countdown -= 0.1f;
-                if(countdown < 0.0) {
-                    showCountdown = false;
-                    timer.cancel();
-                }
-            }
-        }, 1, 100);
     }
 
     @Subscribe
