@@ -88,7 +88,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.collection.DefaultedList;
 
 public class CoflModClient implements ClientModInitializer {
-    public static final String targetVersion = "1.21.10";
+    public static final String targetVersion = "1.21.11";
     public static final int InventorysizeWithOffHand = 5 * 9 + 1;
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
