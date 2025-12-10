@@ -44,8 +44,8 @@ public abstract class ItemHighlightMixin {
         }
     }
 
-    @Inject(method = "drawSlot", at = @At("HEAD")) // drawBackground is a good place
-    private void yourmodid_onDrawBackground(DrawContext context, Slot slot, CallbackInfo ci) {
+    @Inject(method = "drawSlot", at = @At("HEAD"))
+    private void yourmodid_onDrawBackground(DrawContext context, Slot slot, int x, int y, CallbackInfo ci) {
         try {
             if (!slot.hasStack())
                 return;

@@ -1,19 +1,18 @@
 package com.coflnet.gui;
 
 import com.coflnet.CoflMod;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.DepthTestFunction;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.Identifier;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.NotNull;
+import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.injection.invoke.arg.ArgumentCountException;
 
@@ -28,19 +27,6 @@ public class RenderUtils {
     private static BufferBuilder buffer = null;
     public static TextRenderer textRenderer = null;
     public static int z = 0;
-    // FIXME: Temporarily commented out due to API changes in older Fabric versions
-    // private static final RenderLayer.MultiPhase THROUGH_WALLS_LAYER = RenderLayer.of(
-    //         "filled_through_walls", RenderLayer.DEFAULT_BUFFER_SIZE, false, true,
-    //         RenderPipelines.register(
-    //                 RenderPipeline.builder(RenderPipelines.POSITION_COLOR_SNIPPET)
-    //                         .withLocation(Identifier.of(CoflMod.MOD_ID, "pipeline/debug_filled_box_through_walls"))
-    //                         .withVertexFormat(VertexFormats.POSITION_COLOR, VertexFormat.DrawMode.TRIANGLE_STRIP)
-    //                         .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-    //                         .build()
-    //         ), RenderLayer.MultiPhaseParameters.builder()
-    //                 .layering(RenderPhase.VIEW_OFFSET_Z_LAYERING_FORWARD)
-    //                 .build(false)
-    // );
 
     public static void init(){
         z = 0; // 401
@@ -377,20 +363,129 @@ public class RenderUtils {
                 "Lorem ipsum dolor sit amet,";
     }
 
-    // TODO: This method needs to be updated for 1.21.11 API changes
-    // The following APIs have changed:
-    // - camera.getPos() is no longer available, use camera.getPosition(tickDelta, tickDelta) instead
-    // - VertexRendering.drawFilledBox() has been removed
-    // - RenderLayer creation API has changed significantly
-    // For now, this method is stubbed out to allow compilation
-    public static void renderHighlightBox(MatrixStack matrices, Camera camera, double[] minXYZ, double[] maxXYZ, float[] rgba) {
+    /**
+     * Renders a highlight box at the specified position.
+     * The box is rendered through walls (with depth test disabled) for visibility.
+     *
+     * @param matrices The matrix stack for transformations
+     * @param cameraPos The camera position for offsetting
+     * @param minXYZ The minimum corner coordinates [x, y, z]
+     * @param maxXYZ The maximum corner coordinates [x, y, z]
+     * @param rgba The color values [r, g, b, a] where each is 0.0-1.0
+     */
+    public static void renderHighlightBox(MatrixStack matrices, Vec3d cameraPos, double[] minXYZ, double[] maxXYZ, float[] rgba) {
         if (minXYZ.length != 3) throw new ArgumentCountException(minXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
         if (maxXYZ.length != 3) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
-        if (rgba.length != 4) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 4 values (r/g/b/a) in array");
+        if (rgba.length != 4) throw new ArgumentCountException(rgba.length, 4, "Expected 4 values (r/g/b/a) in array");
 
-        // Stubbed implementation - needs updating for 1.21.11 render API
-        // The old implementation used THROUGH_WALLS_LAYER and VertexRendering.drawFilledBox
-        // which are no longer available in this version
+        // Convert RGBA floats to ARGB integer
+        int alpha = (int) (rgba[3] * 255);
+        int red = (int) (rgba[0] * 255);
+        int green = (int) (rgba[1] * 255);
+        int blue = (int) (rgba[2] * 255);
+        int color = (alpha << 24) | (red << 16) | (green << 8) | blue;
+
+        Box box = new Box(
+            minXYZ[0] - cameraPos.x,
+            minXYZ[1] - cameraPos.y,
+            minXYZ[2] - cameraPos.z,
+            maxXYZ[0] - cameraPos.x,
+            maxXYZ[1] - cameraPos.y,
+            maxXYZ[2] - cameraPos.z
+        );
+
+        // Draw the filled box using debugFilledBox render layer (renders through walls)
+        drawFilledBox(matrices, box, color);
+    }
+
+    /**
+     * Renders a highlight box at the specified position using the old Camera-based API.
+     * This method is deprecated - use the Vec3d version instead.
+     *
+     * @param matrices The matrix stack for transformations
+     * @param camera The camera for position offset
+     * @param minXYZ The minimum corner coordinates [x, y, z]
+     * @param maxXYZ The maximum corner coordinates [x, y, z]
+     * @param rgba The color values [r, g, b, a] where each is 0.0-1.0
+     */
+    public static void renderHighlightBox(MatrixStack matrices, Camera camera, double[] minXYZ, double[] maxXYZ, float[] rgba) {
+        // Get the focused entity's position for camera-relative rendering
+        // Camera.getPos() was removed, so we use the focused entity's position
+        Vec3d cameraPos;
+        if (camera.getFocusedEntity() != null) {
+            cameraPos = camera.getFocusedEntity().getCameraPosVec(MinecraftClient.getInstance().getRenderTickCounter().getTickProgress(true));
+        } else {
+            // Fallback to zero if no entity is focused
+            cameraPos = Vec3d.ZERO;
+        }
+        renderHighlightBox(matrices, cameraPos, minXYZ, maxXYZ, rgba);
+    }
+
+    /**
+     * Draws a filled box at the specified position.
+     * This method draws a filled box using quads for each face, rendered through walls.
+     *
+     * @param matrices The matrix stack for transformations
+     * @param box The bounding box to draw (should be camera-relative)
+     * @param color The ARGB color value
+     */
+    public static void drawFilledBox(MatrixStack matrices, Box box, int color) {
+        Matrix4f matrix4f = matrices.peek().getPositionMatrix();
+
+        // Get the tessellator and create a buffer for quads
+        Tessellator tessellator = Tessellator.getInstance();
+
+        // Use the RenderLayer's format to properly render
+        RenderLayer renderLayer = RenderLayers.debugFilledBox();
+        VertexFormat vertexFormat = renderLayer.getVertexFormat();
+        VertexFormat.DrawMode drawMode = renderLayer.getDrawMode();
+        
+        BufferBuilder bufferBuilder = tessellator.begin(drawMode, vertexFormat);
+
+        float minX = (float) box.minX;
+        float minY = (float) box.minY;
+        float minZ = (float) box.minZ;
+        float maxX = (float) box.maxX;
+        float maxY = (float) box.maxY;
+        float maxZ = (float) box.maxZ;
+
+        // Front face (negative Z)
+        bufferBuilder.vertex(matrix4f, minX, minY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, minY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, maxY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, minX, maxY, minZ).color(color);
+
+        // Back face (positive Z)
+        bufferBuilder.vertex(matrix4f, maxX, minY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, minX, minY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, minX, maxY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, maxY, maxZ).color(color);
+
+        // Left face (negative X)
+        bufferBuilder.vertex(matrix4f, minX, minY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, minX, minY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, minX, maxY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, minX, maxY, maxZ).color(color);
+
+        // Right face (positive X)
+        bufferBuilder.vertex(matrix4f, maxX, minY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, minY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, maxY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, maxY, minZ).color(color);
+
+        // Top face (positive Y)
+        bufferBuilder.vertex(matrix4f, minX, maxY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, maxY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, maxY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, minX, maxY, maxZ).color(color);
+
+        // Bottom face (negative Y)
+        bufferBuilder.vertex(matrix4f, minX, minY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, minY, maxZ).color(color);
+        bufferBuilder.vertex(matrix4f, maxX, minY, minZ).color(color);
+        bufferBuilder.vertex(matrix4f, minX, minY, minZ).color(color);
+
+        // Draw with the render layer
+        renderLayer.draw(bufferBuilder.end());
     }
 }
-
