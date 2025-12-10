@@ -27,8 +27,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.net.URI;
 import java.util.List;
 
+import net.minecraft.client.gui.screen.Screen;
+
 @Mixin(HandledScreen.class)
-public abstract class HandledScreenMixin {
+public abstract class HandledScreenMixin extends Screen {
+    
+    // Need protected constructor for the Screen parent - used for mixin compilation only
+    protected HandledScreenMixin(Text title) {
+        super(title);
+    }
     
     private static final Gson gson = new Gson();
     
@@ -483,9 +490,10 @@ public abstract class HandledScreenMixin {
                         int siblingWidth = MinecraftClient.getInstance().textRenderer.getWidth(mutableSibling);
 
                         if (mouseX >= currentX && mouseX <= currentX + siblingWidth) {
-                            // Handle the click event
-                            boolean handled = ((HandledScreen<?>) (Object) this).handleTextClick(mutableSibling.getStyle());
-                            if (handled) {
+                            // Handle the click event - API changed in 1.21.11
+                            ClickEvent clickEvent = mutableSibling.getStyle().getClickEvent();
+                            if (clickEvent != null) {
+                                this.handleClickEvent(clickEvent, MinecraftClient.getInstance(), this);
                                 cir.setReturnValue(true);
                                 return;
                             }
@@ -494,8 +502,9 @@ public abstract class HandledScreenMixin {
                     }
 
                     // If no sibling was clicked, try the main text
-                    boolean handled = ((HandledScreen<?>) (Object) this).handleTextClick(line.getStyle());
-                    if (handled) {
+                    ClickEvent lineClickEvent = line.getStyle().getClickEvent();
+                    if (lineClickEvent != null) {
+                        this.handleClickEvent(lineClickEvent, MinecraftClient.getInstance(), this);
                         cir.setReturnValue(true);
                         return;
                     }

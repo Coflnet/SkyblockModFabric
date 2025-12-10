@@ -28,18 +28,19 @@ public class RenderUtils {
     private static BufferBuilder buffer = null;
     public static TextRenderer textRenderer = null;
     public static int z = 0;
-    private static final RenderLayer.MultiPhase THROUGH_WALLS_LAYER = RenderLayer.of(
-            "filled_through_walls", RenderLayer.DEFAULT_BUFFER_SIZE, false, true,
-            RenderPipelines.register(
-                    RenderPipeline.builder(RenderPipelines.POSITION_COLOR_SNIPPET)
-                            .withLocation(Identifier.of(CoflMod.MOD_ID, "pipeline/debug_filled_box_through_walls"))
-                            .withVertexFormat(VertexFormats.POSITION_COLOR, VertexFormat.DrawMode.TRIANGLE_STRIP)
-                            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-                            .build()
-            ), RenderLayer.MultiPhaseParameters.builder()
-                    .layering(RenderPhase.VIEW_OFFSET_Z_LAYERING_FORWARD)
-                    .build(false)
-    );
+    // FIXME: Temporarily commented out due to API changes in older Fabric versions
+    // private static final RenderLayer.MultiPhase THROUGH_WALLS_LAYER = RenderLayer.of(
+    //         "filled_through_walls", RenderLayer.DEFAULT_BUFFER_SIZE, false, true,
+    //         RenderPipelines.register(
+    //                 RenderPipeline.builder(RenderPipelines.POSITION_COLOR_SNIPPET)
+    //                         .withLocation(Identifier.of(CoflMod.MOD_ID, "pipeline/debug_filled_box_through_walls"))
+    //                         .withVertexFormat(VertexFormats.POSITION_COLOR, VertexFormat.DrawMode.TRIANGLE_STRIP)
+    //                         .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
+    //                         .build()
+    //         ), RenderLayer.MultiPhaseParameters.builder()
+    //                 .layering(RenderPhase.VIEW_OFFSET_Z_LAYERING_FORWARD)
+    //                 .build(false)
+    // );
 
     public static void init(){
         z = 0; // 401
@@ -376,25 +377,20 @@ public class RenderUtils {
                 "Lorem ipsum dolor sit amet,";
     }
 
+    // TODO: This method needs to be updated for 1.21.11 API changes
+    // The following APIs have changed:
+    // - camera.getPos() is no longer available, use camera.getPosition(tickDelta, tickDelta) instead
+    // - VertexRendering.drawFilledBox() has been removed
+    // - RenderLayer creation API has changed significantly
+    // For now, this method is stubbed out to allow compilation
     public static void renderHighlightBox(MatrixStack matrices, Camera camera, double[] minXYZ, double[] maxXYZ, float[] rgba) {
         if (minXYZ.length != 3) throw new ArgumentCountException(minXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
         if (maxXYZ.length != 3) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
         if (rgba.length != 4) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 4 values (r/g/b/a) in array");
 
-        matrices.push();
-        matrices.translate(-camera.getPos().x, -camera.getPos().y, -camera.getPos().z);
-
-        VertexConsumerProvider.Immediate consumers = MinecraftClient.getInstance().getBufferBuilders().getEntityVertexConsumers();
-        VertexConsumer buffer = consumers.getBuffer(THROUGH_WALLS_LAYER);
-        VertexRendering.drawFilledBox(
-                matrices, buffer,
-                minXYZ[0], minXYZ[1], minXYZ[2],
-                maxXYZ[0], maxXYZ[1], maxXYZ[2],
-                rgba[0], rgba[1], rgba[2], rgba[3]
-        );
-
-        consumers.draw(THROUGH_WALLS_LAYER);
-        matrices.pop();
+        // Stubbed implementation - needs updating for 1.21.11 render API
+        // The old implementation used THROUGH_WALLS_LAYER and VertexRendering.drawFilledBox
+        // which are no longer available in this version
     }
 }
 
