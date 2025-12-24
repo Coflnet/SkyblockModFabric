@@ -112,6 +112,10 @@ public class CoflModClient implements ClientModInitializer {
     public static CoflModClient instance;
     public static SignBlockEntity sign = null;
     public static String pendingBazaarSearch = null;
+    
+    // Staggered refresh tracking: inventory name -> last request time
+    private static final Map<String, Long> lastRefreshTimePerInventory = new HashMap<>();
+    private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -864,6 +868,48 @@ public class CoflModClient implements ClientModInitializer {
             return;
         }
         lastNbtRequest = nbtString;
+        
+        // Check if we should throttle this request
+        long currentTime = System.currentTimeMillis();
+        Long lastRefreshTime = lastRefreshTimePerInventory.get(title);
+        
+        if (lastRefreshTime != null && (currentTime - lastRefreshTime) < REFRESH_THROTTLE_MS) {
+            // Too soon since last refresh, schedule the request to be made after the throttle period
+            long delayMs = REFRESH_THROTTLE_MS - (currentTime - lastRefreshTime);
+            System.out.println("Throttling refresh for inventory: " + title + " (wait " + delayMs + "ms)");
+            Thread.startVirtualThread(() -> {
+                try {
+                    Thread.sleep(delayMs);
+                    // Request with current inventory state (in case it updated)
+                    DefaultedList<ItemStack> currentItems = new DefaultedList<>();
+                    HandledScreen currentScreen = MinecraftClient.getInstance().currentScreen instanceof HandledScreen 
+                        ? (HandledScreen) MinecraftClient.getInstance().currentScreen 
+                        : null;
+                    if (currentScreen != null && currentScreen.getTitle().getString().equals(title)) {
+                        currentItems = DefaultedList.of();
+                        currentItems.addAll(currentScreen.getScreenHandler().getStacks());
+                    } else {
+                        // Inventory changed, use the items we have
+                        currentItems = items;
+                    }
+                    String[] visibleItems = getItemIdsFromInventory(currentItems);
+                    DescriptionHandler.loadDescriptionForInventory(
+                            visibleItems,
+                            title,
+                            inventoryToNBT(currentItems),
+                            userName,
+                            posToUpload
+                    );
+                    lastRefreshTimePerInventory.put(title, System.currentTimeMillis());
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            });
+            return;
+        }
+        
+        // Update last refresh time and make the request
+        lastRefreshTimePerInventory.put(title, currentTime);
         String[] visibleItems = getItemIdsFromInventory(items);
         DescriptionHandler.loadDescriptionForInventory(
                 visibleItems,
