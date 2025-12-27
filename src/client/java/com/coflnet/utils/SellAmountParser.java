@@ -61,11 +61,15 @@ public class SellAmountParser {
     /**
      * Extracts the coin amount from "Sell Instantly" tooltip lines
      * @param lines the tooltip lines to parse
-     * @return the coin amount, or DEFAULT_PROTECTION_AMOUNT if parsing fails
+     * @return the coin amount, 0 if nothing to sell, or DEFAULT_PROTECTION_AMOUNT if parsing fails
      */
     public static long extractSellInstantlyAmountFromTooltip(List<Text> lines) {
         for (Text line : lines) {
             String lineText = line.getString();
+            // Check if the description says "You don't have anything to sell" - treat as 0 value
+            if (lineText.contains("You don't have anything to sell")) {
+                return 0;
+            }
             Matcher matcher = SELL_INSTANTLY_PATTERN.matcher(lineText);
             if (matcher.find()) {
                 String amountStr = matcher.group(1).replace(",", "");
@@ -85,11 +89,16 @@ public class SellAmountParser {
     /**
      * Extracts the coin amount from "Sell Sacks Now" or "Sell Inventory Now" tooltip lines
      * @param lines the tooltip lines to parse
-     * @return the coin amount, or DEFAULT_PROTECTION_AMOUNT if parsing fails
+     * @return the coin amount, 0 if nothing to sell, or DEFAULT_PROTECTION_AMOUNT if parsing fails
      */
     public static long extractInventorySackAmountFromTooltip(List<Text> lines) {
         for (Text line : lines) {
             String lineText = line.getString();
+            // Check if the description says "You don't have anything to sell" - treat as 0 value
+            if (lineText.contains("You don't have anything to sell")) {
+                System.out.println("[SellAmountParser] Found 'You don't have anything to sell' message, returning 0");
+                return 0;
+            }
             Matcher matcher = INVENTORY_SACK_PATTERN.matcher(lineText);
             if (matcher.find()) {
                 String amountStr = matcher.group(1).replace(",", "");
