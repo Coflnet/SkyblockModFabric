@@ -116,6 +116,8 @@ public class CoflModClient implements ClientModInitializer {
     // Staggered refresh tracking: inventory name -> last request time
     private static final Map<String, Long> lastRefreshTimePerInventory = new HashMap<>();
     private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
+    // Track item data (without UUID) to detect actual description changes
+    private static final Map<String, String> lastItemDataPerInventory = new HashMap<>();
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -284,7 +286,31 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
-            String stackId = getIdFromStack(stack);
+            String uuidId = "";
+            String tagCountId = "";
+            
+            // Extract both UUID-based ID and tag+count ID for lookup
+            if (!stack.isEmpty()) {
+                tagCountId = getItemTagAndCount(stack);
+                
+                JsonObject stackJson = null;
+                for (ComponentType<?> type : stack.getComponents().getTypes()) {
+                    if (type.toString().contains("minecraft:custom_data")) {
+                        stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
+                    }
+                }
+                
+                if (stackJson != null) {
+                    JsonElement uuid = stackJson.get("uuid");
+                    if (uuid != null) {
+                        uuidId = uuid.getAsString();
+                    }
+                }
+            }
+            
+            // Use tag+count as the primary ID for knownIds tracking (stable, doesn't change with UUID)
+            String stackId = tagCountId.isEmpty() ? uuidId : tagCountId;
+            
             if (!knownIds.contains(stackId)
                     && MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
                         
@@ -295,7 +321,12 @@ public class CoflModClient implements ClientModInitializer {
                 return;
             }
 
-            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(stackId);
+            // Try to get descriptions - check tag+count first (stable ID), then UUID
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(tagCountId);
+            if (tooltips == null && !uuidId.isEmpty()) {
+                // Fallback to UUID-based lookup if tag+count had no results
+                tooltips = DescriptionHandler.getTooltipData(uuidId);
+            }
             if(tooltips == null)
                 return;
 
@@ -739,11 +770,21 @@ public class CoflModClient implements ClientModInitializer {
 
     public static String[] getItemIdsFromInventory(DefaultedList<ItemStack> itemStacks) {
         ArrayList<String> res = new ArrayList<>();
+        
+        // First pass: count occurrences of each tag+count combination
+        Map<String, Integer> tagCountMap = new HashMap<>();
+        for (ItemStack stack : itemStacks) {
+            if (!stack.isEmpty()) {
+                String tagAndCount = getItemTagAndCount(stack);
+                tagCountMap.put(tagAndCount, tagCountMap.getOrDefault(tagAndCount, 0) + 1);
+            }
+        }
 
+        // Second pass: generate IDs using UUID only for duplicates
         for (int i = 0; i < itemStacks.size(); i++) {
             ItemStack stack = itemStacks.get(i);
             if (stack.getItem() != Items.AIR) {
-                String id = getIdFromStack(stack);
+                String id = getIdFromStackWithDuplicateCheck(stack, tagCountMap);
                 knownIds.add(id);
                 res.add(id);
             } else
@@ -751,6 +792,65 @@ public class CoflModClient implements ClientModInitializer {
         }
 
         return res.toArray(String[]::new);
+    }
+
+    /**
+     * Gets item name and count as a basic identifier (without UUID).
+     * Used to check for duplicate items in inventory.
+     * @param stack the item stack
+     * @return tag+count identifier
+     */
+    private static String getItemTagAndCount(ItemStack stack) {
+        String itemName = stack.getCustomName() == null ? stack.getItem().getName().getString() : stack.getCustomName().getString();
+        
+        if (itemName.contains("BUY") || itemName.contains("SELL")) {
+            // bazaar order, separate by price per unit as well
+            var lore = stack.get(DataComponentTypes.LORE);
+            if (lore != null) {
+                for (Text line : lore.lines()) {
+                    if (line.getString().contains("Price per unit")) {
+                        return itemName + line.getString();
+                    }
+                }
+            }
+        }
+        
+        return itemName + ";" + stack.getCount();
+    }
+
+    /**
+     * Gets an ID for an item, using UUID only if there are duplicate tag+count combinations.
+     * This ensures unique identification while avoiding UUID changes from causing false updates.
+     * @param stack the item stack
+     * @param tagCountMap map of tag+count to occurrence count
+     * @return the item ID (with or without UUID depending on duplicates)
+     */
+    private static String getIdFromStackWithDuplicateCheck(ItemStack stack, Map<String, Integer> tagCountMap) {
+        String tagAndCount = getItemTagAndCount(stack);
+        int occurrenceCount = tagCountMap.getOrDefault(tagAndCount, 1);
+        
+        // If this tag+count appears only once, use it as the ID
+        if (occurrenceCount == 1) {
+            return tagAndCount;
+        }
+        
+        // If there are duplicates, add UUID to differentiate
+        JsonObject stackJson = null;
+        for (ComponentType<?> type : stack.getComponents().getTypes()) {
+            if (type.toString().contains("minecraft:custom_data")) {
+                stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
+            }
+        }
+        
+        if (stackJson != null) {
+            JsonElement uuid = stackJson.get("uuid");
+            if (uuid != null) {
+                return tagAndCount + ";uuid=" + uuid.getAsString();
+            }
+        }
+        
+        // Fallback if no UUID available
+        return tagAndCount;
     }
 
     public static String getIdFromStack(ItemStack stack) {
@@ -779,6 +879,24 @@ public class CoflModClient implements ClientModInitializer {
             return uuid.getAsString();
         // If "id" is not present, use the item's name
         return itemName + ";" + stack.getCount();
+    }
+
+    /**
+     * Gets a stable inventory signature that only changes when item tag+count changes.
+     * This is used to detect actual item changes, ignoring UUID-only changes.
+     * @param items the items in the inventory
+     * @return a string representing the inventory state without UUIDs
+     */
+    private static String getInventorySignatureWithoutUUIDs(DefaultedList<ItemStack> items) {
+        StringBuilder sb = new StringBuilder();
+        for (ItemStack item : items) {
+            if (!item.isEmpty()) {
+                sb.append(getItemTagAndCount(item)).append("|");
+            } else {
+                sb.append("EMPTY|");
+            }
+        }
+        return sb.toString();
     }
 
     public void loadDescriptionsForInv(HandledScreen screen) {
@@ -869,6 +987,16 @@ public class CoflModClient implements ClientModInitializer {
         }
         lastNbtRequest = nbtString;
         
+        // Check if actual item data (excluding UUID) has changed
+        String currentItemData = getInventorySignatureWithoutUUIDs(items);
+        String lastItemData = lastItemDataPerInventory.get(title);
+        
+        // If only UUIDs changed but item descriptions are the same, skip the refresh
+        if (lastItemData != null && currentItemData.equals(lastItemData)) {
+            System.out.println("Item UUIDs changed but descriptions are identical for: " + title + ", skipping refresh");
+            return;
+        }
+        
         // Check if we should throttle this request
         long currentTime = System.currentTimeMillis();
         Long lastRefreshTime = lastRefreshTimePerInventory.get(title);
@@ -881,12 +1009,11 @@ public class CoflModClient implements ClientModInitializer {
                 try {
                     Thread.sleep(delayMs);
                     // Request with current inventory state (in case it updated)
-                    DefaultedList<ItemStack> currentItems = new DefaultedList<>();
+                    DefaultedList<ItemStack> currentItems = DefaultedList.of();
                     HandledScreen currentScreen = MinecraftClient.getInstance().currentScreen instanceof HandledScreen 
                         ? (HandledScreen) MinecraftClient.getInstance().currentScreen 
                         : null;
                     if (currentScreen != null && currentScreen.getTitle().getString().equals(title)) {
-                        currentItems = DefaultedList.of();
                         currentItems.addAll(currentScreen.getScreenHandler().getStacks());
                     } else {
                         // Inventory changed, use the items we have
@@ -901,6 +1028,7 @@ public class CoflModClient implements ClientModInitializer {
                             posToUpload
                     );
                     lastRefreshTimePerInventory.put(title, System.currentTimeMillis());
+                    lastItemDataPerInventory.put(title, getInventorySignatureWithoutUUIDs(currentItems));
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
@@ -908,8 +1036,9 @@ public class CoflModClient implements ClientModInitializer {
             return;
         }
         
-        // Update last refresh time and make the request
+        // Update last refresh time and item data, then make the request
         lastRefreshTimePerInventory.put(title, currentTime);
+        lastItemDataPerInventory.put(title, currentItemData);
         String[] visibleItems = getItemIdsFromInventory(items);
         DescriptionHandler.loadDescriptionForInventory(
                 visibleItems,
