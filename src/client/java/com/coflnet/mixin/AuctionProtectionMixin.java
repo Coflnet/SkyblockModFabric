@@ -23,11 +23,6 @@ import java.util.Optional;
 @Mixin(HandledScreen.class)
 public abstract class AuctionProtectionMixin {
 
-    public enum ScreenMode {
-        SELLER,
-        BIDDER
-    }
-
     @Shadow @Nullable protected Slot focusedSlot;
     @Shadow public abstract @Nullable Slot getSlotAt(double x, double y);
 
