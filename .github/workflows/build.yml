@@ -71,8 +71,8 @@ jobs:
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
 
           # general settings
-          name: "SkyCofl ${{ github.ref_name }} Fabric ${{ matrix.minecraft_version }}"
-          version: "${{ github.ref_name }}_Fabric_${{ matrix.minecraft_version }}"
+          name: "${{ github.ref_name }}"
+          version: "${{ github.ref_name }} Fabric ${{ matrix.minecraft_version }}"
           changelog: |
             ➡️ Bug Fixes and Improvements
             ${{ github.event.release.body }}
