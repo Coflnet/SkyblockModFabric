@@ -48,6 +48,13 @@ jobs:
         run: chmod +x ./gradlew
       - name: build
         run: ./gradlew build
+      - name: rename jar file
+        run: |
+          cd build/libs
+          VERSION=$(grep "mod_version=" ../../gradle.properties | cut -d'=' -f2)
+          ORIGINAL=$(ls SkyCofl-*.jar | grep -v sources | grep -v javadoc | grep -v dev | head -n 1)
+          RENAMED="SkyCofl-${VERSION}-Fabric-${{ matrix.minecraft_version }}.jar"
+          mv "$ORIGINAL" "$RENAMED"
       - name: capture build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -76,7 +83,7 @@ jobs:
           version-type: release
 
           files: |
-            build/libs/!(*-@(dev|sources|javadoc)).jar
+            build/libs/SkyCofl-*-Fabric-*.jar
           dependencies: |
             fabric@${{ matrix.fabric_version }}(required){modrinth:P7dR8mSH}{curseforge:306612}#(ignore:github)
       
@@ -84,6 +91,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: build/libs/!(*-@(dev|sources|javadoc)).jar
+          files: build/libs/SkyCofl-*-Fabric-*.jar
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
