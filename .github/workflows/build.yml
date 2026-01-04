@@ -72,7 +72,7 @@ jobs:
 
           # general settings
           name: "${{ github.ref_name }}"
-          version: "${{ github.ref_name }} Fabric ${{ matrix.minecraft_version }}"
+          version: "${{ github.ref_name }}_Fabric_${{ matrix.minecraft_version }}"
           changelog: |
             ➡️ Bug Fixes and Improvements
             ${{ github.event.release.body }}
