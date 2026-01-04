@@ -389,8 +389,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
-            if(EventRegistry.onChatMessage(message.getString()))
-                return false; // block the message if the core says it should be
+            EventRegistry.onChatMessage(message.getString());
             // iterate over all components of the message
             String previousHover = null;
             for (Text component : message.getSiblings()) {
@@ -403,6 +402,8 @@ public class CoflModClient implements ClientModInitializer {
                     EventRegistry.onChatMessage(hest.value().getString());
                 }
             }
+            if(EventRegistry.shouldBlockChatMessage(message.getString()))
+                return false;
 
             return true;
         });
