@@ -109,6 +109,7 @@ public class CoflModClient implements ClientModInitializer {
     public static CoflModClient instance;
     public static SignBlockEntity sign = null;
     public static String pendingBazaarSearch = null;
+    public static boolean flipperChatOnlyMode = false;
     
     // Staggered refresh tracking: inventory name -> last request time
     private static final Map<String, Long> lastRefreshTimePerInventory = new HashMap<>();
@@ -229,6 +230,17 @@ public class CoflModClient implements ClientModInitializer {
                     CoflSkyCommand.processCommand(new String[]{"chat"}, username);
                     return 1;
                 })
+                .then(ClientCommandManager.literal("toggle")
+                    .executes(context -> {
+                        // /fc toggle - toggles flipper chat only mode
+                        flipperChatOnlyMode = !flipperChatOnlyMode;
+                        String message = flipperChatOnlyMode ? 
+                            "§aFlipper Chat Only Mode enabled. All messages will be sent to flipper chat." : 
+                            "§cFlipper Chat Only Mode disabled.";
+                        sendChatMessage(message);
+                        return 1;
+                    })
+                )
                 .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
                     .suggests((context, builder) -> {
                         String[] suggestions = {":tableflip:", ":sad:", ":smile:", ":grin:", ":heart:", ":skull:", ":airplane:", ":check:", "<3",
