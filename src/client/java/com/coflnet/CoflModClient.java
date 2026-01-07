@@ -116,6 +116,10 @@ public class CoflModClient implements ClientModInitializer {
     // Staggered refresh tracking: inventory name -> last request time
     private static final Map<String, Long> lastRefreshTimePerInventory = new HashMap<>();
     private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
+    
+    // Maps new UUIDs to original UUID when items update with new UUIDs but same title
+    // This allows finding descriptions loaded for the original UUID when hovering an item with updated UUID
+    public static final Map<String, String> uuidToOriginalUuid = new HashMap<>();
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -285,7 +289,11 @@ public class CoflModClient implements ClientModInitializer {
 
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
             String stackId = getIdFromStack(stack);
-            if (!knownIds.contains(stackId)
+            
+            // Check if this UUID maps to an original UUID that has descriptions
+            String lookupId = uuidToOriginalUuid.getOrDefault(stackId, stackId);
+            
+            if (!knownIds.contains(stackId) && !knownIds.contains(lookupId)
                     && MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
                         
                 if(!stack.isEmpty() && !stackId.equals("Go Back;1"))
@@ -295,7 +303,10 @@ public class CoflModClient implements ClientModInitializer {
                 return;
             }
 
-            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(stackId);
+            // Try to get descriptions using the original UUID if mapped
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(lookupId);
+            if(tooltips == null && !lookupId.equals(stackId))
+                tooltips = DescriptionHandler.getTooltipData(stackId); // fallback to current UUID
             if(tooltips == null)
                 return;
 
@@ -882,12 +893,11 @@ public class CoflModClient implements ClientModInitializer {
                 try {
                     Thread.sleep(delayMs);
                     // Request with current inventory state (in case it updated)
-                    DefaultedList<ItemStack> currentItems = new DefaultedList<>();
+                    DefaultedList<ItemStack> currentItems = DefaultedList.of();
                     HandledScreen currentScreen = MinecraftClient.getInstance().currentScreen instanceof HandledScreen 
                         ? (HandledScreen) MinecraftClient.getInstance().currentScreen 
                         : null;
                     if (currentScreen != null && currentScreen.getTitle().getString().equals(title)) {
-                        currentItems = DefaultedList.of();
                         currentItems.addAll(currentScreen.getScreenHandler().getStacks());
                     } else {
                         // Inventory changed, use the items we have
