@@ -60,12 +60,13 @@ jobs:
         with:
           name: Artifacts-${{ matrix.minecraft_version }}
           path: build/libs/
-      - name: Publish to CurseForge
+      - name: Publish to CurseForge and GitHub Release
         uses: Kir-Antipov/mc-publish@v3.3
         if: startsWith(github.ref, 'refs/tags/')
         with:
           curseforge-id: 1286702
           curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
           name: "SkyCofl ${{ github.ref_name }} Fabric ${{ matrix.minecraft_version }}"
           version: "${{ github.ref_name }}_Fabric_${{ matrix.minecraft_version }}"
@@ -83,13 +84,7 @@ jobs:
           dependencies: |
             fabric@${{ matrix.fabric_version }}(required){modrinth:P7dR8mSH}{curseforge:306612}#(ignore:github)
       
-      - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: build/libs/SkyCofl-*-Fabric-*.jar
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 # The name and version are switched for modrinth
   publish-modrinth:
     needs: build
@@ -118,6 +113,7 @@ jobs:
         with:
           modrinth-id: yso5yMlC
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          curseforge-token: ""
 
           name: "SkyCofl ${{ github.ref_name }} Fabric ${{ matrix.minecraft_version }}"
           version: "${{ github.ref_name }}_Fabric_${{ matrix.minecraft_version }}"
