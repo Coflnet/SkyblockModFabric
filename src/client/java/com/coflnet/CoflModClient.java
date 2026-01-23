@@ -102,6 +102,7 @@ public class CoflModClient implements ClientModInitializer {
     public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
 
     private String username = "";
+    private String lastCheckedUsername = ""; // Track last username to detect account switches
     private static String lastNbtRequest = "";
     private boolean uploadedScoreboard = false;
     private static boolean popupShown = false;
@@ -135,6 +136,7 @@ public class CoflModClient implements ClientModInitializer {
     public void onInitializeClient() {
         instance = this;
         username = MinecraftClient.getInstance().getSession().getUsername();
+        lastCheckedUsername = username; // Initialize with current username
         Path configDir = FabricLoader.getInstance().getConfigDir();
         CoflCore cofl = new CoflCore();
         cofl.init(configDir);
@@ -190,7 +192,15 @@ public class CoflModClient implements ClientModInitializer {
             if (MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null
                     && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")) {
                 System.out.println("Connected to Hypixel");
-                username = MinecraftClient.getInstance().getSession().getUsername();
+                
+                // Update username in case of account switch before joining
+                String currentUsername = MinecraftClient.getInstance().getSession().getUsername();
+                if (!currentUsername.equals(username)) {
+                    System.out.println("Account changed before joining server: " + username + " -> " + currentUsername);
+                    username = currentUsername;
+                    lastCheckedUsername = currentUsername;
+                }
+                
                 if (!CoflCore.Wrapper.isRunning && CoflCore.config.autoStart)
                     CoflSkyCommand.start(username);
                 Thread.startVirtualThread(() -> {
@@ -271,6 +281,14 @@ public class CoflModClient implements ClientModInitializer {
                     })
                 )
             );
+        });
+
+        // General screen event to check for account switches in menus
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            // Only check for account switches when not connected to a server
+            if (client.player == null) {
+                checkAndHandleAccountSwitch();
+            }
         });
 
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
@@ -402,6 +420,10 @@ public class CoflModClient implements ClientModInitializer {
 
         ScreenEvents.AFTER_INIT.register((minecraftClient, screen, i, i1) -> {
             if(!(MinecraftClient.getInstance().currentScreen instanceof TitleScreen)) return;
+            
+            // Check for account switches in the title screen
+            checkAndHandleAccountSwitch();
+            
             if (!popupShown && !checkVersionCompability()) {
                 popupShown = true;
                 Screen currentScreen = MinecraftClient.getInstance().currentScreen;
@@ -1375,5 +1397,33 @@ public class CoflModClient implements ClientModInitializer {
         if (client.player != null) {
             client.player.sendMessage(Text.literal(message), false);
         }
+    }
+
+    /**
+     * Check if the Minecraft account has changed and update SkyCoflCore connection if needed.
+     * This handles runtime account switches from other mods.
+     * Can only be called in the main menu (not while connected to a server).
+     */
+    private void checkAndHandleAccountSwitch() {
+        String currentUsername = MinecraftClient.getInstance().getSession().getUsername();
+        
+        // Check if username has changed
+        if (!currentUsername.equals(lastCheckedUsername) && !lastCheckedUsername.isEmpty()) {
+            System.out.println("Detected account switch from " + lastCheckedUsername + " to " + currentUsername);
+            
+            // If CoflCore is running, we need to restart it with the new username
+            if (CoflCore.Wrapper.isRunning) {
+                System.out.println("Restarting CoflCore connection for new account: " + currentUsername);
+                CoflCore.Wrapper.stop();
+                username = currentUsername;
+                CoflSkyCommand.start(username);
+            } else {
+                // Just update the username for next time
+                username = currentUsername;
+            }
+        }
+        
+        // Update last checked username
+        lastCheckedUsername = currentUsername;
     }
 }
