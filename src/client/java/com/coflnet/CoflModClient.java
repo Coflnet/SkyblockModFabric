@@ -194,26 +194,7 @@ public class CoflModClient implements ClientModInitializer {
                 System.out.println("Connected to Hypixel");
                 
                 // Update username in case of account switch before joining
-                String currentUsername = MinecraftClient.getInstance().getSession().getUsername();
-                if (!currentUsername.equals(username)) {
-                    System.out.println("Account changed before joining server: " + username + " -> " + currentUsername);
-                    username = currentUsername;
-                    lastCheckedUsername = currentUsername;
-                }
-                
-                if (!CoflCore.Wrapper.isRunning && CoflCore.config.autoStart)
-                    CoflSkyCommand.start(username);
-                Thread.startVirtualThread(() -> {
-                    try {
-                        Thread.sleep(5000); // wait 5 seconds for the scoreboard to be populated
-                        if(!CoflCore.Wrapper.isRunning)
-                            return;
-                        uploadScoreboard();
-                        uploadTabList();
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                });
+                autoStart();
             }
             // reset cached data for different island
             DescriptionHandler.emptyTooltipData();
@@ -452,6 +433,12 @@ public class CoflModClient implements ClientModInitializer {
             Pair<String,String> newData = getRelevantLinesFromScoreboard(scores);
             if (newData.getLeft().equals(lastScoreboardUploaded.getLeft()) && newData.getRight().equals(lastScoreboardUploaded.getRight())) return;
             System.out.println("Uploading Scoreboard...");
+            if (CoflCore.Wrapper == null || !CoflCore.Wrapper.isRunning) {
+                // Only auto-start if the scoreboard's last line indicates Hypixel (contains "hypixel.net")
+                if (scores.length > 0 && scores[scores.length - 1].toLowerCase().contains("hypixel.net")) {
+                    autoStart();
+                }
+            }
             uploadScoreboard();
         });
 
@@ -464,9 +451,29 @@ public class CoflModClient implements ClientModInitializer {
 
             return ActionResult.PASS;
         });
+    }
 
-        ScreenEvents.AFTER_INIT.register((minecraftClient, screen, i, i1) -> {
-
+    private void autoStart(){
+        if (CoflCore.Wrapper.isRunning || !CoflCore.config.autoStart)
+            return;
+        String currentUsername = MinecraftClient.getInstance().getSession().getUsername();
+        if (!currentUsername.equals(username)) {
+            System.out.println("Account changed before joining server: " + username + " -> " + currentUsername);
+            username = currentUsername;
+            lastCheckedUsername = currentUsername;
+        }
+        
+            CoflSkyCommand.start(username);
+        Thread.startVirtualThread(() -> {
+            try {
+                Thread.sleep(5000); // wait 5 seconds for the scoreboard to be populated
+                if(!CoflCore.Wrapper.isRunning)
+                    return;
+                uploadScoreboard();
+                uploadTabList();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
         });
     }
 
