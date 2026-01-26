@@ -112,6 +112,9 @@ public class CoflModClient implements ClientModInitializer {
     public static String pendingBazaarSearch = null;
     public static boolean flipperChatOnlyMode = false;
     
+    // Scoreboard dirty flag - set by ScoreboardMixin when packets arrive
+    private static volatile boolean scoreboardDirty = false;
+    
     // Staggered refresh tracking: inventory name -> last request time
     private static final Map<String, Long> lastRefreshTimePerInventory = new HashMap<>();
     private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
@@ -158,6 +161,16 @@ public class CoflModClient implements ClientModInitializer {
                 SKYCOFL_CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Process scoreboard updates if dirty flag is set (set by ScoreboardMixin)
+            if (scoreboardDirty && client.player != null) {
+                scoreboardDirty = false;
+                try {
+                    processScoreboardUpdate();
+                } catch (Exception e) {
+                    System.out.println("Error processing scoreboard update: " + e.getMessage());
+                }
+            }
+            
             if (bestflipsKeyBinding.isPressed()) {
                 if (counter == 0) {
                     EventRegistry.onOpenBestFlip(username, true);
@@ -427,21 +440,6 @@ public class CoflModClient implements ClientModInitializer {
             }
         });
 
-        ClientReceiveMessageEvents.GAME.register((text, b) -> {
-            String[] scores = getScoreboard().toArray(new String[0]);
-            if (scores == null || scores.length < 9) return;
-            Pair<String,String> newData = getRelevantLinesFromScoreboard(scores);
-            if (newData.getLeft().equals(lastScoreboardUploaded.getLeft()) && newData.getRight().equals(lastScoreboardUploaded.getRight())) return;
-            System.out.println("Uploading Scoreboard...");
-            if (CoflCore.Wrapper == null || !CoflCore.Wrapper.isRunning) {
-                // Only auto-start if the scoreboard's last line indicates Hypixel (contains "hypixel.net")
-                if (scores.length > 0 && scores[scores.length - 1].toLowerCase().contains("hypixel.net")) {
-                    autoStart();
-                }
-            }
-            uploadScoreboard();
-        });
-
         UseBlockCallback.EVENT.register((playerEntity, world, hand, blockHitResult) -> {
             if(world.getBlockEntity(blockHitResult.getBlockPos()) instanceof LootableContainerBlockEntity lcbe){
                 System.out.println("Lootable opened, saving position of lootable Block...");
@@ -451,6 +449,47 @@ public class CoflModClient implements ClientModInitializer {
 
             return ActionResult.PASS;
         });
+    }
+
+    /**
+     * Called by ScoreboardMixin when scoreboard packets are received.
+     * Sets a dirty flag that will be processed on the next tick.
+     * This batches multiple rapid updates into a single processing call.
+     */
+    public static void markScoreboardDirty() {
+        scoreboardDirty = true;
+    }
+
+    /**
+     * Processes scoreboard updates when the dirty flag is set.
+     * Called from the tick event to ensure thread safety.
+     */
+    private static void processScoreboardUpdate() {
+        String[] scores = getScoreboard().toArray(new String[0]);
+        if (scores == null || scores.length < 7) 
+            return;
+        Pair<String,String> newData = getRelevantLinesFromScoreboard(scores);
+        
+        // Only upload if scoreboard has actually changed
+        if (newData.getLeft().equals(lastScoreboardUploaded.getLeft()) && 
+            newData.getRight().equals(lastScoreboardUploaded.getRight()) 
+            || newData.getLeft().contains(" (+")) // additive updates are ignored, a second later the correct new value will be shown
+                return;
+                
+        if (CoflCore.Wrapper == null || !CoflCore.Wrapper.isRunning) {
+            // Only auto-start if any scoreboard line indicates Hypixel (ends with "hypixel.net")
+            boolean isHypixel = false;
+            for (String score : scores) {
+                if (score.toLowerCase().endsWith("hypixel.net")) {
+                    isHypixel = true;
+                    break;
+                }
+            }
+            if (isHypixel && instance != null) {
+                instance.autoStart();
+            }
+        }
+        uploadScoreboard();
     }
 
     private void autoStart(){
