@@ -78,7 +78,11 @@ public class NewItemInChestMixin {
             }
 
             if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler != null) {
-                ItemStack previousStack = MinecraftClient.getInstance().player.currentScreenHandler.getSlot(packet.getSlot()).getStack();
+                int slot = packet.getSlot();
+                if (slot < 0 || slot >= MinecraftClient.getInstance().player.currentScreenHandler.slots.size())
+                    return;
+                    
+                ItemStack previousStack = MinecraftClient.getInstance().player.currentScreenHandler.getSlot(slot).getStack();
                 if(previousStack.get(DataComponentTypes.LORE) == null)
                     return;
                 for (Text line : previousStack.get(DataComponentTypes.LORE).lines()) {
