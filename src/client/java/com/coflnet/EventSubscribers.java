@@ -185,4 +185,10 @@ public class EventSubscribers {
     public void onHotkeyRegister(HotkeyRegister[] hotkeys){
         CoflModClient.setHotKeys(hotkeys);
     }
+
+    @Subscribe
+    public void onLoggedIn(OnLoggedIn event){
+        System.out.println("Backend logged in event received, uploading scoreboard and tab list...");
+        CoflModClient.uploadScoreboardAndTabList();
+    }
 }

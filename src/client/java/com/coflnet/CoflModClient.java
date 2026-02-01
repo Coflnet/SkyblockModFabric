@@ -728,6 +728,15 @@ public class CoflModClient implements ClientModInitializer {
             CoflCore.Wrapper.SendMessage(data);
     }
 
+    /**
+     * Public method to upload both scoreboard and tab list.
+     * Called by EventSubscribers when the backend signals it's ready (OnLoggedIn event).
+     */
+    public static void uploadScoreboardAndTabList() {
+        uploadScoreboard();
+        uploadTabList();
+    }
+
     public static FlipData popFlipData() {
         FlipData fd = EventSubscribers.flipData;
         EventSubscribers.flipData = null;
