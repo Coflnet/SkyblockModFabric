@@ -1,3 +1,5 @@
 {
-  "keybinding.coflmod.bestflips": "Cofl: Show best flips"
+  "keybinding.coflmod.bestflips": "Cofl: Show best flips",
+  "key.category.coflnet.skycofl": "SkyCofl keys",
+  "key.category.coflnet.skycofl_unchangeable": "SkyCofl keys"
 }
