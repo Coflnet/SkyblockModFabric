@@ -94,6 +94,7 @@ public class CoflModClient implements ClientModInitializer {
     private static boolean keyPressed = false;
     private static int counter = 0;
     private static final KeyBinding.Category SKYCOFL_CATEGORY = KeyBinding.Category.create(Identifier.of("coflnet", "skycofl"));
+    private static final KeyBinding.Category SKYCOFL_UNCHANGEABLE_CATEGORY = KeyBinding.Category.create(Identifier.of("coflnet", "skycofl_unchangeable"));
     public static KeyBinding bestflipsKeyBinding;
     public static KeyBinding uploadItemKeyBinding;
     public static List<KeyBinding> additionalKeyBindings = new ArrayList<KeyBinding>();
@@ -1250,7 +1251,6 @@ public class CoflModClient implements ClientModInitializer {
     private boolean checkVersionCompability() {
         try {
             String v = net.minecraft.SharedConstants.getGameVersion().id();
-            System.out.println("Detected Minecraft version:" + v);
             boolean b = v.compareTo(targetVersion) == 0;
 
             return b;
@@ -1290,8 +1290,7 @@ public class CoflModClient implements ClientModInitializer {
             int keyIndex = getKeyIndex(keys[i].DefaultKey.toUpperCase());
 
             HotkeyRegister hotkey = keys[i];
-            KeyBinding.Category unchangeableCategory = KeyBinding.Category.create(Identifier.of("coflnet", "skycofl_unchangeable"));
-            KeyBinding keyBinding = new KeyBinding(hotkey.Name, keyIndex, unchangeableCategory);
+            KeyBinding keyBinding = new KeyBinding(hotkey.Name, keyIndex, SKYCOFL_UNCHANGEABLE_CATEGORY);
             additionalKeyBindings.add(keyBinding);
             keybindingsToHotkeys.put(keyBinding, hotkey);
             System.out.println("Registered Key: " + hotkey.Name + " with key " + hotkey.DefaultKey.toUpperCase() + " (" +keyIndex+")");
