@@ -13,6 +13,7 @@ base {
 repositories {
 	maven { url 'https://jitpack.io' }
 	maven { url 'https://api.modrinth.com/maven' }
+	maven { url 'https://maven.quiltmc.org/repository/release/' }
 }
 
 loom {
@@ -49,7 +50,9 @@ dependencies {
 	modImplementation include("org.java-websocket:Java-WebSocket:1.5.2")
 	modImplementation include("com.google.code.gson:gson:2.10.1")
 	modImplementation include("com.neovisionaries:nv-websocket-client:2.14")
-	modImplementation "maven.modrinth:yacl:3.8.2+1.21.11-fabric"
+	modImplementation include("maven.modrinth:yacl:3.8.2+1.21.11-fabric")
+	modImplementation include("org.quiltmc.parsers:json:0.3.1")
+	modImplementation include("org.quiltmc.parsers:gson:0.3.1")
 }
 
 processResources {
