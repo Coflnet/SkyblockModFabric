@@ -32,6 +32,7 @@ import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
+import com.coflnet.gui.cofl.CoflSettingsScreen;
 import com.coflnet.gui.tfm.TfmBinGUI;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -97,6 +98,7 @@ public class CoflModClient implements ClientModInitializer {
     private static final KeyBinding.Category SKYCOFL_UNCHANGEABLE_CATEGORY = KeyBinding.Category.create(Identifier.of("coflnet", "skycofl_unchangeable"));
     public static KeyBinding bestflipsKeyBinding;
     public static KeyBinding uploadItemKeyBinding;
+    public static KeyBinding openSettingsKeyBinding;
     public static List<KeyBinding> additionalKeyBindings = new ArrayList<KeyBinding>();
     public static Map<KeyBinding, HotkeyRegister> keybindingsToHotkeys = new HashMap<KeyBinding, HotkeyRegister>();
     public static ArrayList<String> knownIds = new ArrayList<>();
@@ -160,6 +162,11 @@ public class CoflModClient implements ClientModInitializer {
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_I,
                 SKYCOFL_CATEGORY));
+        openSettingsKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+            "keybinding.coflmod.opensettings",
+            InputUtil.Type.KEYSYM,
+            GLFW.GLFW_KEY_O,
+            SKYCOFL_CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Process scoreboard updates if dirty flag is set (set by ScoreboardMixin)
@@ -184,6 +191,17 @@ public class CoflModClient implements ClientModInitializer {
 
             if(uploadItemKeyBinding.wasPressed())
                 handleGetHoveredItem(client);
+
+            if (openSettingsKeyBinding.wasPressed()) {
+                CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
+                try {
+                    client.setScreen(CoflSettingsScreen.create(client.currentScreen));
+                } catch (Throwable t) {
+                    sendChatMessage("§cFailed to open settings GUI. YACL is missing or failed to load (please add the lastest version of YACL mod to your mods).");
+                    System.out.println("Failed to open settings GUI: " + t.getMessage());
+                    t.printStackTrace();
+                }
+            }
 
             if (additionalKeyBindings == null) return;
             try{
