@@ -364,17 +364,24 @@ public class CoflModClient implements ClientModInitializer {
                             continue; // Skip if the line index is invalid
                         }
                         int targetLine = tooltip.line;
-                        if(targetLine != 0 && Formatting.strip(ogLoreLines.get(targetLine).toString()).equals(Formatting.strip(lines.get(targetLine).toString()))) {
-                            System.out.println("lines differ `" + Formatting.strip(ogLoreLines.get(targetLine +1).toString()) + "` to `" + Formatting.strip(lines.get(targetLine).toString())  + "`");
+                        if(targetLine > 0
+                                && targetLine + 1 < ogLoreLines.size()
+                                && Formatting.strip(ogLoreLines.get(targetLine).toString()).equals(Formatting.strip(lines.get(targetLine).toString()))) {
+                            System.out.println("lines differ `" + Formatting.strip(ogLoreLines.get(targetLine + 1).toString()) + "` to `" + Formatting.strip(lines.get(targetLine).toString())  + "`");
                             targetLine++; // assume another mod added a line and move this down
                         }
                         lines.remove(targetLine);
                         lines.add(targetLine, Text.of(tooltip.value));
                         break;
                     case "INSERT":
-                        lines.add(tooltip.line, Text.of(tooltip.value));
+                        int insertAt = Math.max(0, Math.min(tooltip.line, lines.size()));
+                        lines.add(insertAt, Text.of(tooltip.value));
                         break;
                     case "DELETE":
+                        if (tooltip.line < 0 || tooltip.line >= lines.size()) {
+                            System.out.println("Invalid delete line index: " + tooltip.line);
+                            continue;
+                        }
                         lines.remove(tooltip.line);
                         break;
                     case "HIGHLIGHT":
