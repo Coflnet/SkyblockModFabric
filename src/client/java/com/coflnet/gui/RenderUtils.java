@@ -1,18 +1,12 @@
 package com.coflnet.gui;
 
-import com.coflnet.CoflMod;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.DepthTestFunction;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gl.RenderPipelines;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.Identifier;
 import org.jetbrains.annotations.NotNull;
 import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.injection.invoke.arg.ArgumentCountException;
@@ -28,18 +22,7 @@ public class RenderUtils {
     private static BufferBuilder buffer = null;
     public static TextRenderer textRenderer = null;
     public static int z = 0;
-    private static final RenderLayer.MultiPhase THROUGH_WALLS_LAYER = RenderLayer.of(
-            "filled_through_walls", RenderLayer.DEFAULT_BUFFER_SIZE, false, true,
-            RenderPipelines.register(
-                    RenderPipeline.builder(RenderPipelines.POSITION_COLOR_SNIPPET)
-                            .withLocation(Identifier.of(CoflMod.MOD_ID, "pipeline/debug_filled_box_through_walls"))
-                            .withVertexFormat(VertexFormats.POSITION_COLOR, VertexFormat.DrawMode.TRIANGLE_STRIP)
-                            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-                            .build()
-            ), RenderLayer.MultiPhaseParameters.builder()
-                    .layering(RenderPhase.VIEW_OFFSET_Z_LAYERING_FORWARD)
-                    .build(false)
-    );
+    private static final RenderLayer THROUGH_WALLS_LAYER = RenderLayer.getDebugFilledBox();
 
     public static void init(){
         z = 0; // 401
