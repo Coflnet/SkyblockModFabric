@@ -50,7 +50,7 @@ dependencies {
 	modImplementation include("org.java-websocket:Java-WebSocket:1.5.2")
 	modImplementation include("com.google.code.gson:gson:2.10.1")
 	modImplementation include("com.neovisionaries:nv-websocket-client:2.14")
-	modImplementation "maven.modrinth:yacl:3.8.2+1.21.10-fabric"
+	modImplementation "maven.modrinth:yacl:3.8.1+1.21.10-fabric"
 }
 
 processResources {
