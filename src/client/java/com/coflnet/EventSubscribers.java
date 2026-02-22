@@ -191,4 +191,9 @@ public class EventSubscribers {
         System.out.println("Backend logged in event received, uploading scoreboard and tab list...");
         CoflModClient.uploadScoreboardAndTabList();
     }
+
+    @Subscribe
+    public void onModRequestReceive(OnModRequestReceive event){
+        CoflModClient.cacheMods();
+    }
 }
