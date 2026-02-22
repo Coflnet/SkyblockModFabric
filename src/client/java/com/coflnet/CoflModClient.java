@@ -47,6 +47,7 @@ import CoflCore.commands.Command;
 import CoflCore.commands.CommandType;
 import CoflCore.commands.RawCommand;
 import CoflCore.commands.models.FlipData;
+import CoflCore.commands.models.ModListData;
 import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -1504,5 +1505,15 @@ public class CoflModClient implements ClientModInitializer {
         
         // Update last checked username
         lastCheckedUsername = currentUsername;
+    }
+
+    public static void cacheMods() {
+        ModListData modListData = new ModListData();
+        for (net.fabricmc.loader.api.ModContainer mod : FabricLoader.getInstance().getAllMods()) {
+            modListData.addModname(mod.getMetadata().getName());
+            modListData.addFilename(mod.getMetadata().getName());
+            modListData.addFilename(mod.getMetadata().getId());
+        }
+        CoflCore.Wrapper.SendMessage(new RawCommand("foundMods", gson.toJson(modListData)));
     }
 }
