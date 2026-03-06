@@ -415,7 +415,7 @@ public class CoflModClient implements ClientModInitializer {
                                 + getStringFromDouble(EventSubscribers.getCountdown(), EventSubscribers.countdownData.getMaxPrecision()),
                         x,
                         y,
-                        0xFFFFFFFF, EventSubscribers.countdownData.getScale());
+                        0xFFFFFFFF, EventSubscribers.countdownData.getScale().intValue());
             }
         });
 
