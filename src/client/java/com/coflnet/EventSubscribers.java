@@ -132,7 +132,7 @@ public class EventSubscribers {
             CoflCore.flipHandler.fds.Insert(f);
 
         EventBus.getDefault().post(new OnChatMessageReceive(f.Messages));
-        EventBus.getDefault().post(new OnPlaySoundReceive(new Sound(f.Sound.Name, (int) f.Sound.Pitch)));
+        EventBus.getDefault().post(new OnPlaySoundReceive(new Sound(f.Sound.Name, (float) f.Sound.Pitch)));
     }
 
     @Subscribe
