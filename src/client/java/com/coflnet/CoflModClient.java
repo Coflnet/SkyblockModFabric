@@ -1514,6 +1514,6 @@ public class CoflModClient implements ClientModInitializer {
             modListData.addFilename(mod.getMetadata().getName());
             modListData.addFilename(mod.getMetadata().getId());
         }
-        CoflCore.Wrapper.SendMessage(new RawCommand("foundMods", gson.toJson(modListData)));
+        CoflCore.Wrapper.SendMessage(new RawCommand("foundMods", new Gson().toJson(modListData)));
     }
 }
