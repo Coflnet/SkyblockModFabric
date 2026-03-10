@@ -101,7 +101,6 @@ jobs:
         with:
           modrinth-id: yso5yMlC
           modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
-          curseforge-token: ""
 
           name: "SkyCofl ${{ github.ref_name }} Fabric ${{ matrix.minecraft_version }}"
           version: "${{ github.ref_name }}_Fabric_${{ matrix.minecraft_version }}"
