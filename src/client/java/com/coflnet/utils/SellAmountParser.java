@@ -67,7 +67,7 @@ public class SellAmountParser {
         for (Text line : lines) {
             String lineText = line.getString();
             // Check if the description says "You don't have anything to sell" - treat as 0 value
-            if (lineText.contains("You don't have anything to sell")) {
+            if (lineText.contains("You don't have anything to sell") || lineText.contains("None to sell in your inventory")) {
                 return 0;
             }
             Matcher matcher = SELL_INSTANTLY_PATTERN.matcher(lineText);
