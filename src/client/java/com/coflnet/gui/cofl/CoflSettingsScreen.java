@@ -3,6 +3,7 @@ package com.coflnet.gui.cofl;
 import CoflCore.CoflCore;
 import CoflCore.CoflSkyCommand;
 import CoflCore.classes.Settings;
+import dev.isxander.yacl3.api.ButtonOption;
 import dev.isxander.yacl3.api.ConfigCategory;
 import dev.isxander.yacl3.api.Option;
 import dev.isxander.yacl3.api.OptionDescription;
@@ -16,7 +17,10 @@ import dev.isxander.yacl3.api.controller.LongFieldControllerBuilder;
 import dev.isxander.yacl3.api.controller.StringControllerBuilder;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.Style;
 import net.minecraft.text.Text;
+import net.minecraft.util.Util;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.net.URI;
 
 public class CoflSettingsScreen {
     private static final Set<String> HIDDEN_SETTING_KEYS = Set.of(
@@ -39,6 +44,8 @@ public class CoflSettingsScreen {
             "filters",
             "modHotkeys"
     );
+
+    private static Screen lastParent;
 
     private enum FinderType {
         UNKOWN(0, false, "Unknown/invalid finder state"),
@@ -55,7 +62,8 @@ public class CoflSettingsScreen {
         BINMASTER(256, false, "Binmaster finder source"),
         LEIKO(512, false, "Leiko finder source"),
         CRAFT_COST(1024, true, "Reports auctions that are at least 5% cheaper than the summed craft cost (clean+modifier). Adjust weights with the CraftCostWeight filter. Does not guarantee sale price, use with caution!"),
-        RUST(2048, true, "High-speed Rust-based finder hosted on high-performance infrastructure near Hypixel. This is a third-party, paid finder; use /cofl rust in the mod to learn more."),
+        RUST(2048, false, "High-speed Rust-based finder hosted on high-performance infrastructure near Hypixel. This is a third-party, paid finder; use /cofl rust in the mod to learn more."),
+        BAZAAR(4096, true, "Reports items when they are high buy order -> sell order difference."),
         MEDIAN_BASED(SNIPER_MEDIAN.mask | FLIPPER.mask, false, "Median-based preset"),
         ALL_EXCEPT_USER(FLIPPER_AND_SNIPERS.mask | AI.mask | TFM.mask | STONKS.mask | EXTERNAL.mask, false, "Preset that excludes USER finder");
 
@@ -80,6 +88,7 @@ public class CoflSettingsScreen {
     }
 
     public static Screen create(Screen parent) {
+        lastParent = parent;
         List<Settings> known = CoflCore.config.knownSettings == null ? List.of() : CoflCore.config.knownSettings;
         Map<String, List<Settings>> byCategory = new LinkedHashMap<>();
 
@@ -97,17 +106,24 @@ public class CoflSettingsScreen {
         YetAnotherConfigLib.Builder builder = YetAnotherConfigLib.createBuilder()
                 .title(Text.of("SkyCofl Settings"));
 
+        List<Runnable> saveActions = new ArrayList<>();
+
         byCategory.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER))
                 .forEach(entry -> {
                     ConfigCategory.Builder categoryBuilder = ConfigCategory.createBuilder()
                             .name(Text.of(capitalize(entry.getKey())));
 
+                    boolean hasFinderSetting = entry.getValue().stream().anyMatch(CoflSettingsScreen::isFinderSetting);
+                    if (hasFinderSetting) {
+                        categoryBuilder.option(buildWikiButton());
+                    }
+
                     entry.getValue().stream()
                             .sorted(Comparator.comparing(s -> fallback(s.getSettingName(), s.getSettingKey()), String.CASE_INSENSITIVE_ORDER))
                             .forEach(setting -> {
                                 if (isFinderSetting(setting)) {
-                                    categoryBuilder.group(buildFinderTypeGroup(setting));
+                                    categoryBuilder.group(buildFinderTypeGroup(setting, saveActions));
                                     return;
                                 }
 
@@ -116,12 +132,14 @@ public class CoflSettingsScreen {
                                     categoryBuilder.option(option);
                                 }
                             });
+                    if(hasFinderSetting) {
+                        categoryBuilder.option(buildWhitelistBlacklistButton());
+                    }
 
                     builder.category(categoryBuilder.build());
                 });
 
-        builder.save(() -> {
-        });
+        builder.save(() -> saveActions.forEach(Runnable::run));
 
         return builder.build().generateScreen(parent);
     }
@@ -261,7 +279,7 @@ public class CoflSettingsScreen {
                 .build();
     }
 
-    private static OptionGroup buildFinderTypeGroup(Settings setting) {
+    private static OptionGroup buildFinderTypeGroup(Settings setting, List<Runnable> saveActions) {
         String name = fallback(setting.getSettingName(), setting.getSettingKey());
         String info = fallback(setting.getSettingInfo(), "Select which finder types should be enabled.");
 
@@ -291,13 +309,47 @@ public class CoflSettingsScreen {
 
                                 finderMask.set(updatedMask);
                                 setting.setSettingValue(updatedMask);
-                                sendSet(setting.getSettingKey(), Integer.toString(updatedMask));
                             })
                     .controller(TickBoxControllerBuilder::create)
                     .build());
         }
 
+        saveActions.add(() -> sendSet(setting.getSettingKey(), Integer.toString(finderMask.get())));
+
         return groupBuilder.build();
+    }
+
+    public static void refreshIfOpen() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null) return;
+        client.execute(() -> {
+            Screen current = client.currentScreen;
+            if (current != null && current.getTitle() != null
+                    && "SkyCofl Settings".equals(current.getTitle().getString())) {
+                client.setScreen(create(lastParent));
+            }
+        });
+    }
+
+    private static ButtonOption buildWikiButton() {
+        return ButtonOption.createBuilder()
+                .name(Text.of("Wiki / Documentation"))
+                .description(OptionDescription.of(Text.of("Open the SkyCofl wiki for detailed documentation on all settings, finders, and filters.")))
+                .text(Text.of("Open"))
+                .action(screen -> Util.getOperatingSystem().open("https://sky.coflnet.com/wiki"))
+                .build();
+    }
+
+    private static ButtonOption buildWhitelistBlacklistButton() {
+        Text description = Text.empty()
+                .append(Text.literal("Black and whitelist entries allow you to configure more complex rules about which flips or auctions you see, they are too complicated to visualize with minecraft settings so are only editable on the web. "));
+
+        return ButtonOption.createBuilder()
+                .name(Text.of("Filters & Whitelist/Blacklist"))
+                .description(OptionDescription.of(description))
+                .text(Text.of("Configure"))
+                .action(screen -> Util.getOperatingSystem().open("https://sky.coflnet.com/flipper"))
+                .build();
     }
 
     private static void sendSet(String key, String value) {
@@ -375,6 +427,7 @@ public class CoflSettingsScreen {
             case STONKS -> "STONKS";
             case CRAFT_COST -> "Craft Cost";
             case RUST -> "Rust";
+            case BAZAAR -> "Bazaar";
             default -> capitalize(finderType.name().toLowerCase());
         };
     }
