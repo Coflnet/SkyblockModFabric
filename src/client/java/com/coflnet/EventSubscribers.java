@@ -151,6 +151,7 @@ public class EventSubscribers {
     @Subscribe
     public void onSettingsReceive(OnSettingsReceive event){
         System.out.println("SETTINGS RECEIVED: "+event.Settings.size());
+        com.coflnet.gui.cofl.CoflSettingsScreen.refreshIfOpen();
     }
 
     @Subscribe
