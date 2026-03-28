@@ -1,16 +1,20 @@
 package com.coflnet.gui;
 
 import com.coflnet.CoflMod;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.*;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Camera;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.*;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.rendertype.RenderTypes;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
@@ -23,30 +27,30 @@ import java.awt.*;
  * Modified by iroot-work
  */
 public class RenderUtils {
-    private static Tessellator tessellator = null;
+    private static Tesselator tessellator = null;
     private static BufferBuilder buffer = null;
-    public static TextRenderer textRenderer = null;
+    public static Font textRenderer = null;
     public static int z = 0;
 
     public static void init(){
         z = 0; // 401
-        tessellator = Tessellator.getInstance();
-        textRenderer = MinecraftClient.getInstance().textRenderer;
+        tessellator = Tesselator.getInstance();
+        textRenderer = Minecraft.getInstance().font;
     }
 
     //draw a rectangle
-    public static void drawRect(DrawContext context, float x, float y, float width, float height, int color) {
+    public static void drawRect(GuiGraphicsExtractor context, float x, float y, float width, float height, int color) {
         context.fill((int) x, (int) y, (int) (x + width), (int) (y + height), color);
     }
 
     //draws an outlined rectangle with a given color and size and a given line width
-    public static void drawRectOutline(DrawContext context, int x, int y, int width, int height, float lineWidth, int fillCol, int lineCol) {
+    public static void drawRectOutline(GuiGraphicsExtractor context, int x, int y, int width, int height, float lineWidth, int fillCol, int lineCol) {
         drawRect(context, x, y, width, height, lineCol);
         drawRect(context, x + lineWidth, y + lineWidth, width - lineWidth * 2, height - lineWidth * 2, fillCol);
     }
 
     //draws a circle with a given radius and thickness
-    public static void drawCircle(DrawContext context, int x, int y, int radius, int color) {
+    public static void drawCircle(GuiGraphicsExtractor context, int x, int y, int radius, int color) {
         for (int i = 0; i <= 360; i++) {
             context.fill(
                     (int) (x + Math.sin(i * Math.PI / 180) * radius),
@@ -59,7 +63,7 @@ public class RenderUtils {
     }
 
     //draws a circle outline with a given radius and thickness
-    public static void drawCircleOutline(DrawContext context, int x, int y, int radius, int thickness, int fillCol, int lineCol) {
+    public static void drawCircleOutline(GuiGraphicsExtractor context, int x, int y, int radius, int thickness, int fillCol, int lineCol) {
         drawCircle(context, x, y, radius, lineCol);
         drawCircle(context, x, y, radius + thickness * 2, fillCol);
     }
@@ -110,7 +114,7 @@ public class RenderUtils {
     }
 
     //draws an arc with a given radius, start angle, and end angle
-    public static void drawArc(DrawContext context, int x, int y, int radius, int startAngle, int endAngle, int color) {
+    public static void drawArc(GuiGraphicsExtractor context, int x, int y, int radius, int startAngle, int endAngle, int color) {
 //        buffer = tessellator.begin(VertexFormat.DrawMode.TRIANGLE_FAN, VertexFormats.POSITION_COLOR);
 //
 //        for (int i = startAngle; i <= endAngle; i++) {
@@ -130,7 +134,7 @@ public class RenderUtils {
 
 
     //draw a loading circle with a given radius, thickness, and speed
-    public static void drawLoadingCircle(DrawContext context, float x, float y, float radius, float thickness, float speed, int color) {
+    public static void drawLoadingCircle(GuiGraphicsExtractor context, float x, float y, float radius, float thickness, float speed, int color) {
 //        buffer = tessellator.begin(VertexFormat.DrawMode.LINE_STRIP, VertexFormats.POSITION_COLOR);
 //
 //        for (int i = 0; i <= 360; i++) {
@@ -148,7 +152,7 @@ public class RenderUtils {
     }
 
     //draws a rounded rectangle with a given radius and color and size
-    public static void drawRoundedRect(DrawContext context, int x, int y, int width, int height, int radius, @NotNull int color) {
+    public static void drawRoundedRect(GuiGraphicsExtractor context, int x, int y, int width, int height, int radius, @NotNull int color) {
         //draw the two rectangles
         drawRect(context, x + radius, y, width - radius * 2, height, color);
         drawRect(context, x, y + radius, radius, height - radius * 2, color);
@@ -189,30 +193,30 @@ public class RenderUtils {
     }
 
 
-    public static void drawString(DrawContext context, String text, int x, int y, int color) {
-        context.drawText(textRenderer, text, x, y, color, false);
+    public static void drawString(GuiGraphicsExtractor context, String text, int x, int y, int color) {
+        context.text(textRenderer, text, x, y, color, false);
     }
 
-    public static void drawStringWithShadow(DrawContext context, String text, int x, int y, int color) {
-        context.drawText(textRenderer, text, x, y, color, true);
+    public static void drawStringWithShadow(GuiGraphicsExtractor context, String text, int x, int y, int color) {
+        context.text(textRenderer, text, x, y, color, true);
     }
 
-    public static void drawCenteredString(DrawContext context, String text, int x, int y, int color) {
-        context.drawText(
+    public static void drawCenteredString(GuiGraphicsExtractor context, String text, int x, int y, int color) {
+        context.text(
                 textRenderer,
                 text,
-                x - textRenderer.getWidth(text) / 2,
+                x - textRenderer.width(text) / 2,
                 y,
                 color,
                 false
         );
     }
 
-    public static void drawCenteredStringWithShadow(DrawContext context, String text, int x, int y, int color) {
-        context.drawText(
+    public static void drawCenteredStringWithShadow(GuiGraphicsExtractor context, String text, int x, int y, int color) {
+        context.text(
                 textRenderer,
                 text,
-                x - textRenderer.getWidth(text) / 2,
+                x - textRenderer.width(text) / 2,
                 y,
                 color,
                 true
@@ -220,35 +224,35 @@ public class RenderUtils {
     }
 
     //draws a string with custom scale
-    private static void drawString(DrawContext context, String text, int x, int y, int color, int scale, boolean centered, boolean shadow) {
-        MatrixStack ms = new MatrixStack();
-        ms.push();
+    private static void drawString(GuiGraphicsExtractor context, String text, int x, int y, int color, int scale, boolean centered, boolean shadow) {
+        PoseStack ms = new PoseStack();
+        ms.pushPose();
         ms.scale(scale,scale,0);
-        context.drawText(textRenderer, text, centered ? x - textRenderer.getWidth(text) / 2 : x, y, color, shadow);
-        ms.pop();
+        context.text(textRenderer, text, centered ? x - textRenderer.width(text) / 2 : x, y, color, shadow);
+        ms.popPose();
     }
 
     //draws a string with custom scale
-    public static void drawString(DrawContext context, String text, int x, int y, int color, int scale) {
+    public static void drawString(GuiGraphicsExtractor context, String text, int x, int y, int color, int scale) {
         drawString(context, text, x, y, color, scale, false, false);
     }
 
     //draws a string with custom scale and shadow
-    public static void drawStringWithShadow(DrawContext context, String text, int x, int y, int color, int scale) {
+    public static void drawStringWithShadow(GuiGraphicsExtractor context, String text, int x, int y, int color, int scale) {
         drawString(context, text, x, y, color, scale, false, true);
     }
 
-    public static void drawCenteredString(DrawContext context, String text, int x, int y, int color, int scale) {
+    public static void drawCenteredString(GuiGraphicsExtractor context, String text, int x, int y, int color, int scale) {
         drawString(context, text, x, y, color, scale, true, false);
     }
 
-    public static void drawCenteredStringWithShadow(DrawContext context, String text, int x, int y, int color, int scale) {
+    public static void drawCenteredStringWithShadow(GuiGraphicsExtractor context, String text, int x, int y, int color, int scale) {
         drawString(context, text, x, y, color, scale, true, true);
     }
 
     //draws an ItemStack at a given position with a given scale
-    public static void drawItemStack(DrawContext context, ItemStack itemStack, int x, int y, float scale) {
-        context.drawItem(itemStack, x, y, 0);
+    public static void drawItemStack(GuiGraphicsExtractor context, ItemStack itemStack, int x, int y, float scale) {
+        context.item(itemStack, x, y, 0);
     }
 
     /*
@@ -373,7 +377,7 @@ public class RenderUtils {
      * @param maxXYZ The maximum corner coordinates [x, y, z]
      * @param rgba The color values [r, g, b, a] where each is 0.0-1.0
      */
-    public static void renderHighlightBox(MatrixStack matrices, Vec3d cameraPos, double[] minXYZ, double[] maxXYZ, float[] rgba) {
+    public static void renderHighlightBox(PoseStack matrices, Vec3 cameraPos, double[] minXYZ, double[] maxXYZ, float[] rgba) {
         if (minXYZ.length != 3) throw new ArgumentCountException(minXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
         if (maxXYZ.length != 3) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
         if (rgba.length != 4) throw new ArgumentCountException(rgba.length, 4, "Expected 4 values (r/g/b/a) in array");
@@ -385,7 +389,7 @@ public class RenderUtils {
         int blue = (int) (rgba[2] * 255);
         int color = (alpha << 24) | (red << 16) | (green << 8) | blue;
 
-        Box box = new Box(
+        AABB box = new AABB(
             minXYZ[0] - cameraPos.x,
             minXYZ[1] - cameraPos.y,
             minXYZ[2] - cameraPos.z,
@@ -400,7 +404,7 @@ public class RenderUtils {
 
     /**
      * Renders a highlight box at the specified position using the old Camera-based API.
-     * This method is deprecated - use the Vec3d version instead.
+     * This method is deprecated - use the Vec3 version instead.
      *
      * @param matrices The matrix stack for transformations
      * @param camera The camera for position offset
@@ -408,16 +412,10 @@ public class RenderUtils {
      * @param maxXYZ The maximum corner coordinates [x, y, z]
      * @param rgba The color values [r, g, b, a] where each is 0.0-1.0
      */
-    public static void renderHighlightBox(MatrixStack matrices, Camera camera, double[] minXYZ, double[] maxXYZ, float[] rgba) {
+    public static void renderHighlightBox(PoseStack matrices, Camera camera, double[] minXYZ, double[] maxXYZ, float[] rgba) {
         // Get the focused entity's position for camera-relative rendering
         // Camera.getPos() was removed, so we use the focused entity's position
-        Vec3d cameraPos;
-        if (camera.getFocusedEntity() != null) {
-            cameraPos = camera.getFocusedEntity().getCameraPosVec(MinecraftClient.getInstance().getRenderTickCounter().getTickProgress(true));
-        } else {
-            // Fallback to zero if no entity is focused
-            cameraPos = Vec3d.ZERO;
-        }
+        Vec3 cameraPos = camera.position();
         renderHighlightBox(matrices, cameraPos, minXYZ, maxXYZ, rgba);
     }
 
@@ -429,16 +427,16 @@ public class RenderUtils {
      * @param box The bounding box to draw (should be camera-relative)
      * @param color The ARGB color value
      */
-    public static void drawFilledBox(MatrixStack matrices, Box box, int color) {
-        Matrix4f matrix4f = matrices.peek().getPositionMatrix();
+    public static void drawFilledBox(PoseStack matrices, AABB box, int color) {
+        Matrix4f matrix4f = matrices.last().pose();
 
         // Get the tessellator and create a buffer for quads
-        Tessellator tessellator = Tessellator.getInstance();
+        Tesselator tessellator = Tesselator.getInstance();
 
-        // Use the RenderLayer's format to properly render
-        RenderLayer renderLayer = RenderLayers.debugFilledBox();
-        VertexFormat vertexFormat = renderLayer.getVertexFormat();
-        VertexFormat.DrawMode drawMode = renderLayer.getDrawMode();
+        // Use the RenderType's format to properly render
+        RenderType renderLayer = RenderTypes.debugFilledBox();
+        VertexFormat vertexFormat = renderLayer.format();
+        VertexFormat.Mode drawMode = renderLayer.mode();
         
         BufferBuilder bufferBuilder = tessellator.begin(drawMode, vertexFormat);
 
@@ -450,42 +448,42 @@ public class RenderUtils {
         float maxZ = (float) box.maxZ;
 
         // Front face (negative Z)
-        bufferBuilder.vertex(matrix4f, minX, minY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, minY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, maxY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, minX, maxY, minZ).color(color);
+        bufferBuilder.addVertex(matrix4f, minX, minY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, minY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, maxY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, minX, maxY, minZ).setColor(color);
 
         // Back face (positive Z)
-        bufferBuilder.vertex(matrix4f, maxX, minY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, minX, minY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, minX, maxY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, maxY, maxZ).color(color);
+        bufferBuilder.addVertex(matrix4f, maxX, minY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, minX, minY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, minX, maxY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, maxY, maxZ).setColor(color);
 
         // Left face (negative X)
-        bufferBuilder.vertex(matrix4f, minX, minY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, minX, minY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, minX, maxY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, minX, maxY, maxZ).color(color);
+        bufferBuilder.addVertex(matrix4f, minX, minY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, minX, minY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, minX, maxY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, minX, maxY, maxZ).setColor(color);
 
         // Right face (positive X)
-        bufferBuilder.vertex(matrix4f, maxX, minY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, minY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, maxY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, maxY, minZ).color(color);
+        bufferBuilder.addVertex(matrix4f, maxX, minY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, minY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, maxY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, maxY, minZ).setColor(color);
 
         // Top face (positive Y)
-        bufferBuilder.vertex(matrix4f, minX, maxY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, maxY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, maxY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, minX, maxY, maxZ).color(color);
+        bufferBuilder.addVertex(matrix4f, minX, maxY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, maxY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, maxY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, minX, maxY, maxZ).setColor(color);
 
         // Bottom face (negative Y)
-        bufferBuilder.vertex(matrix4f, minX, minY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, minY, maxZ).color(color);
-        bufferBuilder.vertex(matrix4f, maxX, minY, minZ).color(color);
-        bufferBuilder.vertex(matrix4f, minX, minY, minZ).color(color);
+        bufferBuilder.addVertex(matrix4f, minX, minY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, minY, maxZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, maxX, minY, minZ).setColor(color);
+        bufferBuilder.addVertex(matrix4f, minX, minY, minZ).setColor(color);
 
         // Draw with the render layer
-        renderLayer.draw(bufferBuilder.end());
+        renderLayer.draw(bufferBuilder.buildOrThrow());
     }
 }

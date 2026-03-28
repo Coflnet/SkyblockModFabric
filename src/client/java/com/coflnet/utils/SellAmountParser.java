@@ -1,9 +1,9 @@
 package com.coflnet.utils;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.chat.Component;
 
 import java.util.List;
 import java.util.regex.Matcher;
@@ -25,10 +25,10 @@ public class SellAmountParser {
      */
     public static long extractSellInstantlyAmount(ItemStack item) {
         try {
-            List<Text> tooltip = item.getTooltip(
-                Item.TooltipContext.DEFAULT,
-                MinecraftClient.getInstance().player, 
-                net.minecraft.item.tooltip.TooltipType.BASIC
+            List<Component> tooltip = item.getTooltipLines(
+                Item.TooltipContext.EMPTY,
+                Minecraft.getInstance().player, 
+                net.minecraft.world.item.TooltipFlag.NORMAL
             );
             
             return extractSellInstantlyAmountFromTooltip(tooltip);
@@ -45,10 +45,10 @@ public class SellAmountParser {
      */
     public static long extractInventorySackAmount(ItemStack item) {
         try {
-            List<Text> tooltip = item.getTooltip(
-                Item.TooltipContext.DEFAULT,
-                MinecraftClient.getInstance().player, 
-                net.minecraft.item.tooltip.TooltipType.BASIC
+            List<Component> tooltip = item.getTooltipLines(
+                Item.TooltipContext.EMPTY,
+                Minecraft.getInstance().player, 
+                net.minecraft.world.item.TooltipFlag.NORMAL
             );
             
             return extractInventorySackAmountFromTooltip(tooltip);
@@ -63,8 +63,8 @@ public class SellAmountParser {
      * @param lines the tooltip lines to parse
      * @return the coin amount, 0 if nothing to sell, or DEFAULT_PROTECTION_AMOUNT if parsing fails
      */
-    public static long extractSellInstantlyAmountFromTooltip(List<Text> lines) {
-        for (Text line : lines) {
+    public static long extractSellInstantlyAmountFromTooltip(List<Component> lines) {
+        for (Component line : lines) {
             String lineText = line.getString();
             // Check if the description says "You don't have anything to sell" - treat as 0 value
             if (lineText.contains("You don't have anything to sell") || lineText.contains("None to sell in your inventory")) {
@@ -91,8 +91,8 @@ public class SellAmountParser {
      * @param lines the tooltip lines to parse
      * @return the coin amount, 0 if nothing to sell, or DEFAULT_PROTECTION_AMOUNT if parsing fails
      */
-    public static long extractInventorySackAmountFromTooltip(List<Text> lines) {
-        for (Text line : lines) {
+    public static long extractInventorySackAmountFromTooltip(List<Component> lines) {
+        for (Component line : lines) {
             String lineText = line.getString();
             // Check if the description says "You don't have anything to sell" - treat as 0 value
             if (lineText.contains("You don't have anything to sell")) {

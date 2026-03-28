@@ -15,11 +15,11 @@ import dev.isxander.yacl3.api.controller.FloatFieldControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerFieldControllerBuilder;
 import dev.isxander.yacl3.api.controller.LongFieldControllerBuilder;
 import dev.isxander.yacl3.api.controller.StringControllerBuilder;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
 
 import java.util.ArrayList;
@@ -104,7 +104,7 @@ public class CoflSettingsScreen {
         }
 
         YetAnotherConfigLib.Builder builder = YetAnotherConfigLib.createBuilder()
-                .title(Text.of("SkyCofl Settings"));
+                .title(Component.literal("SkyCofl Settings"));
 
         List<Runnable> saveActions = new ArrayList<>();
 
@@ -112,7 +112,7 @@ public class CoflSettingsScreen {
                 .sorted(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER))
                 .forEach(entry -> {
                     ConfigCategory.Builder categoryBuilder = ConfigCategory.createBuilder()
-                            .name(Text.of(capitalize(entry.getKey())));
+                            .name(Component.literal(capitalize(entry.getKey())));
 
                     boolean hasFinderSetting = entry.getValue().stream().anyMatch(CoflSettingsScreen::isFinderSetting);
                     if (hasFinderSetting) {
@@ -166,8 +166,8 @@ public class CoflSettingsScreen {
     private static Option<Boolean> buildBooleanOption(Settings setting, String name, String info) {
         boolean current = toBoolean(setting.getSettingValue());
         return Option.<Boolean>createBuilder()
-                .name(Text.of(name))
-                .description(OptionDescription.of(Text.of(info)))
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(info)))
                 .binding(current,
                         () -> toBoolean(setting.getSettingValue()),
                         value -> {
@@ -181,8 +181,8 @@ public class CoflSettingsScreen {
     private static Option<Integer> buildIntegerOption(Settings setting, String name, String info) {
         int current = toInt(setting.getSettingValue());
         return Option.<Integer>createBuilder()
-                .name(Text.of(name))
-                .description(OptionDescription.of(Text.of(info)))
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(info)))
                 .binding(current,
                         () -> toInt(setting.getSettingValue()),
                         value -> {
@@ -196,8 +196,8 @@ public class CoflSettingsScreen {
     private static Option<Long> buildLongOption(Settings setting, String name, String info) {
         long current = toLong(setting.getSettingValue());
         return Option.<Long>createBuilder()
-                .name(Text.of(name))
-                .description(OptionDescription.of(Text.of(info)))
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(info)))
                 .binding(current,
                         () -> toLong(setting.getSettingValue()),
                         value -> {
@@ -211,8 +211,8 @@ public class CoflSettingsScreen {
     private static Option<Double> buildDoubleOption(Settings setting, String name, String info) {
         double current = toDouble(setting.getSettingValue());
         return Option.<Double>createBuilder()
-                .name(Text.of(name))
-                .description(OptionDescription.of(Text.of(info)))
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(info)))
                 .binding(current,
                         () -> toDouble(setting.getSettingValue()),
                         value -> {
@@ -226,8 +226,8 @@ public class CoflSettingsScreen {
     private static Option<Float> buildFloatOption(Settings setting, String name, String info) {
         float current = toFloat(setting.getSettingValue());
         return Option.<Float>createBuilder()
-                .name(Text.of(name))
-                .description(OptionDescription.of(Text.of(info)))
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(info)))
                 .binding(current,
                         () -> toFloat(setting.getSettingValue()),
                         value -> {
@@ -241,8 +241,8 @@ public class CoflSettingsScreen {
     private static Option<String> buildStringOption(Settings setting, String name, String info) {
         String current = toStringValue(setting.getSettingValue());
         return Option.<String>createBuilder()
-                .name(Text.of(name))
-                .description(OptionDescription.of(Text.of(info)))
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(info)))
                 .binding(current,
                         () -> toStringValue(setting.getSettingValue()),
                         value -> {
@@ -258,8 +258,8 @@ public class CoflSettingsScreen {
         AtomicReference<LinkedHashSet<String>> appliedSet = new AtomicReference<>(new LinkedHashSet<>(initialSet));
 
         return Option.<String>createBuilder()
-                .name(Text.of(name))
-                .description(OptionDescription.of(Text.of(info)))
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(info)))
                 .binding(toCommaSeparated(initialSet),
                         () -> toCommaSeparated(toStringSet(setting.getSettingValue())),
                         value -> {
@@ -286,8 +286,8 @@ public class CoflSettingsScreen {
         AtomicReference<Integer> finderMask = new AtomicReference<>(parseFinderMask(setting.getSettingValue()));
 
         OptionGroup.Builder groupBuilder = OptionGroup.createBuilder()
-                .name(Text.of(name))
-                .description(OptionDescription.of(Text.of(info)))
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(info)))
                 .collapsed(false);
 
         for (FinderType finderType : FinderType.values()) {
@@ -297,8 +297,8 @@ public class CoflSettingsScreen {
 
             String optionName = formatFinderTypeName(finderType);
             groupBuilder.option(Option.<Boolean>createBuilder()
-                    .name(Text.of(optionName))
-                    .description(OptionDescription.of(Text.of(finderType.description)))
+                    .name(Component.literal(optionName))
+                    .description(OptionDescription.of(Component.literal(finderType.description)))
                     .binding((finderMask.get() & finderType.mask) != 0,
                             () -> (finderMask.get() & finderType.mask) != 0,
                             enabled -> {
@@ -320,10 +320,10 @@ public class CoflSettingsScreen {
     }
 
     public static void refreshIfOpen() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         if (client == null) return;
         client.execute(() -> {
-            Screen current = client.currentScreen;
+            Screen current = client.screen;
             if (current != null && current.getTitle() != null
                     && "SkyCofl Settings".equals(current.getTitle().getString())) {
                 client.setScreen(create(lastParent));
@@ -333,37 +333,37 @@ public class CoflSettingsScreen {
 
     private static ButtonOption buildWikiButton() {
         return ButtonOption.createBuilder()
-                .name(Text.of("Wiki / Documentation"))
-                .description(OptionDescription.of(Text.of("Open the SkyCofl wiki for detailed documentation on all settings, finders, and filters.")))
-                .text(Text.of("Open"))
-                .action(screen -> Util.getOperatingSystem().open("https://sky.coflnet.com/wiki"))
+                .name(Component.literal("Wiki / Documentation"))
+                .description(OptionDescription.of(Component.literal("Open the SkyCofl wiki for detailed documentation on all settings, finders, and filters.")))
+                .text(Component.literal("Open"))
+                .action(screen -> Util.getPlatform().openUri("https://sky.coflnet.com/wiki"))
                 .build();
     }
 
     private static ButtonOption buildWhitelistBlacklistButton() {
-        Text description = Text.empty()
-                .append(Text.literal("Black and whitelist entries allow you to configure more complex rules about which flips or auctions you see, they are too complicated to visualize with minecraft settings so are only editable on the web. "));
+        Component description = Component.empty()
+                .append(Component.literal("Black and whitelist entries allow you to configure more complex rules about which flips or auctions you see, they are too complicated to visualize with minecraft settings so are only editable on the web. "));
 
         return ButtonOption.createBuilder()
-                .name(Text.of("Filters & Whitelist/Blacklist"))
+                .name(Component.literal("Filters & Whitelist/Blacklist"))
                 .description(OptionDescription.of(description))
-                .text(Text.of("Configure"))
-                .action(screen -> Util.getOperatingSystem().open("https://sky.coflnet.com/flipper"))
+                .text(Component.literal("Configure"))
+                .action(screen -> Util.getPlatform().openUri("https://sky.coflnet.com/flipper"))
                 .build();
     }
 
     private static void sendSet(String key, String value) {
-        if (MinecraftClient.getInstance() == null || MinecraftClient.getInstance().getSession() == null) {
+        if (Minecraft.getInstance() == null || Minecraft.getInstance().getUser() == null) {
             return;
         }
-        CoflSkyCommand.processCommand(new String[]{"set", key, value}, MinecraftClient.getInstance().getSession().getUsername());
+        CoflSkyCommand.processCommand(new String[]{"set", key, value}, Minecraft.getInstance().getUser().getName());
     }
 
     private static void sendSetRemove(String key, String value) {
-        if (MinecraftClient.getInstance() == null || MinecraftClient.getInstance().getSession() == null) {
+        if (Minecraft.getInstance() == null || Minecraft.getInstance().getUser() == null) {
             return;
         }
-        CoflSkyCommand.processCommand(new String[]{"set", key, "rm", value}, MinecraftClient.getInstance().getSession().getUsername());
+        CoflSkyCommand.processCommand(new String[]{"set", key, "rm", value}, Minecraft.getInstance().getUser().getName());
     }
 
     private static boolean shouldHide(Settings setting) {

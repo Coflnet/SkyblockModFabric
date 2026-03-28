@@ -1,14 +1,14 @@
 package com.coflnet.mixin;
 
 import com.coflnet.config.AngryCoopProtectionManager;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.Click;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,14 +20,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.Locale;
 import java.util.Optional;
 
-@Mixin(HandledScreen.class)
+@Mixin(AbstractContainerScreen.class)
 public abstract class AuctionProtectionMixin {
 
-    @Shadow @Nullable protected Slot focusedSlot;
-    @Shadow public abstract @Nullable Slot getSlotAt(double x, double y);
+    @Shadow @Nullable protected Slot hoveredSlot;
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    private void onAngryCoopMouseClicked(Click click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
+    private void onAngryCoopMouseClicked(MouseButtonEvent click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
         try {
             if (!AngryCoopProtectionManager.isEnabled()) {
                 return;
@@ -38,39 +37,37 @@ public abstract class AuctionProtectionMixin {
                 return;
             }
 
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player == null) {
                 return;
             }
 
-            HandledScreen<?> screen = (HandledScreen<?>) (Object) this;
+            AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) (Object) this;
             String screenTitle = stripFormatting(screen.getTitle().getString());
             ScreenMode mode = determineScreenMode(screenTitle);
             if (mode == null) {
                 return;
             }
 
-            double mouseX = click.x();
-            double mouseY = click.y();
-            Slot clickedSlot = getSlotAt(mouseX, mouseY);
-            if (clickedSlot == null || !clickedSlot.hasStack()) {
+            Slot clickedSlot = hoveredSlot;
+            if (clickedSlot == null || !clickedSlot.hasItem()) {
                 return;
             }
 
-            ItemStack clickedStack = clickedSlot.getStack();
+            ItemStack clickedStack = clickedSlot.getItem();
             if (clickedStack.isEmpty()) {
                 return;
             }
 
-            boolean ctrlPressed = GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
-                    || GLFW.glfwGetKey(client.getWindow().getHandle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+            boolean ctrlPressed = GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
+                    || GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
 
             String playerNameLower = client.player.getGameProfile().name().toLowerCase(Locale.ROOT);
-            String clickedName = stripFormatting(clickedStack.getName().getString()).trim();
+            String clickedName = stripFormatting(clickedStack.getHoverName().getString()).trim();
 
             if (isClaimAll(clickedName)) {
                 if (!ctrlPressed && hasForeignEntry(screen, playerNameLower, client.player.getInventory(), mode)) {
-                    client.player.sendMessage(Text.literal(getClaimAllMessage(mode)), false);
+                    client.player.sendSystemMessage(Component.literal(getClaimAllMessage(mode)));
                     cir.setReturnValue(true);
                 }
                 return;
@@ -85,7 +82,7 @@ public abstract class AuctionProtectionMixin {
                 return;
             }
 
-            client.player.sendMessage(Text.literal(getBlockedClickMessage(mode, foreignActor.get())), false);
+            client.player.sendSystemMessage(Component.literal(getBlockedClickMessage(mode, foreignActor.get())));
             cir.setReturnValue(true);
         } catch (Exception e) {
             System.out.println("[AuctionProtectionMixin] mouseClicked failed: " + e.getMessage());
@@ -108,12 +105,12 @@ public abstract class AuctionProtectionMixin {
     }
 
     private Optional<String> getForeignActor(ItemStack stack, String playerNameLower, ScreenMode mode) {
-        var loreComponent = stack.get(DataComponentTypes.LORE);
+        var loreComponent = stack.get(DataComponents.LORE);
         if (loreComponent == null) {
             return Optional.empty();
         }
 
-        for (Text line : loreComponent.lines()) {
+        for (Component line : loreComponent.lines()) {
             String raw = stripFormatting(line.getString());
             String lower = raw.toLowerCase(Locale.ROOT);
 
@@ -152,17 +149,17 @@ public abstract class AuctionProtectionMixin {
         return Optional.empty();
     }
 
-    private boolean hasForeignEntry(HandledScreen<?> screen, String playerNameLower, PlayerInventory playerInventory, ScreenMode mode) {
-        for (Slot slot : screen.getScreenHandler().slots) {
-            if (slot.inventory == playerInventory) {
+    private boolean hasForeignEntry(AbstractContainerScreen<?> screen, String playerNameLower, Inventory playerInventory, ScreenMode mode) {
+        for (Slot slot : screen.getMenu().slots) {
+            if (slot.container == playerInventory) {
                 continue;
             }
 
-            if (!slot.hasStack()) {
+            if (!slot.hasItem()) {
                 continue;
             }
 
-            if (getForeignActor(slot.getStack(), playerNameLower, mode).isPresent()) {
+            if (getForeignActor(slot.getItem(), playerNameLower, mode).isPresent()) {
                 return true;
             }
         }

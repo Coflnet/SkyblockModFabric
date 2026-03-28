@@ -5,61 +5,61 @@ import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
 //import com.coflnet.gui.widget.ScrollableDynamicTextWidget;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
-import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
-import net.minecraft.client.gui.widget.*;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.item.Items;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.components.*;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.Items;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Component;
 import oshi.util.tuples.Pair;
 
 import java.awt.event.ComponentEvent;
 import java.util.List;
 
 public class CoflBinGUI extends BinGUI {
-    private TextWidget titleTextWidget;
-    private ScrollableTextWidget loreScrollableTextWidget;
-    private ClickableWidget rightClickableWidget;
-    private ClickableWidget leftClickableWidget;
+    private StringWidget titleTextWidget;
+    private FocusableTextWidget loreScrollableTextWidget;
+    private AbstractWidget rightClickableWidget;
+    private AbstractWidget leftClickableWidget;
 
     public String title = "";
-    public Text lore = Text.of("");
+    public Component lore = Component.literal("");
     public Pair<Integer, Integer> rightButtonCol = new Pair<>(CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.BACKGROUND_SECONDARY);
 
-    public CoflBinGUI(GenericContainerScreen gcs){
-        super(Text.literal("Cofl Bin Gui"), gcs, 5, 4);
+    public CoflBinGUI(ContainerScreen gcs){
+        super(Component.literal("Cofl Bin Gui"), gcs, 5, 4);
     }
 
     @Override
     protected void clearAndInitWidgets(int screenWidth, int screenHeight) {
-        this.clearChildren();
+        this.clearWidgets();
         itemWidget = new ItemWidget(
                 screenWidth / 2 - width / 2 + p + 2,
                 screenHeight / 2 - height / 2 + p + 12 + p + 2,
-                Items.AIR.getDefaultStack()
+                Items.AIR.getDefaultInstance()
         );
 
-        leftClickableWidget = new ClickableWidget(
+        leftClickableWidget = new AbstractWidget(
                 screenWidth / 2 - width / 2 + p,
                 screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p * 5) - screenHeight / 15,
                 width / 5 * 2 - p,
                 225 - 150 - 12 - p*5 + screenHeight / 15,
-                Text.of("Cancel")
+                Component.literal("Cancel")
         ){
             @Override
-            protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+            protected void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
                 RenderUtils.drawRoundedRect(context, getX(), getY(), getWidth(), getHeight(), r, this.isMouseOver(mouseX,mouseY) ? CoflColConfig.CANCEL_HOVER : CoflColConfig.CANCEL);
-                RenderUtils.drawString(context, this.getMessage().getLiteralString(), getX() + 6, getY() + 4, CoflColConfig.TEXT_PRIMARY);
+                RenderUtils.drawString(context, this.getMessage().getString(), getX() + 6, getY() + 4, CoflColConfig.TEXT_PRIMARY);
             }
 
             @Override
-            protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
+            protected void updateWidgetNarration(NarrationElementOutput builder) {}
 
             @Override
-            public void onClick(net.minecraft.client.gui.Click click, boolean fromScreen) {
+            public void onClick(net.minecraft.client.input.MouseButtonEvent click, boolean fromScreen) {
                 double mouseX = click.x();
                 double mouseY = click.y();
                 if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
@@ -67,7 +67,7 @@ public class CoflBinGUI extends BinGUI {
             }
 
             @Override
-            protected boolean isValidClickButton(net.minecraft.client.input.MouseInput mi) {
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseButtonInfo mi) {
                 int b = mi.button();
                 return b == 0 || b == 1;
             }
@@ -75,15 +75,15 @@ public class CoflBinGUI extends BinGUI {
 
         int tempWidth = width;
         int tempHeight = height;
-        rightClickableWidget = new ClickableWidget(
+        rightClickableWidget = new AbstractWidget(
                 0, //screenWidth / 2 - width / 2, //screenWidth / 2 - width / 2 + p + width / 5 * 2,
                 0, //screenHeight / 2 - height / 2, //screenHeight / 2 + height / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15,
                 screenWidth, //width, //width / 5 * 3 - p*2,
                 screenHeight, //height, //225 - 150 - 12 - p*5 + screenHeight / 15,
-                Text.of("")
+                Component.literal("")
         ){
             @Override
-            protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+            protected void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
                 boolean mouseOver = mouseX >= (double)(screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2)
                         && mouseY >= (double)(screenHeight / 2 + tempHeight / 2 - p - (225 - 150 - 12 - p*5) - screenHeight / 15)
                         && mouseX < (double)((screenWidth / 2 - tempWidth / 2 + p + tempWidth / 5 * 2) + (tempWidth / 5 * 3 - p*2))
@@ -106,16 +106,16 @@ public class CoflBinGUI extends BinGUI {
             }
 
             @Override
-            protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
+            protected void updateWidgetNarration(NarrationElementOutput builder) {}
 
             @Override
-            public void onClick(net.minecraft.client.gui.Click click, boolean fromScreen) {
+            public void onClick(net.minecraft.client.input.MouseButtonEvent click, boolean fromScreen) {
                 double mouseX = click.x();
                 double mouseY = click.y();
                 if (leftClickableWidget.isMouseOver(mouseX, mouseY)) {
                     // No explicit button provided here; default to left mouse button (0) and no modifiers.
-                    net.minecraft.client.input.MouseInput mi = new net.minecraft.client.input.MouseInput(0, 0);
-                    leftClickableWidget.onClick(new net.minecraft.client.gui.Click(mouseX, mouseY, mi), true);
+                    net.minecraft.client.input.MouseButtonInfo mi = new net.minecraft.client.input.MouseButtonInfo(0, 0);
+                    leftClickableWidget.onClick(new net.minecraft.client.input.MouseButtonEvent(mouseX, mouseY, mi), true);
                 } else {
                     switch (auctionStatus){
                         case INIT:
@@ -137,51 +137,35 @@ public class CoflBinGUI extends BinGUI {
             }
 
             @Override
-            protected boolean isValidClickButton(net.minecraft.client.input.MouseInput mi) {
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseButtonInfo mi) {
                 int b = mi.button();
                 return b == 0 || b == 1;
             }
         };
 
-        titleTextWidget = new TextWidget(
+        titleTextWidget = new StringWidget(
                 screenWidth / 2 - width / 2 + p + 3,
                 screenHeight / 2 - height / 2 + p + 2,
                 width - p*2 - 4, 10,
-                Text.of(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
-                MinecraftClient.getInstance().textRenderer
+                Component.literal(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
+                Minecraft.getInstance().font
         );
 
-        loreScrollableTextWidget = new ScrollableTextWidget(
+        loreScrollableTextWidget = FocusableTextWidget.builder(
+                lore == null ? Component.literal("") : lore, Minecraft.getInstance().font
+        ).maxWidth(width - 20 - p*4 - 4).build();
+        loreScrollableTextWidget.setPosition(
                 screenWidth / 2 - width / 2 + p + 20 + p + 4,
-                screenHeight / 2 - height / 2 + p + 12 + p + 2,
-                width - 20 - p*4 - 4,  height - 75 - 2 - screenHeight / 15 - 2,
-                lore == null ? Text.of("") : lore, MinecraftClient.getInstance().textRenderer
-        ){
-            @Override
-            protected void drawBox(DrawContext context) {}
-
-            @Override
-            public boolean mouseClicked(net.minecraft.client.gui.Click click, boolean fromScreen) {
-                // Use the click's embedded MouseInput when available.
-                boolean clicked = super.mouseClicked(click, fromScreen);
-                if (clicked) rightClickableWidget.onClick(click, true);
-                return clicked;
-            }
-
-            @Override
-            protected boolean isValidClickButton(net.minecraft.client.input.MouseInput mi) {
-                int b = mi.button();
-                return b == 0 || b == 1;
-            }
-        };
+                screenHeight / 2 - height / 2 + p + 12 + p + 2
+        );
 
         if(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0) setRightButtonConfig(auctionStatus);
 
-        this.addDrawableChild(titleTextWidget);
-        this.addDrawableChild(loreScrollableTextWidget);
-        this.addDrawableChild(rightClickableWidget);
-        this.addDrawableChild(leftClickableWidget);
-        this.addDrawableChild(itemWidget);
+        this.addRenderableWidget(titleTextWidget);
+        this.addRenderableWidget(loreScrollableTextWidget);
+        this.addRenderableWidget(rightClickableWidget);
+        this.addRenderableWidget(leftClickableWidget);
+        this.addRenderableWidget(itemWidget);
     }
 
     private void setRightButtonConfig(AuctionStatus auctionStatus){
@@ -190,42 +174,42 @@ public class CoflBinGUI extends BinGUI {
             case AUCTION_BUYING:
             case AUCTION_WAITING:
                 rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
-                rightClickableWidget.setMessage(Text.of("Buy (You can click anywhere)"));
+                rightClickableWidget.setMessage(Component.literal("Buy (You can click anywhere)"));
                 break;
             case AUCTION_SOLD:
                 rightButtonCol = new Pair<>(CoflColConfig.UNAVAILABLE, CoflColConfig.UNAVAILABLE);
-                for (Text line : currentItem.getComponents().get(DataComponentTypes.LORE).lines()) {
-                    if (line.getString().startsWith("Buyer: ")) rightClickableWidget.setMessage(Text.literal("Bought by "+line.getString().substring("Buyer: ".length())));
+                for (Component line : currentItem.getComponents().get(DataComponents.LORE).lines()) {
+                    if (line.getString().startsWith("Buyer: ")) rightClickableWidget.setMessage(Component.literal("Bought by "+line.getString().substring("Buyer: ".length())));
                 }
                 break;
             case AUCTION_CONFIRMING:
                 rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
-                rightClickableWidget.setMessage(Text.of("Confirm purchase"));
+                rightClickableWidget.setMessage(Component.literal("Confirm purchase"));
                 break;
             case OWN_AUCTION_CLAIMING:
                 rightButtonCol = new Pair<>(CoflColConfig.CONFIRM, CoflColConfig.CONFIRM_HOVER);
-                rightClickableWidget.setMessage(Text.of(
+                rightClickableWidget.setMessage(Component.literal(
                         "Claim Auction"
                 ));
                 break;
             case OWN_AUCTION_CANCELING:
                 rightButtonCol = new Pair<>(CoflColConfig.UNAVAILABLE, CoflColConfig.UNAVAILABLE);
-                rightClickableWidget.setMessage(Text.of(
+                rightClickableWidget.setMessage(Component.literal(
                         "Cancel Auction"
                 ));
                 break;
         }
     }
 
-    public MutableText convertTextList(List<Text> collection){
-        MutableText res = Text.empty();
+    public MutableComponent convertTextList(List<Component> collection){
+        MutableComponent res = Component.empty();
         if (collection == null || collection.isEmpty()) return res;
 
         res.append(collection.getFirst());
         collection.removeFirst();
 
-        for (Text text : collection) {
-            res.append(Text.literal("\n"));
+        for (Component text : collection) {
+            res.append(Component.literal("\n"));
             res.append(text);
         }
         return res;
@@ -233,22 +217,22 @@ public class CoflBinGUI extends BinGUI {
 
 
     @Override
-    public void renderBackground(DrawContext drawContext, int mouseX, int mouseY, float delta) {
+    public void renderBackground(GuiGraphicsExtractor drawContext, int mouseX, int mouseY, float delta) {
         super.renderBackground(drawContext, mouseX, mouseY, delta);
 
-        if(!gcsh.getInventory().isEmpty()){
-            if (gcsh.getInventory().getStack(AUCTION_ITEM_SLOT).getItem() != Items.AIR) {
-                setItem(gcsh.getInventory().getStack(AUCTION_ITEM_SLOT));
-                lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), currentItem));
-                loreScrollableTextWidget.setMessage(lore == null ? Text.empty() : lore);
+        if(!gcsh.getContainer().isEmpty()){
+            if (gcsh.getContainer().getItem(AUCTION_ITEM_SLOT).getItem() != Items.AIR) {
+                setItem(gcsh.getContainer().getItem(AUCTION_ITEM_SLOT));
+                lore = convertTextList(getTooltipFromItem(Minecraft.getInstance(), currentItem));
+                loreScrollableTextWidget.setMessage(lore == null ? Component.empty() : lore);
             }
 
-            if (gcsh.getInventory()
-                    .getStack(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
+            if (gcsh.getContainer()
+                    .getItem(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
                     .getItem() != Items.AIR) {
                 AuctionStatus as = updateAuctionStatus(
-                        gcsh.getInventory()
-                                .getStack(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
+                        gcsh.getContainer()
+                                .getItem(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
                 );
                 //System.out.println(as);
                 setRightButtonConfig(as);

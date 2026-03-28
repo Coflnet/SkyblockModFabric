@@ -1,18 +1,18 @@
 package com.coflnet.mixin;
 
 import com.coflnet.gui.BinGUI;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.widget.ScrollableWidget;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.AbstractScrollArea;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-@Mixin(ScrollableWidget.class)
+@Mixin(AbstractScrollArea.class)
 public class ScrollableWidgetMixin {
-    @ModifyArg(method = "drawScrollbar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/util/Identifier;IIII)V"), index = 4)
+    @ModifyArg(method = "extractScrollbar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/GuiGraphicsExtractor;blitSprite(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/resources/Identifier;IIII)V"), index = 4)
     private int drawBox(int x){
         try {
-            return MinecraftClient.getInstance().currentScreen instanceof BinGUI ? 2 : x;
+            return Minecraft.getInstance().screen instanceof BinGUI ? 2 : x;
         } catch (Exception e) {
             System.out.println("[ScrollableWidgetMixin] drawBox failed: " + e.getMessage());
             return x;

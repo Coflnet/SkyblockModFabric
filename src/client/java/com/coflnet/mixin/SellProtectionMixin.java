@@ -2,12 +2,12 @@ package com.coflnet.mixin;
 
 import com.coflnet.config.SellProtectionManager;
 import com.coflnet.utils.SellAmountParser;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.Click;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
@@ -16,14 +16,13 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(HandledScreen.class)
+@Mixin(AbstractContainerScreen.class)
 public abstract class SellProtectionMixin {
 
-    @Shadow @Nullable protected Slot focusedSlot;
-    @Shadow public abstract @Nullable Slot getSlotAt(double x, double y);
+    @Shadow @Nullable protected Slot hoveredSlot;
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    private void onSellProtectionMouseClicked(Click click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
+    private void onSellProtectionMouseClicked(MouseButtonEvent click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
         try {
             // Check if sell protection is enabled
             if (!SellProtectionManager.isEnabled()) {
@@ -37,32 +36,30 @@ public abstract class SellProtectionMixin {
             }
 
             // Check if we're in a chest with "➜" in the title
-            String screenTitle = ((HandledScreen<?>) (Object) this).getTitle().getString();
+            String screenTitle = ((AbstractContainerScreen<?>) (Object) this).getTitle().getString();
             if (!screenTitle.contains("➜")) {
                 return;
             }
 
             // Get the slot being clicked
-            double mouseX = click.x();
-            double mouseY = click.y();
-            Slot clickedSlot = getSlotAt(mouseX, mouseY);
-            if (clickedSlot == null || !clickedSlot.hasStack()) {
+            Slot clickedSlot = hoveredSlot;
+            if (clickedSlot == null || !clickedSlot.hasItem()) {
                 return;
             }
 
-            ItemStack clickedItem = clickedSlot.getStack();
+            ItemStack clickedItem = clickedSlot.getItem();
             String itemName = "";
             
             // Get item name from custom name or item display name
             if (clickedItem.getCustomName() != null) {
                 itemName = clickedItem.getCustomName().getString();
             } else {
-                itemName = clickedItem.getItem().getDefaultStack().getName().getString();
+                itemName = clickedItem.getItem().getDefaultInstance().getHoverName().getString();
             }
 
             // Check if ctrl is pressed
-            boolean ctrlPressed = GLFW.glfwGetKey(MinecraftClient.getInstance().getWindow().getHandle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ||
-                                  GLFW.glfwGetKey(MinecraftClient.getInstance().getWindow().getHandle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+            boolean ctrlPressed = GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ||
+                                  GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
 
             // Check for sell protection patterns and extract amounts
             boolean shouldBlock = false;
@@ -86,11 +83,11 @@ public abstract class SellProtectionMixin {
 
             if (shouldBlock) {
                 // Send warning message to chat
-                MinecraftClient client = MinecraftClient.getInstance();
+                Minecraft client = Minecraft.getInstance();
                 if (client.player != null) {
                     String formattedAmount = formatCoins(sellAmount);
                     String message = "§c[SkyCofl Sell Protection] §fBlocked click on §e" + protection + "§f (§6" + formattedAmount + " coins§f)! Hold §bCtrl§f to override.";
-                    client.player.sendMessage(Text.literal(message), false);
+                    client.player.sendSystemMessage(Component.literal(message));
                 }
 
                 // Cancel the click

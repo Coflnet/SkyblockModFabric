@@ -4,37 +4,37 @@ import com.coflnet.CoflModClient;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.component.ComponentType;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.component.DataComponentType;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 
-@Mixin(ClientPlayNetworkHandler.class)
+@Mixin(ClientPacketListener.class)
 public class NewItemInChestMixin {
     
     private static final Gson gson = new Gson();
 
-    @Inject(method = "onScreenHandlerSlotUpdate", at = @At("HEAD"))
-    private void onSlotUpdateHead(ScreenHandlerSlotUpdateS2CPacket packet, CallbackInfo ci) {
+    @Inject(method = "handleContainerSetSlot", at = @At("HEAD"))
+    private void onSlotUpdateHead(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         // Track UUID changes before the slot is updated
         try {
-            if (MinecraftClient.getInstance().player == null || MinecraftClient.getInstance().player.currentScreenHandler == null)
+            if (Minecraft.getInstance().player == null || Minecraft.getInstance().player.containerMenu == null)
                 return;
             
             int slot = packet.getSlot();
-            if (slot < 0 || slot >= MinecraftClient.getInstance().player.currentScreenHandler.slots.size())
+            if (slot < 0 || slot >= Minecraft.getInstance().player.containerMenu.slots.size())
                 return;
                 
-            ItemStack previousStack = MinecraftClient.getInstance().player.currentScreenHandler.getSlot(slot).getStack();
-            ItemStack newStack = packet.getStack();
+            ItemStack previousStack = Minecraft.getInstance().player.containerMenu.getSlot(slot).getItem();
+            ItemStack newStack = packet.getItem();
             
             if (previousStack.isEmpty() || newStack.isEmpty())
                 return;
@@ -58,10 +58,10 @@ public class NewItemInChestMixin {
         }
     }
 
-    @Inject(method = "onScreenHandlerSlotUpdate", at = @At("TAIL"))
-    private void onPacketReceive(ScreenHandlerSlotUpdateS2CPacket packet, CallbackInfo ci) {
+    @Inject(method = "handleContainerSetSlot", at = @At("TAIL"))
+    private void onPacketReceive(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         try {
-            String itemTitle = packet.getStack().getCustomName() != null ? packet.getStack().getCustomName().getString() : "";
+            String itemTitle = packet.getItem().getCustomName() != null ? packet.getItem().getCustomName().getString() : "";
             if (!itemTitle.isEmpty() && (
                     itemTitle.contains("Pending their confirm") || itemTitle.contains("Deal timer!") // trade window
                     || itemTitle.contains("Combine Items") // anvil result
@@ -69,23 +69,23 @@ public class NewItemInChestMixin {
             || itemTitle.contains("AUCTION FOR") // putting item in auction create
             )) {
                 try {
-                    if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs)
+                    if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?> hs)
                         CoflModClient.instance.loadDescriptionsForInv(hs);
-                    System.out.println("Trade Slot Update Packet received." + packet.getStack().getCustomName());
+                    System.out.println("Trade Slot Update Packet received." + packet.getItem().getCustomName());
                 } catch (Exception inner) {
                     System.out.println("[NewItemInChestMixin] loadDescriptionsForInv failed: " + inner.getMessage());
                 }
             }
 
-            if (MinecraftClient.getInstance().player != null && MinecraftClient.getInstance().player.currentScreenHandler != null) {
+            if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu != null) {
                 int slot = packet.getSlot();
-                if (slot < 0 || slot >= MinecraftClient.getInstance().player.currentScreenHandler.slots.size())
+                if (slot < 0 || slot >= Minecraft.getInstance().player.containerMenu.slots.size())
                     return;
                     
-                ItemStack previousStack = MinecraftClient.getInstance().player.currentScreenHandler.getSlot(slot).getStack();
-                if(previousStack.get(DataComponentTypes.LORE) == null)
+                ItemStack previousStack = Minecraft.getInstance().player.containerMenu.getSlot(slot).getItem();
+                if(previousStack.get(DataComponents.LORE) == null)
                     return;
-                for (Text line : previousStack.get(DataComponentTypes.LORE).lines()) {
+                for (Component line : previousStack.get(DataComponents.LORE).lines()) {
                     if(line.getString().contains("Refreshing"))
                     {
                         // TODO: try batching this to refresh lore sooner than current waittime
@@ -100,7 +100,7 @@ public class NewItemInChestMixin {
     }
     
     private String extractUuid(ItemStack stack) {
-        for (ComponentType<?> type : stack.getComponents().getTypes()) {
+        for (DataComponentType<?> type : stack.getComponents().keySet()) {
             if (type.toString().contains("minecraft:custom_data")) {
                 JsonObject stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
                 if (stackJson != null) {

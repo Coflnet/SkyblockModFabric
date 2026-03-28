@@ -1,20 +1,20 @@
 package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
-import net.minecraft.block.entity.SignBlockEntity;
-import net.minecraft.block.entity.SignText;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.text.Text;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.SignText;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(ClientPlayerEntity.class)
+@Mixin(LocalPlayer.class)
 public class ClientPlayerEntityMixin {
-    @Inject(method = "openEditSignScreen", at = @At("HEAD"))
-    private void openEditSignScreen(SignBlockEntity sign, boolean front, CallbackInfo ci){
+    @Inject(method = "openTextEdit", at = @At("HEAD"))
+    private void openTextEdit(SignBlockEntity sign, boolean front, CallbackInfo ci){
         try {
             // Handle bazaar search first
             if (CoflModClient.pendingBazaarSearch != null) {
@@ -25,7 +25,7 @@ public class ClientPlayerEntityMixin {
             // Handle existing price suggestion logic
             String toSuggest = CoflModClient.findPriceSuggestion();
             System.out.println("Value to suggest: '"+toSuggest+"'");
-            Text[] lines = sign.getFrontText().getMessages(MinecraftClient.getInstance().shouldFilterText());
+            Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
             String[] suggestionParts = toSuggest.split(": ");
 
             if(toSuggest == "") return;
@@ -33,11 +33,11 @@ public class ClientPlayerEntityMixin {
             if(lines.length < 4) return;
             if(!suggestionParts[0].equals(lines[3].getString())) return;
 
-            lines[0] = Text.of(suggestionParts[1].trim());
-            sign.changeText(signText -> new SignText(
+            lines[0] = Component.literal(suggestionParts[1].trim());
+            sign.updateText(signText -> new SignText(
                     lines, lines,
                     signText.getColor(),
-                    signText.isGlowing()
+                    signText.hasGlowingText()
             ), true);
         } catch (Exception e) {
             System.out.println("[ClientPlayerEntityMixin] openEditSignScreen failed: " + e.getMessage());
@@ -50,21 +50,21 @@ public class ClientPlayerEntityMixin {
     private void handleBazaarSearch(SignBlockEntity sign, boolean front) {
         System.out.println("Filling bazaar search with: " + CoflModClient.pendingBazaarSearch);
         
-        Text[] lines = sign.getFrontText().getMessages(MinecraftClient.getInstance().shouldFilterText());
+        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
         
         // Fill the first line with the search term
-        lines[0] = Text.of(CoflModClient.pendingBazaarSearch);
+        lines[0] = Component.literal(CoflModClient.pendingBazaarSearch);
         
         // Clear other lines
-        lines[1] = Text.of("");
-        lines[2] = Text.of("");
-        lines[3] = Text.of("");
+        lines[1] = Component.literal("");
+        lines[2] = Component.literal("");
+        lines[3] = Component.literal("");
         
         // Apply the changes to the sign
-        sign.changeText(signText -> new SignText(
+        sign.updateText(signText -> new SignText(
                 lines, lines,
                 signText.getColor(),
-                signText.isGlowing()
+                signText.hasGlowingText()
         ), front);
         
         System.out.println("Applied bazaar search text to sign");
@@ -73,14 +73,14 @@ public class ClientPlayerEntityMixin {
         CoflModClient.pendingBazaarSearch = null;
         
         // Schedule closing the sign after a short delay to ensure the text is saved
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         Thread.startVirtualThread(() -> {
             try {
                 Thread.sleep(200); // Increased delay to ensure sign text is processed
                 client.execute(() -> {
-                    if (client.currentScreen != null) {
+                    if (client.screen != null) {
                         System.out.println("Closing sign screen to complete bazaar search");
-                        client.currentScreen.close();
+                        client.screen.onClose();
                     }
                 });
             } catch (InterruptedException e) {

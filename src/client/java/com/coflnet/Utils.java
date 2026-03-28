@@ -1,18 +1,18 @@
 package com.coflnet;
 
 import CoflCore.commands.models.ChatMessageData;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Component;
 import java.net.URI;
 
 public class Utils {
-    public static  MutableText ChatComponent(ChatMessageData cmd) {
-        MutableText message = Text.literal(cmd.Text);
+    public static  MutableComponent ChatComponent(ChatMessageData cmd) {
+        MutableComponent message = Component.literal(cmd.Text);
         if (cmd.OnClick != null) {
             if (cmd.OnClick.startsWith("http")) {
-                message.styled((style) -> {
+                message.withStyle((style) -> {
                     try {
                         return style.withClickEvent(new ClickEvent.OpenUrl(URI.create(cmd.OnClick)));
                     } catch (Exception e) {
@@ -23,17 +23,17 @@ public class Utils {
             }
             else if(cmd.OnClick.startsWith("suggest:")){
                 String suggestion = cmd.OnClick.substring("suggest:".length());
-                message.styled((style) -> style.withClickEvent(new ClickEvent.SuggestCommand(suggestion)));
+                message.withStyle((style) -> style.withClickEvent(new ClickEvent.SuggestCommand(suggestion)));
             } else if(cmd.OnClick.startsWith("copy:")) {
                 String copyText = cmd.OnClick.substring("copy:".length());
-                message.styled((style) -> style.withClickEvent(new ClickEvent.CopyToClipboard(copyText)));
+                message.withStyle((style) -> style.withClickEvent(new ClickEvent.CopyToClipboard(copyText)));
             } else {
-                message.styled((style) -> style.withClickEvent(new ClickEvent.RunCommand(cmd.OnClick)));
+                message.withStyle((style) -> style.withClickEvent(new ClickEvent.RunCommand(cmd.OnClick)));
             }
         }
 
         if (cmd.Hover != null && !cmd.Hover.isEmpty()) {
-            message.styled((style) -> style.withHoverEvent(new HoverEvent.ShowText(Text.of(cmd.Hover))));
+            message.withStyle((style) -> style.withHoverEvent(new HoverEvent.ShowText(Component.literal(cmd.Hover))));
         }
         return message;
     }

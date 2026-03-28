@@ -6,17 +6,17 @@ import com.coflnet.config.TextWidgetPositionConfig;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.models.TextElement;
 import com.google.gson.Gson;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.client.gui.screen.ingame.InventoryScreen;
-import net.minecraft.client.gui.widget.MultilineTextWidget;
-import net.minecraft.client.gui.widget.ScrollableTextWidget;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.MutableText;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.gui.components.MultiLineTextWidget;
+import net.minecraft.client.gui.components.FocusableTextWidget;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -27,29 +27,29 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.net.URI;
 import java.util.List;
 
-import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screens.Screen;
 
-@Mixin(HandledScreen.class)
+@Mixin(AbstractContainerScreen.class)
 public abstract class HandledScreenMixin extends Screen {
     
     // Need protected constructor for the Screen parent - used for mixin compilation only
-    protected HandledScreenMixin(Text title) {
+    protected HandledScreenMixin(Component title) {
         super(title);
     }
     
     private static final Gson gson = new Gson();
     
     @Shadow
-    protected int x;
+    protected int leftPos;
     @Shadow
-    protected int y;
+    protected int topPos;
     @Shadow
-    protected int backgroundWidth;
+    protected int imageWidth;
     @Shadow
-    protected int backgroundHeight;
-    protected MultilineTextWidget sideTextWidget;
+    protected int imageHeight;
+    protected MultiLineTextWidget sideTextWidget;
     // Always keep non-null; updates replace the reference with a fresh list. Volatile for visibility across threads.
-    protected volatile List<MutableText> interactiveTextLines = new java.util.ArrayList<>();
+    protected volatile List<MutableComponent> interactiveTextLines = new java.util.ArrayList<>();
     
     // Dragging and position storage
     private boolean isDragging = false;
@@ -67,14 +67,14 @@ public abstract class HandledScreenMixin extends Screen {
             // init to whatever text is present
             DescriptionHandler.DescModification[] extraSlotDesc = CoflModClient.getExtraSlotDescMod();
             updateText(extraSlotDesc);
-            String currentTitle = ((HandledScreen<?>) (Object) this).getTitle().getString();
+            String currentTitle = ((AbstractContainerScreen<?>) (Object) this).getTitle().getString();
             if(sideTextWidget != null && !currentTitle.equals("Crafting")) {
                 sideTextWidget.setAlpha(0.3f); // make it transparent until properly loaded
             }
             DescriptionHandler.setRefreshCallback((lines, title) -> {
                 try {
                     // Ensure UI update runs on the client (render) thread
-                    MinecraftClient.getInstance().execute(() -> {
+                    Minecraft.getInstance().execute(() -> {
                         try {
                             updateText(CoflModClient.getExtraSlotDescMod());
                         } catch (Exception ex) {
@@ -108,9 +108,9 @@ public abstract class HandledScreenMixin extends Screen {
         for (DescriptionHandler.DescModification descModification : lines) {
             if (!descModification.type.equals("APPEND") || descModification.value == null) {
                 if (descModification.type.equals("SUGGEST")) {
-                    MutableText suggestText = Text.literal("§7Will suggest: §r" + descModification.value.split(": ")[1].trim());
+                    MutableComponent suggestText = Component.literal("§7Will suggest: §r" + descModification.value.split(": ")[1].trim());
                     interactiveTextLines.add(suggestText);
-                    int width = MinecraftClient.getInstance().textRenderer.getWidth(suggestText);
+                    int width = Minecraft.getInstance().font.width(suggestText);
                     if (width > maxWidth) {
                         maxWidth = width;
                     }
@@ -121,9 +121,9 @@ public abstract class HandledScreenMixin extends Screen {
             String jsonText = descModification.value.trim();
             if (!jsonText.startsWith("[") || !jsonText.endsWith("]")) {
                 // Regular text
-                MutableText regularText = Text.literal(descModification.value);
+                MutableComponent regularText = Component.literal(descModification.value);
                 interactiveTextLines.add(regularText);
-                int width = MinecraftClient.getInstance().textRenderer.getWidth(regularText);
+                int width = Minecraft.getInstance().font.width(regularText);
                 if (width > maxWidth) {
                     maxWidth = width;
                 }
@@ -133,24 +133,24 @@ public abstract class HandledScreenMixin extends Screen {
             try {
                 TextElement[] textElements = gson.fromJson(jsonText, TextElement[].class);
                 if (textElements == null || textElements.length == 0) {
-                    MutableText fallbackText = Text.literal(descModification.value);
+                    MutableComponent fallbackText = Component.literal(descModification.value);
                     interactiveTextLines.add(fallbackText);
-                    int width = MinecraftClient.getInstance().textRenderer.getWidth(fallbackText);
+                    int width = Minecraft.getInstance().font.width(fallbackText);
                     if (width > maxWidth) {
                         maxWidth = width;
                     }
                     continue;
                 }
 
-                MutableText lineText = Text.empty();
+                MutableComponent lineText = Component.empty();
                 for (int i = 0; i < textElements.length; i++) {
                     TextElement element = textElements[i];
-                    MutableText elementText = Text.literal(element.text);
+                    MutableComponent elementText = Component.literal(element.text);
                     
                     // Add click event
                     if (element.onClick != null && !element.onClick.isEmpty()) {
                         if (element.onClick.startsWith("http")) {
-                            elementText.styled(style -> {
+                            elementText.withStyle(style -> {
                                 try {
                                     return style.withClickEvent(new ClickEvent.OpenUrl(URI.create(element.onClick)));
                                 } catch (Exception e) {
@@ -159,34 +159,34 @@ public abstract class HandledScreenMixin extends Screen {
                             });
                         } else if(element.onClick.startsWith("suggest:")) {
                             String suggestion = element.onClick.substring("suggest:".length());
-                            elementText.styled(style -> style.withClickEvent(new ClickEvent.SuggestCommand(suggestion)));
+                            elementText.withStyle(style -> style.withClickEvent(new ClickEvent.SuggestCommand(suggestion)));
                         } else if(element.onClick.startsWith("copy:")) {
                             String copyText = element.onClick.substring("copy:".length());
-                            elementText.styled(style -> style.withClickEvent(new ClickEvent.CopyToClipboard(copyText)));
+                            elementText.withStyle(style -> style.withClickEvent(new ClickEvent.CopyToClipboard(copyText)));
                         } else {
-                            elementText.styled(style -> style.withClickEvent(new ClickEvent.RunCommand(element.onClick)));
+                            elementText.withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand(element.onClick)));
                         }
                     }
                     
                     // Add hover event
                     if (element.hover != null && !element.hover.isEmpty()) {
-                        elementText.styled(style -> {
+                        elementText.withStyle(style -> {
                             // Support multi-line hover text by splitting on \n
                             String[] hoverLines = element.hover.split("\\\\n|\\n");
                             if (hoverLines.length == 1) {
                                 // Single line hover
-                                HoverEvent hoverEvent = new HoverEvent.ShowText(Text.literal(element.hover));
+                                HoverEvent hoverEvent = new HoverEvent.ShowText(Component.literal(element.hover));
                                 return style.withHoverEvent(hoverEvent);
                             } else {
                                 // Multi-line hover - create a list of Text objects for proper multi-line rendering
-                                java.util.List<Text> multiLineList = new java.util.ArrayList<>();
+                                java.util.List<Component> multiLineList = new java.util.ArrayList<>();
                                 for (String line : hoverLines) {
-                                    multiLineList.add(Text.literal(line));
+                                    multiLineList.add(Component.literal(line));
                                 }
                                 // Store the multi-line list as a single text component with proper formatting
-                                MutableText multiLineText = Text.literal(hoverLines[0]);
+                                MutableComponent multiLineText = Component.literal(hoverLines[0]);
                                 for (int j = 1; j < hoverLines.length; j++) {
-                                    multiLineText.append("\n").append(Text.literal(hoverLines[j]));
+                                    multiLineText.append("\n").append(Component.literal(hoverLines[j]));
                                 }
                                 HoverEvent hoverEvent = new HoverEvent.ShowText(multiLineText);
                                 return style.withHoverEvent(hoverEvent);
@@ -198,15 +198,15 @@ public abstract class HandledScreenMixin extends Screen {
                 }
                 
                 interactiveTextLines.add(lineText);
-                int width = MinecraftClient.getInstance().textRenderer.getWidth(lineText);
+                int width = Minecraft.getInstance().font.width(lineText);
                 if (width > maxWidth) {
                     maxWidth = width;
                 }
             } catch (Exception e) {
                 // If JSON parsing fails, treat as regular text
-                MutableText fallbackText = Text.literal(descModification.value);
+                MutableComponent fallbackText = Component.literal(descModification.value);
                 interactiveTextLines.add(fallbackText);
-                int width = MinecraftClient.getInstance().textRenderer.getWidth(fallbackText);
+                int width = Minecraft.getInstance().font.width(fallbackText);
                 if (width > maxWidth) {
                     maxWidth = width;
                 }
@@ -218,58 +218,58 @@ public abstract class HandledScreenMixin extends Screen {
             return;
         }
 
-        MutableText combinedText = Text.empty();
-        List<MutableText> linesSnapshot = this.interactiveTextLines;
+        MutableComponent combinedText = Component.empty();
+        List<MutableComponent> linesSnapshot = this.interactiveTextLines;
         for (int i = 0; i < linesSnapshot.size(); i++) {
             if (i > 0) combinedText.append("\n");
             combinedText.append(linesSnapshot.get(i));
         }
         
         // Use custom position relative to GUI
-        int widgetX = x + positionConfig.offsetX;
+        int widgetX = leftPos + positionConfig.offsetX;
         if(positionConfig.offsetX < 0) { // if it hasn't been respositioned move start over
             widgetX = widgetX - maxWidth;
         }
         currentMaxWidth = maxWidth;
-        int widgetY = y + positionConfig.offsetY;
+        int widgetY = topPos + positionConfig.offsetY;
         
-        sideTextWidget = new MultilineTextWidget(
+        sideTextWidget = new MultiLineTextWidget(
                 widgetX, widgetY,
                 combinedText,
-                MinecraftClient.getInstance().textRenderer
+                Minecraft.getInstance().font
         );
-        sideTextWidget.setDimensions(maxWidth + 10, linesSnapshot.size() * MinecraftClient.getInstance().textRenderer.fontHeight);
+        sideTextWidget.setSize(maxWidth + 10, linesSnapshot.size() * Minecraft.getInstance().font.lineHeight);
         sideTextWidget.setAlpha(0.9f);
     }
 
-    @Inject(at = @At("TAIL"), method = "render")
-    public void renderMain(DrawContext context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
+    @Inject(at = @At("TAIL"), method = "extractRenderState")
+    public void renderMain(GuiGraphicsExtractor context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
         try {
             if(sideTextWidget == null) {
                 return;
             }
 
             // Snapshot to avoid races if another thread updates the list while rendering
-            List<MutableText> linesSnapshot = this.interactiveTextLines;
+            List<MutableComponent> linesSnapshot = this.interactiveTextLines;
             if(linesSnapshot == null || linesSnapshot.isEmpty()) {
-                sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
+                sideTextWidget.extractRenderState(context, mouseX, mouseY, deltaTicks);
                 return;
             }
 
             // Render interactive text using proper text component rendering
             int startX = sideTextWidget.getX();
             int startY = sideTextWidget.getY();
-            int lineHeight = MinecraftClient.getInstance().textRenderer.fontHeight;
+            int lineHeight = Minecraft.getInstance().font.lineHeight;
 
             for (int i = 0; i < linesSnapshot.size(); i++) {
-                MutableText line = linesSnapshot.get(i);
+                MutableComponent line = linesSnapshot.get(i);
                 int lineY = startY + (i * lineHeight);
 
                 // Use the screen's text rendering method to support hover/click events
-                context.drawTextWithShadow(MinecraftClient.getInstance().textRenderer, line, startX, lineY, 0xFFFFFF);
+                context.text(Minecraft.getInstance().font, line, startX, lineY, 0xFFFFFF, true);
 
                 // Handle hover tooltips immediately during rendering
-                int textWidth = MinecraftClient.getInstance().textRenderer.getWidth(line);
+                int textWidth = Minecraft.getInstance().font.width(line);
                 if (mouseX < startX || mouseX > startX + textWidth ||
                     mouseY < lineY || mouseY > lineY + lineHeight) {
                     continue;
@@ -279,12 +279,12 @@ public abstract class HandledScreenMixin extends Screen {
                 int currentX = startX;
                 boolean foundHover = false;
 
-                for (Text sibling : line.getSiblings()) {
-                    if (!(sibling instanceof MutableText mutableSibling)) {
+                for (Component sibling : line.getSiblings()) {
+                    if (!(sibling instanceof MutableComponent mutableSibling)) {
                         continue;
                     }
 
-                    int siblingWidth = MinecraftClient.getInstance().textRenderer.getWidth(mutableSibling);
+                    int siblingWidth = Minecraft.getInstance().font.width(mutableSibling);
 
                     if (mouseX >= currentX && mouseX <= currentX + siblingWidth) {
                         if (mutableSibling.getStyle().getHoverEvent() != null &&
@@ -295,16 +295,16 @@ public abstract class HandledScreenMixin extends Screen {
                             if (hoverText.contains("\n")) {
                                 // Multi-line tooltip - split into list
                                 String[] lines = hoverText.split("\n");
-                                java.util.List<Text> tooltipLines = new java.util.ArrayList<>();
+                                java.util.List<Component> tooltipLines = new java.util.ArrayList<>();
                                 for (String hoverline : lines) {
-                                    tooltipLines.add(Text.literal(hoverline));
+                                    tooltipLines.add(Component.literal(hoverline));
                                 }
-                                context.drawTooltip(MinecraftClient.getInstance().textRenderer,
+                                context.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
                                                    tooltipLines,
                                                    mouseX, mouseY);
                             } else {
                                 // Single line tooltip
-                                context.drawTooltip(MinecraftClient.getInstance().textRenderer,
+                                context.setTooltipForNextFrame(Minecraft.getInstance().font,
                                                    showTextEvent.value(),
                                                    mouseX, mouseY);
                             }
@@ -324,30 +324,30 @@ public abstract class HandledScreenMixin extends Screen {
                     if (hoverText.contains("\n")) {
                         // Multi-line tooltip - split into list
                         String[] lines = hoverText.split("\n");
-                        java.util.List<Text> tooltipLines = new java.util.ArrayList<>();
+                        java.util.List<Component> tooltipLines = new java.util.ArrayList<>();
                         for (String tooltipLine : lines) {
-                            tooltipLines.add(Text.literal(tooltipLine));
+                            tooltipLines.add(Component.literal(tooltipLine));
                         }
-                        context.drawTooltip(MinecraftClient.getInstance().textRenderer,
+                        context.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
                                            tooltipLines,
                                            mouseX, mouseY);
                     } else {
                         // Single line tooltip
-                        context.drawTooltip(MinecraftClient.getInstance().textRenderer,
+                        context.setTooltipForNextFrame(Minecraft.getInstance().font,
                                            showTextEvent.value(),
                                            mouseX, mouseY);
                     }
                 }
             }
             // for an unknown reason the single lines don't render anymore on 1.21.8+ so we render the widget as well
-            sideTextWidget.render(context, mouseX, mouseY, deltaTicks);
+            sideTextWidget.extractRenderState(context, mouseX, mouseY, deltaTicks);
         } catch (Exception e) {
             System.out.println("[HandledScreenMixin] renderMain failed: " + e.getMessage());
         }
     }
 
     @Inject(at = @At("HEAD"), method = "mouseDragged", cancellable = true)
-    public void onMouseDragged(net.minecraft.client.gui.Click click, double deltaX, double deltaY, CallbackInfoReturnable<Boolean> cir) {
+    public void onMouseDragged(net.minecraft.client.input.MouseButtonEvent click, double deltaX, double deltaY, CallbackInfoReturnable<Boolean> cir) {
         try {
             // The Click object contains the mouse coordinates and button used for the drag
             int button = click.button();
@@ -361,10 +361,10 @@ public abstract class HandledScreenMixin extends Screen {
                 System.out.println("Dragging to: " + newX + ", " + newY);
 
                 // Calculate relative offsets to GUI
-                positionConfig.offsetX = (int) (newX - x);
+                positionConfig.offsetX = (int) (newX - leftPos);
                 if(positionConfig.offsetX < -5)
                     positionConfig.offsetX += currentMaxWidth; // adjust for left side start
-                positionConfig.offsetY = (int) (newY - y);
+                positionConfig.offsetY = (int) (newY - topPos);
 
                 // Update widget position if it exists
                 if (sideTextWidget != null) {
@@ -379,7 +379,7 @@ public abstract class HandledScreenMixin extends Screen {
     }
     
     @Inject(at = @At("HEAD"), method = "mouseReleased", cancellable = true)  
-    public void onMouseReleased(net.minecraft.client.gui.Click click, CallbackInfoReturnable<Boolean> cir) {
+    public void onMouseReleased(net.minecraft.client.input.MouseButtonEvent click, CallbackInfoReturnable<Boolean> cir) {
         try {
             int button = click.button();
             if (isDragging && button == 1) { // Right mouse button
@@ -395,8 +395,8 @@ public abstract class HandledScreenMixin extends Screen {
     private void updateWidgetPosition() {
         if (sideTextWidget != null) {
             // Create a new widget at the new position
-            MutableText currentText = Text.empty();
-            List<MutableText> linesSnapshot = this.interactiveTextLines;
+            MutableComponent currentText = Component.empty();
+            List<MutableComponent> linesSnapshot = this.interactiveTextLines;
             if (linesSnapshot != null && !linesSnapshot.isEmpty()) {
                 for (int i = 0; i < linesSnapshot.size(); i++) {
                     if (i > 0) currentText.append("\n");
@@ -407,45 +407,45 @@ public abstract class HandledScreenMixin extends Screen {
                 return; // Skip update for legacy text during drag
             }
             
-            int newX = x + positionConfig.offsetX;
+            int newX = leftPos + positionConfig.offsetX;
             if(positionConfig.offsetX < 0) {
                 newX = newX - currentMaxWidth;
             }
-            int newY = y + positionConfig.offsetY;
+            int newY = topPos + positionConfig.offsetY;
             
-            sideTextWidget = new MultilineTextWidget(
+            sideTextWidget = new MultiLineTextWidget(
                     newX, newY,
                     currentText,
-                    MinecraftClient.getInstance().textRenderer
+                    Minecraft.getInstance().font
             );
-            sideTextWidget.setDimensions(sideTextWidget.getWidth(), sideTextWidget.getHeight());
+            sideTextWidget.setSize(sideTextWidget.getWidth(), sideTextWidget.getHeight());
             sideTextWidget.setAlpha(0.9f);
         }
     }
 
     @Inject(at = @At("HEAD"), method = "mouseClicked", cancellable = true)
-    public void onMouseClicked(net.minecraft.client.gui.Click click, boolean doubleClick, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
+    public void onMouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubleClick, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
         try {
             double mouseX = click.x();
             double mouseY = click.y();
             int button = click.button();
             
-            List<MutableText> linesSnapshot = this.interactiveTextLines;
+            List<MutableComponent> linesSnapshot = this.interactiveTextLines;
             if (linesSnapshot == null || linesSnapshot.isEmpty() || sideTextWidget == null) {
                 return;
             }
 
             int startX = sideTextWidget.getX();
             int startY = sideTextWidget.getY();
-            int lineHeight = MinecraftClient.getInstance().textRenderer.fontHeight;
+            int lineHeight = Minecraft.getInstance().font.lineHeight;
 
             // Check if mouse is over the text widget area
             boolean overWidget = false;
             int widgetWidth = 0;
             int widgetHeight = linesSnapshot.size() * lineHeight;
 
-            for (MutableText line : linesSnapshot) {
-                int lineWidth = MinecraftClient.getInstance().textRenderer.getWidth(line);
+            for (MutableComponent line : linesSnapshot) {
+                int lineWidth = Minecraft.getInstance().font.width(line);
                 if (lineWidth > widgetWidth) {
                     widgetWidth = lineWidth;
                 }
@@ -470,9 +470,9 @@ public abstract class HandledScreenMixin extends Screen {
             // Handle left-click for text interactions (existing functionality)
             if (button == 0) { // Left mouse button
                 for (int i = 0; i < linesSnapshot.size(); i++) {
-                    MutableText line = linesSnapshot.get(i);
+                    MutableComponent line = linesSnapshot.get(i);
                     int lineY = startY + (i * lineHeight);
-                    int textWidth = MinecraftClient.getInstance().textRenderer.getWidth(line);
+                    int textWidth = Minecraft.getInstance().font.width(line);
 
                     // Check if mouse is over this line
                     if (mouseX < startX || mouseX > startX + textWidth ||
@@ -482,18 +482,18 @@ public abstract class HandledScreenMixin extends Screen {
 
                     // Find which text component was clicked by checking character positions
                     int currentX = startX;
-                    for (Text sibling : line.getSiblings()) {
-                        if (!(sibling instanceof MutableText mutableSibling)) {
+                    for (Component sibling : line.getSiblings()) {
+                        if (!(sibling instanceof MutableComponent mutableSibling)) {
                             continue;
                         }
 
-                        int siblingWidth = MinecraftClient.getInstance().textRenderer.getWidth(mutableSibling);
+                        int siblingWidth = Minecraft.getInstance().font.width(mutableSibling);
 
                         if (mouseX >= currentX && mouseX <= currentX + siblingWidth) {
                             // Handle the click event - API changed in 1.21.11
                             ClickEvent clickEvent = mutableSibling.getStyle().getClickEvent();
                             if (clickEvent != null) {
-                                this.handleClickEvent(clickEvent, MinecraftClient.getInstance(), this);
+                                Screen.defaultHandleClickEvent(clickEvent, Minecraft.getInstance(), this);
                                 cir.setReturnValue(true);
                                 return;
                             }
@@ -504,7 +504,7 @@ public abstract class HandledScreenMixin extends Screen {
                     // If no sibling was clicked, try the main text
                     ClickEvent lineClickEvent = line.getStyle().getClickEvent();
                     if (lineClickEvent != null) {
-                        this.handleClickEvent(lineClickEvent, MinecraftClient.getInstance(), this);
+                        Screen.defaultHandleClickEvent(lineClickEvent, Minecraft.getInstance(), this);
                         cir.setReturnValue(true);
                         return;
                     }

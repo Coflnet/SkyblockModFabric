@@ -2,8 +2,8 @@ package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
 import CoflCore.CoflSkyCommand;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ChatScreen;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.ChatScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ChatScreen.class)
 public class ChatScreenMixin {
     
-    @Inject(method = "sendMessage", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)
     private void onSendMessage(String message, boolean addToHistory, CallbackInfo ci) {
         // If flipper chat only mode is enabled and the message is not a command
         if (CoflModClient.flipperChatOnlyMode && !message.startsWith("/")) {
@@ -20,7 +20,7 @@ public class ChatScreenMixin {
             ci.cancel();
             
             // Send it to flipper chat instead
-            MinecraftClient client = MinecraftClient.getInstance();
+            Minecraft client = Minecraft.getInstance();
             if (client.player != null) {
                 String username = client.player.getName().getString();
                 String[] args = new String[message.split(" ").length + 1];

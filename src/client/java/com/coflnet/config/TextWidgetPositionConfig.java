@@ -1,7 +1,7 @@
 package com.coflnet.config;
 
 import com.google.gson.Gson;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 
 import java.io.File;
 import java.io.FileReader;
@@ -10,7 +10,7 @@ import java.io.IOException;
 
 public class TextWidgetPositionConfig {
     private static final Gson gson = new Gson();
-    private static final File POSITION_CONFIG_FILE = new File(MinecraftClient.getInstance().runDirectory, "config/CoflSky/coflsky_text_position.json");
+    private static final File POSITION_CONFIG_FILE = new File(Minecraft.getInstance().gameDirectory, "config/CoflSky/coflsky_text_position.json");
     
     public int offsetX = -5;
     public int offsetY = 5;

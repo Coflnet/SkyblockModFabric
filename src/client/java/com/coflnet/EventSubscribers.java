@@ -5,9 +5,9 @@ import java.util.*;
 import CoflCore.classes.*;
 import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.events.*;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.item.ItemStack;
-import net.minecraft.util.collection.DefaultedList;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.NonNullList;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 
@@ -16,10 +16,10 @@ import static com.coflnet.Utils.ChatComponent;
 import CoflCore.CoflCore;
 import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.network.chat.Component;
 
 public class EventSubscribers {
     public static FlipData flipData = null;
@@ -48,8 +48,8 @@ public class EventSubscribers {
 
     @Subscribe
     public void WriteToChat(OnWriteToChatReceive command){
-        MinecraftClient.getInstance().execute(() -> 
-            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(command.ChatMessage))
+        Minecraft.getInstance().execute(() -> 
+            Minecraft.getInstance().gui.getChat().addServerSystemMessage(ChatComponent(command.ChatMessage))
         );
     }
 
@@ -59,26 +59,26 @@ public class EventSubscribers {
             return;
         }
 
-        net.minecraft.text.MutableText combinedMessage = net.minecraft.text.Text.empty();
+        net.minecraft.network.chat.MutableComponent combinedMessage = net.minecraft.network.chat.Component.empty();
 
         for (ChatMessageData message : event.ChatMessages) {
             if (message == null) {
                 continue;
             } 
-            net.minecraft.text.Text styledPart = ChatComponent(message);
+            Component styledPart = ChatComponent(message);
             if (styledPart != null) {
                 combinedMessage.append(styledPart);
             }
         }
-        MinecraftClient.getInstance().execute(() -> 
-            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(combinedMessage)
+        Minecraft.getInstance().execute(() -> 
+            Minecraft.getInstance().gui.getChat().addServerSystemMessage(combinedMessage)
         );
     }
 
     @Subscribe
     public void onModChatMessage(OnModChatMessage event){
-        MinecraftClient.getInstance().execute(() -> 
-            MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.of(event.message))
+        Minecraft.getInstance().execute(() -> 
+            Minecraft.getInstance().gui.getChat().addServerSystemMessage(Component.literal(event.message))
         );
     }
 
@@ -96,13 +96,13 @@ public class EventSubscribers {
         }
 
         String finalSoundName = soundName;
-        MinecraftClient.getInstance().execute(() -> {
-            PlayerEntity player = MinecraftClient.getInstance().player;
+        Minecraft.getInstance().execute(() -> {
+            Player player = Minecraft.getInstance().player;
             if (player != null) {
-                player.getEntityWorld().playSound(
-                        player, player.getBlockPos(),
+                player.level().playSound(
+                        player, player.blockPosition(),
                         CoflModClient.findByName(finalSoundName),
-                        SoundCategory.MASTER, 1f,
+                        SoundSource.MASTER, 1f,
                         event.Sound.getSoundPitch() == null ? 1f : (float) event.Sound.getSoundPitch()
                 );
             }
@@ -126,7 +126,7 @@ public class EventSubscribers {
     public void onFlipReceive(OnFlipReceive event){
         FlipData f = event.FlipData;
 
-        if (CoflModClient.bestflipsKeyBinding.isPressed()) {
+        if (CoflModClient.bestflipsKeyBinding.isDown()) {
             EventBus.getDefault().post(new OnOpenAuctionGUI("/viewauction "+f.Id, f));
         } else 
             CoflCore.flipHandler.fds.Insert(f);
@@ -138,14 +138,14 @@ public class EventSubscribers {
     @Subscribe
     public void onOpenAuctionGUI(OnOpenAuctionGUI event){
         flipData = event.flip;
-        MinecraftClient.getInstance().getNetworkHandler().sendChatMessage(event.openAuctionCommand);
+        Minecraft.getInstance().getConnection().sendChat(event.openAuctionCommand);
     }
 
     @Subscribe
     public void onExecuteCommand(OnExecuteCommand event){
         System.out.println("Skycofl executes:"+event.Command);
         String command =event.Command.substring(1);
-        MinecraftClient.getInstance().getNetworkHandler().sendChatCommand(command);
+        Minecraft.getInstance().getConnection().sendCommand(command);
     }
 
     @Subscribe
@@ -156,10 +156,10 @@ public class EventSubscribers {
 
     @Subscribe
     public void onCloseGUI(OnCloseGUI event){
-        MinecraftClient.getInstance().execute(() -> {
-            if (MinecraftClient.getInstance().currentScreen instanceof HandledScreen<?> hs) {
+        Minecraft.getInstance().execute(() -> {
+            if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?> hs) {
                 System.out.println("Closing GUI: " + hs.getClass().getName());
-                hs.close();
+                hs.onClose();
             }
         });
     }
@@ -167,8 +167,8 @@ public class EventSubscribers {
     @Subscribe
     public void onGetInventory(OnGetInventory event){
         try {
-            DefaultedList<ItemStack> itemStacks = DefaultedList.of();
-            for (Iterator<ItemStack> it = MinecraftClient.getInstance().player.getInventory().iterator(); it.hasNext(); ) {
+            NonNullList<ItemStack> itemStacks = NonNullList.create();
+            for (Iterator<ItemStack> it = Minecraft.getInstance().player.getInventory().iterator(); it.hasNext(); ) {
                 itemStacks.add(it.next());
             }
             CoflModClient.loadDescriptionsForItems("Inventory", itemStacks);

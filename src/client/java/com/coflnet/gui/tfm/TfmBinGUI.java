@@ -4,61 +4,61 @@ import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
-import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.MultilineTextWidget;
-import net.minecraft.client.gui.widget.TextWidget;
-import net.minecraft.item.Items;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.MultiLineTextWidget;
+import net.minecraft.client.gui.components.StringWidget;
+import net.minecraft.world.item.Items;
+import net.minecraft.network.chat.Component;
 
 public class TfmBinGUI extends BinGUI {
     public String lore = "";
 
-    public TextWidget titleTextWidget;
-    public MultilineTextWidget loreMultilineTextWidget;
-    public ClickableWidget confirmClickableWidget;
-    public ClickableWidget cancelClickableWidget;
+    public StringWidget titleTextWidget;
+    public MultiLineTextWidget loreMultilineTextWidget;
+    public AbstractWidget confirmClickableWidget;
+    public AbstractWidget cancelClickableWidget;
 
-    public TfmBinGUI(GenericContainerScreen gcs){
-        super(Text.of("Tfm Bin Gui"), gcs, 1, 4);
+    public TfmBinGUI(ContainerScreen gcs){
+        super(Component.literal("Tfm Bin Gui"), gcs, 1, 4);
     }
 
     @Override
     protected void clearAndInitWidgets(int screenWidth, int screenHeight) {
-        clearChildren();
+        clearWidgets();
         itemWidget = new ItemWidget(
                 screenWidth / 2 - 8,
                 screenHeight / 2 - 8,
-                Items.AIR.getDefaultStack()
+                Items.AIR.getDefaultInstance()
         );
 
-        titleTextWidget = new TextWidget(
+        titleTextWidget = new StringWidget(
                 screenWidth / 2 - width / 2 + 12,
                 screenHeight / 2 - height / 2 + 8,
                 width - 12, 10,
-                Text.of("Cofl - Auction View"),
-                MinecraftClient.getInstance().textRenderer
+                Component.literal("Cofl - Auction View"),
+                Minecraft.getInstance().font
         );
 
-        loreMultilineTextWidget = new MultilineTextWidget(
+        loreMultilineTextWidget = new MultiLineTextWidget(
                 screenWidth / 2 - width / 2 + 12,
                 screenHeight / 2 - height / 2 + 8 + 8 + 6,
-                Text.of(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
-                MinecraftClient.getInstance().textRenderer
+                Component.literal(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
+                Minecraft.getInstance().font
         ){
             protected boolean isValidClickButton(int button) {
                 return button == 0 || button == 1;
             }
         }.setCentered(false);
 
-        confirmClickableWidget = new ClickableWidget(
-                0, 0, screenWidth, screenHeight, Text.empty()
+        confirmClickableWidget = new AbstractWidget(
+                0, 0, screenWidth, screenHeight, Component.empty()
         ) {
             @Override
-            protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+            protected void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
                 RenderUtils.drawRectOutline(
                         context,
                         screenWidth / 2 - 80 / 2,
@@ -69,12 +69,12 @@ public class TfmBinGUI extends BinGUI {
             }
 
         @Override
-        public void onClick(net.minecraft.client.gui.Click click, boolean fromScreen) {
+        public void onClick(net.minecraft.client.input.MouseButtonEvent click, boolean fromScreen) {
         double mouseX = click.x();
         double mouseY = click.y();
         if (cancelClickableWidget.isMouseOver(mouseX, mouseY)){
-            net.minecraft.client.input.MouseInput mi = new net.minecraft.client.input.MouseInput(0, 0);
-            net.minecraft.client.gui.Click c = new net.minecraft.client.gui.Click(mouseX, mouseY, mi);
+            net.minecraft.client.input.MouseButtonInfo mi = new net.minecraft.client.input.MouseButtonInfo(0, 0);
+            net.minecraft.client.input.MouseButtonEvent c = new net.minecraft.client.input.MouseButtonEvent(mouseX, mouseY, mi);
             cancelClickableWidget.onClick(c, true);
         } else {
                     switch (auctionStatus){
@@ -97,20 +97,20 @@ public class TfmBinGUI extends BinGUI {
             }
 
             @Override
-            protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
+            protected void updateWidgetNarration(NarrationElementOutput builder) {}
 
             protected boolean isValidClickButton(int button) {
                 return button == 0 || button == 1;
             }
         };
 
-        cancelClickableWidget = new ClickableWidget(
+        cancelClickableWidget = new AbstractWidget(
                 screenWidth / 2 - 36 / 2,
                 screenHeight / 2 + 40 + p,
-                36, 30, Text.empty()
+                36, 30, Component.empty()
         ) {
             @Override
-            protected void renderWidget(DrawContext context, int mouseX, int mouseY, float delta) {
+            protected void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
                 RenderUtils.drawRectOutline(
                         context, getX(), getY(),
                         getWidth(), getHeight(),
@@ -118,10 +118,10 @@ public class TfmBinGUI extends BinGUI {
                 );
             }
             @Override
-            protected void appendClickableNarrations(NarrationMessageBuilder builder) {}
+            protected void updateWidgetNarration(NarrationElementOutput builder) {}
 
             @Override
-            public void onClick(net.minecraft.client.gui.Click click, boolean fromScreen) {
+            public void onClick(net.minecraft.client.input.MouseButtonEvent click, boolean fromScreen) {
                 double mouseX = click.x();
                 double mouseY = click.y();
                 if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
@@ -129,31 +129,31 @@ public class TfmBinGUI extends BinGUI {
             }
 
             @Override
-            protected boolean isValidClickButton(net.minecraft.client.input.MouseInput mi) {
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseButtonInfo mi) {
                 int b = mi.button();
                 return b == 0 || b == 1;
             }
         };
 
-        this.addDrawableChild(titleTextWidget);
-        this.addDrawableChild(loreMultilineTextWidget);
-        this.addDrawableChild(confirmClickableWidget);
-        this.addDrawableChild(cancelClickableWidget);
-        this.addDrawableChild(itemWidget);
+        this.addRenderableWidget(titleTextWidget);
+        this.addRenderableWidget(loreMultilineTextWidget);
+        this.addRenderableWidget(confirmClickableWidget);
+        this.addRenderableWidget(cancelClickableWidget);
+        this.addRenderableWidget(itemWidget);
 
-        gcsh.getInventory();
+        gcsh.getContainer();
     }
 
     @Override
-    public void renderBackground(DrawContext drawContext, int mouseX, int mouseY, float delta){
+    public void renderBackground(GuiGraphicsExtractor drawContext, int mouseX, int mouseY, float delta){
         super.renderBackground(drawContext, mouseX, mouseY, delta);
 
-        if(!gcsh.getInventory().isEmpty()){
-            if (gcsh.getInventory().getStack(AUCTION_ITEM_SLOT).getItem() != Items.AIR){ 
-                setItem(gcsh.getInventory().getStack(AUCTION_ITEM_SLOT));
+        if(!gcsh.getContainer().isEmpty()){
+            if (gcsh.getContainer().getItem(AUCTION_ITEM_SLOT).getItem() != Items.AIR){ 
+                setItem(gcsh.getContainer().getItem(AUCTION_ITEM_SLOT));
                  updateAuctionStatus(
-                        gcsh.getInventory()
-                                .getStack(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
+                        gcsh.getContainer()
+                                .getItem(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
                 );
             }
         }

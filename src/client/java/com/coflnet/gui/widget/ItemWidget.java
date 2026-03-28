@@ -1,37 +1,37 @@
 package com.coflnet.gui.widget;
 
 import com.coflnet.gui.RenderUtils;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.*;
-import net.minecraft.client.gui.navigation.GuiNavigation;
-import net.minecraft.client.gui.navigation.GuiNavigationPath;
-import net.minecraft.client.gui.screen.narration.NarrationMessageBuilder;
-import net.minecraft.client.gui.widget.EmptyWidget;
-import net.minecraft.item.ItemStack;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.narration.NarratableEntry;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.ComponentPath;
+import net.minecraft.client.gui.navigation.FocusNavigationEvent;
+import net.minecraft.client.gui.navigation.ScreenRectangle;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-public class ItemWidget extends EmptyWidget implements Element, Drawable, Selectable {
+public class ItemWidget extends AbstractWidget {
     public ItemStack item;
 
     public ItemWidget(int x, int y, ItemStack item) {
-        super(x, y, 16, 16);
+        super(x, y, 16, 16, Component.empty());
         this.item = item;
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    protected void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         RenderUtils.drawItemStack(context, item, getX(), getY(), 1);
 
         if(isMouseOver(mouseX, mouseY)){
-            context.drawItemTooltip(MinecraftClient.getInstance().textRenderer, item, mouseX, mouseY);
+            context.setTooltipForNextFrame(Minecraft.getInstance().font, item, mouseX, mouseY);
         }
     }
 
-
-    @Override
-    public @Nullable GuiNavigationPath getNavigationPath(GuiNavigation navigation) {
-        return Element.super.getNavigationPath(navigation);
-    }
 
     @Override
     public boolean isMouseOver(double mouseX, double mouseY) {
@@ -42,42 +42,7 @@ public class ItemWidget extends EmptyWidget implements Element, Drawable, Select
     }
 
     @Override
-    public void setFocused(boolean focused) {
-
-    }
-
-    @Override
-    public boolean isFocused() {
-        return false;
-    }
-
-    @Override
-    public @Nullable GuiNavigationPath getFocusedPath() {
-        return Element.super.getFocusedPath();
-    }
-
-    @Override
-    public int getNavigationOrder() {
-        return Element.super.getNavigationOrder();
-    }
-
-    @Override
-    public ScreenRect getNavigationFocus() {
-        return super.getNavigationFocus();
-    }
-
-    @Override
-    public void setPosition(int x, int y) {
-        super.setPosition(x, y);
-    }
-
-    @Override
-    public SelectionType getType() {
-        return SelectionType.NONE;
-    }
-
-    @Override
-    public void appendNarrations(NarrationMessageBuilder builder) {
+    protected void updateWidgetNarration(NarrationElementOutput builder) {
 
     }
 }

@@ -3,20 +3,19 @@ package com.coflnet.gui;
 import CoflCore.commands.models.FlipData;
 import com.coflnet.CoflModClient;
 import com.coflnet.gui.widget.ItemWidget;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
-import net.minecraft.component.Component;
-import net.minecraft.component.ComponentType;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.slot.SlotActionType;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.core.component.DataComponentType;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -43,20 +42,20 @@ public abstract class BinGUI extends Screen {
     protected FlipData flipData;
 
     protected AuctionStatus auctionStatus;
-    protected GenericContainerScreenHandler gcsh;
-    protected GenericContainerScreen gcs;
+    protected ChestMenu gcsh;
+    protected ContainerScreen gcs;
 
     /**
      * Constructor for BIN-GUIs.
      * @param title title of the screen
-     * @param gcs the BIN auction as an instance of {@link GenericContainerScreen}
+     * @param gcs the BIN auction as an instance of {@link ContainerScreen}
      * @param p padding as an int
      * @param r radius for rounded corners
      */
-    protected BinGUI(Text title, @NotNull GenericContainerScreen gcs, @NotNull int p, int r) {
+    protected BinGUI(Component title, @NotNull ContainerScreen gcs, @NotNull int p, int r) {
         super(title);
         this.gcs = gcs;
-        this.gcsh = gcs.getScreenHandler();
+        this.gcsh = gcs.getMenu();
         this.p = p;
         this.r = r;
 
@@ -65,22 +64,22 @@ public abstract class BinGUI extends Screen {
 
         flipData = CoflModClient.popFlipData();
 
-        screenWidth = MinecraftClient.getInstance().currentScreen.width;
-        screenHeight = MinecraftClient.getInstance().currentScreen.height;
+        screenWidth = Minecraft.getInstance().screen.width;
+        screenHeight = Minecraft.getInstance().screen.height;
         initSize(screenWidth, screenHeight);
         clearAndInitWidgets(screenWidth, screenHeight);
     }
 
     private void initSize(int screenWidth, int screenHeight){
-        this.width = MinecraftClient.getInstance().currentScreen.width / 2;
+        this.width = Minecraft.getInstance().screen.width / 2;
         if (width < 300) this.width = 300;
 
-        this.height = MinecraftClient.getInstance().currentScreen.height / 3 * 2;
+        this.height = Minecraft.getInstance().screen.height / 3 * 2;
         if (height < 225) this.height = 225;
     }
 
     /**
-     * Implementations of this method should include {@code this.clearChildren();}
+     * Implementations of this method should include {@code this.clearWidgets();}
      * and all initializations of your GUIs widgets (such as buttons).
      * @param screenWidth the current width of the screen as an int
      * @param screenHeight the current height of the screen as an int
@@ -93,29 +92,24 @@ public abstract class BinGUI extends Screen {
     }
 
     @Override
-    public boolean shouldPause() {
-        return false;
-    }
-
-    @Override
-    public void close() {
+    public void onClose() {
         auctionStatus = AuctionStatus.INIT;
-        gcs.close();
-        super.close();
+        gcs.onClose();
+        super.onClose();
     }
 
     /**
-     * Handles clicking a {@link net.minecraft.screen.slot.Slot} for the player.
+     * Handles clicking a {@link net.minecraft.world.inventory.Slot} for the player.
      * @param slotId the index of the slot that is to be clicked by the player.
      */
     protected void clickSlot(int slotId) {
-        PlayerEntity player = client.player;
+        Player player = minecraft.player;
 
-        client.interactionManager.clickSlot(
-                gcsh.syncId,
+        minecraft.gameMode.handleContainerInput(
+                gcsh.containerId,
                 slotId,
                 0,
-                SlotActionType.PICKUP,
+                ContainerInput.PICKUP,
                 player
         );
     }
@@ -142,7 +136,7 @@ public abstract class BinGUI extends Screen {
             return auctionStatus;
 
         String customName = itemStack.getCustomName().getString();
-        String loreString = itemStack.getComponents().get(DataComponentTypes.LORE).toString();
+        String loreString = itemStack.getComponents().get(DataComponents.LORE).toString();
 
         switch (customName){
             case "Buy Item Right Now":
@@ -170,12 +164,11 @@ public abstract class BinGUI extends Screen {
      * {@code super.renderBackground(drawContext, mouseX, mouseY, delta);}
      * so your GUI changes size dynamically.
      */
-    @Override
-    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
-        if (screenWidth != MinecraftClient.getInstance().currentScreen.width
-            || screenHeight != MinecraftClient.getInstance().currentScreen.height){
-            screenWidth = MinecraftClient.getInstance().currentScreen.width;
-            screenHeight = MinecraftClient.getInstance().currentScreen.height;
+    public void renderBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        if (screenWidth != Minecraft.getInstance().screen.width
+            || screenHeight != Minecraft.getInstance().screen.height){
+            screenWidth = Minecraft.getInstance().screen.width;
+            screenHeight = Minecraft.getInstance().screen.height;
             initSize(screenWidth, screenHeight);
             clearAndInitWidgets(screenWidth, screenHeight);
         }
@@ -183,21 +176,21 @@ public abstract class BinGUI extends Screen {
 
     /**
      * Determines if the given screen is the confirmation part of a BIN auction.
-     * @param gcs instance of {@link GenericContainerScreen}
+     * @param gcs instance of {@link ContainerScreen}
      * @return {@code true} if the screen is the confirmation screen of a BIN auction, otherwise {@code false}
      */
-    public static boolean isAuctionConfirming(@NotNull GenericContainerScreen gcs){
+    public static boolean isAuctionConfirming(@NotNull ContainerScreen gcs){
         return  gcs.getTitle().getString().contains("Confirm Purchase")
-                && gcs.getScreenHandler().getInventory().size() == 9 * 3;
+                && gcs.getMenu().getContainer().getContainerSize() == 9 * 3;
     }
 
     /**
      * Determines if the given screen is a BIN auction.
-     * @param gcs instance of {@link GenericContainerScreen}
+     * @param gcs instance of {@link ContainerScreen}
      * @return {@code true} if the screen is a BIN auction, otherwise {@code false}
      */
-    public static boolean isAuctionInit(@NotNull GenericContainerScreen gcs) {
+    public static boolean isAuctionInit(@NotNull ContainerScreen gcs) {
         return gcs.getTitle().getString().contains("BIN Auction View")
-                && gcs.getScreenHandler().getInventory().size() == 9 * 6;
+                && gcs.getMenu().getContainer().getContainerSize() == 9 * 6;
     }
 }

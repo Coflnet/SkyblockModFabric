@@ -1,12 +1,12 @@
 package com.coflnet.gui;
 
 import com.coflnet.CoflModClient;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.ingame.GenericContainerScreen;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.ContainerScreen;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.network.chat.Component;
 
 /**
  * Utility class for bazaar-related functionality.
@@ -21,9 +21,9 @@ public class BazaarUtils {
      * @return true if the search was initiated, false if not on bazaar or search failed
      */
     public static boolean autoSearchBazaar(String itemName) {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         
-        if (!(client.currentScreen instanceof GenericContainerScreen gcs)) {
+        if (!(client.screen instanceof ContainerScreen gcs)) {
             return false;
         }
         
@@ -51,9 +51,9 @@ public class BazaarUtils {
      * @return true if currently on the bazaar, false otherwise
      */
     public static boolean isCurrentlyOnBazaar() {
-        MinecraftClient client = MinecraftClient.getInstance();
+        Minecraft client = Minecraft.getInstance();
         
-        if (!(client.currentScreen instanceof GenericContainerScreen gcs)) {
+        if (!(client.screen instanceof ContainerScreen gcs)) {
             return false;
         }
         
@@ -65,10 +65,10 @@ public class BazaarUtils {
      * 
      * @return the bazaar screen or null if not currently on bazaar
      */
-    public static GenericContainerScreen getCurrentBazaarScreen() {
-        MinecraftClient client = MinecraftClient.getInstance();
+    public static ContainerScreen getCurrentBazaarScreen() {
+        Minecraft client = Minecraft.getInstance();
         
-        if (!(client.currentScreen instanceof GenericContainerScreen gcs)) {
+        if (!(client.screen instanceof ContainerScreen gcs)) {
             return null;
         }
         
@@ -85,15 +85,15 @@ public class BazaarUtils {
      * @return an array of item names that can be searched for
      */
     public static String[] getVisibleBazaarItems() {
-        GenericContainerScreen bazaar = getCurrentBazaarScreen();
+        ContainerScreen bazaar = getCurrentBazaarScreen();
         if (bazaar == null) {
             return new String[0];
         }
         
         java.util.List<String> items = new java.util.ArrayList<>();
         
-        for (int i = 0; i < bazaar.getScreenHandler().getInventory().size(); i++) {
-            ItemStack stack = bazaar.getScreenHandler().getInventory().getStack(i);
+        for (int i = 0; i < bazaar.getMenu().getContainer().getContainerSize(); i++) {
+            ItemStack stack = bazaar.getMenu().getContainer().getItem(i);
             
             if (stack.isEmpty() || stack.getItem() == Items.BLACK_STAINED_GLASS_PANE) {
                 continue;
