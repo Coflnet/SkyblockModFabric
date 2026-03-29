@@ -32,7 +32,7 @@ jobs:
       - name: checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ startsWith(github.ref, 'refs/tags/') && matrix.branch || github.ref }}
+          ref: ${{ matrix.branch }}
       - name: validate gradle wrapper
         uses: gradle/wrapper-validation-action@v2
       - name: setup jdk ${{ matrix.java }}
