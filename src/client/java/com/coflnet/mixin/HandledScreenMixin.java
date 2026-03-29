@@ -490,10 +490,9 @@ public abstract class HandledScreenMixin extends Screen {
                         int siblingWidth = Minecraft.getInstance().font.width(mutableSibling);
 
                         if (mouseX >= currentX && mouseX <= currentX + siblingWidth) {
-                            // Handle the click event - API changed in 1.21.11
                             ClickEvent clickEvent = mutableSibling.getStyle().getClickEvent();
                             if (clickEvent != null) {
-                                Screen.defaultHandleClickEvent(clickEvent, Minecraft.getInstance(), this);
+                                handleInfoDisplayClickEvent(clickEvent);
                                 cir.setReturnValue(true);
                                 return;
                             }
@@ -504,7 +503,7 @@ public abstract class HandledScreenMixin extends Screen {
                     // If no sibling was clicked, try the main text
                     ClickEvent lineClickEvent = line.getStyle().getClickEvent();
                     if (lineClickEvent != null) {
-                        Screen.defaultHandleClickEvent(lineClickEvent, Minecraft.getInstance(), this);
+                        handleInfoDisplayClickEvent(lineClickEvent);
                         cir.setReturnValue(true);
                         return;
                     }
@@ -512,6 +511,22 @@ public abstract class HandledScreenMixin extends Screen {
             }
         } catch (Exception e) {
             System.out.println("[HandledScreenMixin] mouseClicked failed: " + e.getMessage());
+        }
+    }
+
+    private void handleInfoDisplayClickEvent(ClickEvent clickEvent) {
+        if (clickEvent instanceof ClickEvent.RunCommand runCommand) {
+            String command = runCommand.command();
+            var player = Minecraft.getInstance().player;
+            if (player != null && player.connection != null) {
+                if (command.startsWith("/")) {
+                    player.connection.sendCommand(command.substring(1));
+                } else {
+                    player.connection.sendChat(command);
+                }
+            }
+        } else {
+            Screen.defaultHandleClickEvent(clickEvent, Minecraft.getInstance(), this);
         }
     }
 }
