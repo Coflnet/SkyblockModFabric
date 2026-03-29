@@ -1521,9 +1521,14 @@ public class CoflModClient implements ClientModInitializer {
     public static void cacheMods() {
         ModListData modListData = new ModListData();
         for (net.fabricmc.loader.api.ModContainer mod : FabricLoader.getInstance().getAllMods()) {
-            modListData.addModname(mod.getMetadata().getName());
-            modListData.addFilename(mod.getMetadata().getName());
-            modListData.addFilename(mod.getMetadata().getId());
+            String modName = mod.getMetadata().getName();
+            String modId = mod.getMetadata().getId();
+            if (modName.startsWith("Fabric ") || modId.startsWith("fabric")) {
+                continue;
+            }
+            modListData.addModname(modName);
+            modListData.addFilename(modName);
+            modListData.addFilename(modId);
         }
         WSClientWrapper wrapper = CoflCore.Wrapper;
         if (wrapper != null) wrapper.SendMessage(new RawCommand("foundMods", new Gson().toJson(modListData)));
