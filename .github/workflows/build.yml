@@ -79,6 +79,7 @@ jobs:
             build/libs/SkyCofl-*-Fabric-*.jar
           dependencies: |
             fabric@${{ matrix.fabric_version }}(required){modrinth:P7dR8mSH}{curseforge:306612}#(ignore:github)
+            yacl(optional){modrinth:1eAoo2KR}{curseforge:667299}#(ignore:github)
       
 
 # The name and version are switched for modrinth
@@ -126,3 +127,4 @@ jobs:
             build/libs/SkyCofl-*-Fabric-${{ matrix.minecraft_version }}.jar
           dependencies: |
             fabric@${{ matrix.fabric_version }}(required){modrinth:P7dR8mSH}{curseforge:306612}#(ignore:github)
+            yacl(optional){modrinth:1eAoo2KR}{curseforge:667299}#(ignore:github)
