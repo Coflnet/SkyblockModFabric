@@ -43,7 +43,7 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	implementation include("com.github.Coflnet:CoflSkyCore:1b4c5865e7")
+	implementation include("com.github.Coflnet:CoflSkyCore:a871af6e6f")
 	implementation include("org.greenrobot:eventbus-java:3.3.1")
 	implementation include("org.java-websocket:Java-WebSocket:1.5.2")
 	implementation include("com.google.code.gson:gson:2.10.1")
