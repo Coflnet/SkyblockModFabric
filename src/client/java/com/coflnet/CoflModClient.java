@@ -94,6 +94,7 @@ public class CoflModClient implements ClientModInitializer {
     public static final int InventorysizeWithOffHand = 5 * 9 + 1;
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
+    private static boolean coflInfoShown = false;
     private static int counter = 0;
     private static final KeyBinding.Category SKYCOFL_CATEGORY = KeyBinding.Category.create(Identifier.of("coflnet", "skycofl"));
     private static final KeyBinding.Category SKYCOFL_UNCHANGEABLE_CATEGORY = KeyBinding.Category.create(Identifier.of("coflnet", "skycofl_unchangeable"));
@@ -558,8 +559,30 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
-        dispatcher.register(ClientCommandManager.literal(name)
-                .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
+        dispatcher.register(ClientCommands.literal(name)
+                .executes(context -> {
+                    Minecraft client = Minecraft.getInstance();
+                    if (!coflInfoShown) {
+                        coflInfoShown = true;
+                        sendChatMessage("§6§l=== SkyCofl Mod ===");
+                        sendChatMessage("§7Powered by §bsky.coflnet.com §7- real-time AH data,");
+                        sendChatMessage("§7price checking, flip finding, and more.");
+                        sendChatMessage("§eUse §a/cofl help §efor a list of available commands.");
+                        sendChatMessage("§7Commands have §aautocompletion§7 - start typing to see suggestions.");
+                        sendChatMessage("§7Hover over suggestions for §amore information§7.");
+                    }
+                    // Open YACL settings UI if available (scheduled to next tick so chat screen closes first)
+                    client.execute(() -> {
+                        try {
+                            CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
+                            client.setScreen(CoflSettingsScreen.create(client.screen));
+                        } catch (Throwable t) {
+                            sendChatMessage("§7Install §eYACL §7mod to access the settings GUI with §a/cofl§7.");
+                        }
+                    });
+                    return 1;
+                })
+                .then(ClientCommands.argument("args", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
                     String input = context.getInput();
                     String[] inputArgs = input.split(" ");;
