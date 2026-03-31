@@ -232,8 +232,23 @@ public class CoflModClient implements ClientModInitializer {
                     && Minecraft.getInstance().getCurrentServer().ip.contains("hypixel.net")) {
                 System.out.println("Connected to Hypixel");
                 
-                // Update username in case of account switch before joining
-                autoStart();
+                if (CoflCore.Wrapper != null && CoflCore.Wrapper.isRunning) {
+                    // Wrapper already running (reconnect case) - upload scoreboard and tab list after a delay
+                    Thread.startVirtualThread(() -> {
+                        try {
+                            Thread.sleep(5000); // wait 5 seconds for the scoreboard to be populated
+                            if (!CoflCore.Wrapper.isRunning)
+                                return;
+                            uploadScoreboard();
+                            uploadTabList();
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                    });
+                } else {
+                    // Update username in case of account switch before joining
+                    autoStart();
+                }
             }
             // reset cached data for different island
             DescriptionHandler.emptyTooltipData();
