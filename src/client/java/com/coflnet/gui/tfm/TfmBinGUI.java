@@ -145,8 +145,8 @@ public class TfmBinGUI extends BinGUI {
     }
 
     @Override
-    public void renderBackground(GuiGraphicsExtractor drawContext, int mouseX, int mouseY, float delta){
-        super.renderBackground(drawContext, mouseX, mouseY, delta);
+    public void extractBackground(GuiGraphicsExtractor drawContext, int mouseX, int mouseY, float delta){
+        super.extractBackground(drawContext, mouseX, mouseY, delta);
 
         if(!gcsh.getContainer().isEmpty()){
             if (gcsh.getContainer().getItem(AUCTION_ITEM_SLOT).getItem() != Items.AIR){ 

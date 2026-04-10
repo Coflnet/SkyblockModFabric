@@ -161,10 +161,11 @@ public abstract class BinGUI extends Screen {
      * <br/>
      * <br/>
      * When overriding this method, make sure to include
-     * {@code super.renderBackground(drawContext, mouseX, mouseY, delta);}
+     * {@code super.extractBackground(drawContext, mouseX, mouseY, delta);}
      * so your GUI changes size dynamically.
      */
-    public void renderBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+    @Override
+    public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         if (screenWidth != Minecraft.getInstance().screen.width
             || screenHeight != Minecraft.getInstance().screen.height){
             screenWidth = Minecraft.getInstance().screen.width;

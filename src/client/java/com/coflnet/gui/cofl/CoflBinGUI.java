@@ -4,7 +4,7 @@ import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
-//import com.coflnet.gui.widget.ScrollableDynamicTextWidget;
+import com.coflnet.gui.widget.ScrollableLoreWidget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
@@ -21,7 +21,7 @@ import java.util.List;
 
 public class CoflBinGUI extends BinGUI {
     private StringWidget titleTextWidget;
-    private FocusableTextWidget loreScrollableTextWidget;
+    private ScrollableLoreWidget loreScrollableTextWidget;
     private AbstractWidget rightClickableWidget;
     private AbstractWidget leftClickableWidget;
 
@@ -151,12 +151,14 @@ public class CoflBinGUI extends BinGUI {
                 Minecraft.getInstance().font
         );
 
-        loreScrollableTextWidget = FocusableTextWidget.builder(
-                lore == null ? Component.literal("") : lore, Minecraft.getInstance().font
-        ).maxWidth(width - 20 - p*4 - 4).build();
-        loreScrollableTextWidget.setPosition(
-                screenWidth / 2 - width / 2 + p + 20 + p + 4,
-                screenHeight / 2 - height / 2 + p + 12 + p + 2
+        int loreX = screenWidth / 2 - width / 2 + p + 20 + p + 4;
+        int loreY = screenHeight / 2 - height / 2 + p + 12 + p + 2;
+        int loreWidth = width - 20 - p*4 - 4;
+        int loreHeight = height - 75 - screenHeight / 15 - 4;
+        loreScrollableTextWidget = new ScrollableLoreWidget(
+                loreX, loreY, loreWidth, loreHeight,
+                lore == null ? Component.literal("") : lore,
+                CoflColConfig.TEXT_PRIMARY
         );
 
         if(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0) setRightButtonConfig(auctionStatus);
@@ -217,8 +219,8 @@ public class CoflBinGUI extends BinGUI {
 
 
     @Override
-    public void renderBackground(GuiGraphicsExtractor drawContext, int mouseX, int mouseY, float delta) {
-        super.renderBackground(drawContext, mouseX, mouseY, delta);
+    public void extractBackground(GuiGraphicsExtractor drawContext, int mouseX, int mouseY, float delta) {
+        super.extractBackground(drawContext, mouseX, mouseY, delta);
 
         if(!gcsh.getContainer().isEmpty()){
             if (gcsh.getContainer().getItem(AUCTION_ITEM_SLOT).getItem() != Items.AIR) {
