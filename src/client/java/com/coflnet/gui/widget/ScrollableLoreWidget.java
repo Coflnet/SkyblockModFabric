@@ -5,6 +5,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractScrollArea;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 
@@ -12,6 +13,8 @@ import java.util.List;
 
 /**
  * A scrollable widget that renders multi-line lore text with clipping.
+ * Only consumes clicks on the scrollbar; other clicks pass through
+ * so the "click anywhere" buy widget can handle them.
  */
 public class ScrollableLoreWidget extends AbstractScrollArea {
     private final Font font;
@@ -37,6 +40,21 @@ public class ScrollableLoreWidget extends AbstractScrollArea {
     @Override
     protected int contentHeight() {
         return lines.size() * (font.lineHeight + 1);
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent click, boolean fromScreen) {
+        if (updateScrolling(click)) {
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        // Only report mouse-over for the scrollbar area so clicks on
+        // the text pass through to the click-anywhere buy widget
+        return scrollable() && isOverScrollbar(mouseX, mouseY);
     }
 
     @Override
