@@ -39,11 +39,14 @@ public class NewItemInChestMixin {
             if (previousStack.isEmpty() || newStack.isEmpty())
                 return;
             
-            String prevTitle = previousStack.getCustomName() != null ? previousStack.getCustomName().getString() : "";
-            String newTitle = newStack.getCustomName() != null ? newStack.getCustomName().getString() : "";
+            Component prevName = previousStack.getCustomName();
+            Component newName = newStack.getCustomName();
             
-            // If item title is the same but UUIDs differ, map new UUID to original
-            if (!prevTitle.isEmpty() && prevTitle.equals(newTitle)) {
+            // If item name is the same (including style/color) but UUIDs differ, map new UUID to original.
+            // Using Component.equals() which compares contents, style, and siblings —
+            // this prevents remapping between items that share the same plain text name
+            // but differ in color (e.g. pets of different tiers like RARE vs MYTHIC).
+            if (prevName != null && prevName.equals(newName)) {
                 String prevUuid = extractUuid(previousStack);
                 String newUuid = extractUuid(newStack);
                 
