@@ -39,8 +39,8 @@ public class NewItemInChestMixin {
             if (previousStack.isEmpty() || newStack.isEmpty())
                 return;
             
-            Component prevName = previousStack.getCustomName();
-            Component newName = newStack.getCustomName();
+            Text prevName = previousStack.getCustomName();
+            Text newName = newStack.getCustomName();
             
             // If item name is the same (including style/color) but UUIDs differ, map new UUID to original.
             // Using Component.equals() which compares contents, style, and siblings —

@@ -50,6 +50,7 @@ import CoflCore.commands.models.FlipData;
 import CoflCore.commands.models.ModListData;
 import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
+import CoflCore.network.WSClientWrapper;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
@@ -237,9 +238,10 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            if (CoflCore.Wrapper.isRunning) {
+            WSClientWrapper wrapper = CoflCore.Wrapper;
+            if (wrapper != null && wrapper.isRunning) {
                 System.out.println("Disconnected from server");
-                CoflCore.Wrapper.stop();
+                wrapper.stop();
             }
         });
 
@@ -493,35 +495,41 @@ public class CoflModClient implements ClientModInitializer {
      * Called from the tick event to ensure thread safety.
      */
     private static void processScoreboardUpdate() {
-        String[] scores = getScoreboard().toArray(new String[0]);
-        if (scores == null || scores.length < 7) 
-            return;
-        Pair<String,String> newData = getRelevantLinesFromScoreboard(scores);
-        
-        // Only upload if scoreboard has actually changed
-        if (newData.getLeft().equals(lastScoreboardUploaded.getLeft()) && 
-            newData.getRight().equals(lastScoreboardUploaded.getRight()) 
-            || newData.getLeft().contains(" (+")) // additive updates are ignored, a second later the correct new value will be shown
+        try {
+            String[] scores = getScoreboard().toArray(new String[0]);
+            if (scores == null || scores.length < 7) 
                 return;
-                
-        if (CoflCore.Wrapper == null || !CoflCore.Wrapper.isRunning) {
-            // Only auto-start if any scoreboard line indicates Hypixel (ends with "hypixel.net")
-            boolean isHypixel = false;
-            for (String score : scores) {
-                if (score.toLowerCase().endsWith("hypixel.net")) {
-                    isHypixel = true;
-                    break;
+            Pair<String,String> newData = getRelevantLinesFromScoreboard(scores);
+            
+            // Only upload if scoreboard has actually changed
+            if (newData.getLeft().equals(lastScoreboardUploaded.getLeft()) && 
+                newData.getRight().equals(lastScoreboardUploaded.getRight()) 
+                || newData.getLeft().contains(" (+")) // additive updates are ignored, a second later the correct new value will be shown
+                    return;
+                    
+            WSClientWrapper wrapper = CoflCore.Wrapper;
+            if (wrapper == null || !wrapper.isRunning) {
+                // Only auto-start if any scoreboard line indicates Hypixel (ends with "hypixel.net")
+                boolean isHypixel = false;
+                for (String score : scores) {
+                    if (score.toLowerCase().endsWith("hypixel.net")) {
+                        isHypixel = true;
+                        break;
+                    }
+                }
+                if (isHypixel && instance != null) {
+                    instance.autoStart();
                 }
             }
-            if (isHypixel && instance != null) {
-                instance.autoStart();
-            }
+            uploadScoreboard();
+        } catch (Exception e) {
+            System.out.println("Error processing scoreboard update: " + e.getMessage());
         }
-        uploadScoreboard();
     }
 
     private void autoStart(){
-        if (CoflCore.Wrapper.isRunning || !CoflCore.config.autoStart)
+        WSClientWrapper wrapper = CoflCore.Wrapper;
+        if (wrapper != null && wrapper.isRunning || CoflCore.config == null || !CoflCore.config.autoStart)
             return;
         String currentUsername = MinecraftClient.getInstance().getSession().getUsername();
         if (!currentUsername.equals(username)) {
@@ -534,7 +542,8 @@ public class CoflModClient implements ClientModInitializer {
         Thread.startVirtualThread(() -> {
             try {
                 Thread.sleep(5000); // wait 5 seconds for the scoreboard to be populated
-                if(!CoflCore.Wrapper.isRunning)
+                WSClientWrapper w = CoflCore.Wrapper;
+                if(w == null || !w.isRunning)
                     return;
                 uploadScoreboard();
                 uploadTabList();
@@ -559,9 +568,9 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
-        dispatcher.register(ClientCommands.literal(name)
+        dispatcher.register(ClientCommandManager.literal(name)
                 .executes(context -> {
-                    Minecraft client = Minecraft.getInstance();
+                    MinecraftClient client = MinecraftClient.getInstance();
                     if (!coflInfoShown) {
                         coflInfoShown = true;
                         sendChatMessage("§6§l=== SkyCofl Mod ===");
@@ -575,14 +584,14 @@ public class CoflModClient implements ClientModInitializer {
                     client.execute(() -> {
                         try {
                             CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
-                            client.setScreen(CoflSettingsScreen.create(client.screen));
+                            client.setScreen(CoflSettingsScreen.create(client.currentScreen));
                         } catch (Throwable t) {
                             sendChatMessage("§7Install §eYACL §7mod to access the settings GUI with §a/cofl§7.");
                         }
                     });
                     return 1;
                 })
-                .then(ClientCommands.argument("args", StringArgumentType.greedyString())
+                .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
                     String input = context.getInput();
                     String[] inputArgs = input.split(" ");;
@@ -750,7 +759,8 @@ public class CoflModClient implements ClientModInitializer {
         if (client.player == null || hoveredStack == null) return;
 
         RawCommand data = new RawCommand("hotkey", gson.toJson("upload_item" + getContextToAppend(hoveredStack)));
-        CoflCore.Wrapper.SendMessage(data);
+        WSClientWrapper wrapper = CoflCore.Wrapper;
+        if (wrapper != null) wrapper.SendMessage(data);
     }
 
     private static String getContextToAppend(ItemStack hoveredStack) {
@@ -1515,9 +1525,10 @@ public class CoflModClient implements ClientModInitializer {
             System.out.println("Detected account switch from " + lastCheckedUsername + " to " + currentUsername);
             
             // If CoflCore is running, we need to restart it with the new username
-            if (CoflCore.Wrapper.isRunning) {
+            WSClientWrapper wrapper = CoflCore.Wrapper;
+            if (wrapper != null && wrapper.isRunning) {
                 System.out.println("Restarting CoflCore connection for new account: " + currentUsername);
-                CoflCore.Wrapper.stop();
+                wrapper.stop();
                 username = currentUsername;
                 CoflSkyCommand.start(username);
             } else {
@@ -1542,6 +1553,7 @@ public class CoflModClient implements ClientModInitializer {
             modListData.addFilename(modName);
             modListData.addFilename(modId);
         }
-        CoflCore.Wrapper.SendMessage(new RawCommand("foundMods", new Gson().toJson(modListData)));
+        WSClientWrapper wrapper = CoflCore.Wrapper;
+        if (wrapper != null) wrapper.SendMessage(new RawCommand("foundMods", new Gson().toJson(modListData)));
     }
 }
