@@ -568,9 +568,9 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
-        dispatcher.register(ClientCommands.literal(name)
+        dispatcher.register(ClientCommandManager.literal(name)
                 .executes(context -> {
-                    Minecraft client = Minecraft.getInstance();
+                    MinecraftClient client = MinecraftClient.getInstance();
                     if (!coflInfoShown) {
                         coflInfoShown = true;
                         sendChatMessage("§6§l=== SkyCofl Mod ===");
@@ -584,14 +584,14 @@ public class CoflModClient implements ClientModInitializer {
                     client.execute(() -> {
                         try {
                             CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
-                            client.setScreen(CoflSettingsScreen.create(client.screen));
+                            client.setScreen(CoflSettingsScreen.create(client.currentScreen));
                         } catch (Throwable t) {
                             sendChatMessage("§7Install §eYACL §7mod to access the settings GUI with §a/cofl§7.");
                         }
                     });
                     return 1;
                 })
-                .then(ClientCommands.argument("args", StringArgumentType.greedyString())
+                .then(ClientCommandManager.argument("args", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
                     String input = context.getInput();
                     String[] inputArgs = input.split(" ");;
