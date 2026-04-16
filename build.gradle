@@ -48,14 +48,16 @@ dependencies {
 	implementation include("org.java-websocket:Java-WebSocket:1.5.2")
 	implementation include("com.google.code.gson:gson:2.10.1")
 	implementation include("com.neovisionaries:nv-websocket-client:2.14")
-	implementation "maven.modrinth:yacl:3.9.1+26.1-fabric"
+	implementation "maven.modrinth:yacl:3.9.2+26.1-fabric"
 }
 
 processResources {
 	inputs.property "version", project.version
+	inputs.property "loader_version", project.loader_version
+	inputs.property "minecraft_version", project.minecraft_version
 
 	filesMatching("fabric.mod.json") {
-		expand "version": inputs.properties.version
+		expand inputs.properties
 	}
 }
 
