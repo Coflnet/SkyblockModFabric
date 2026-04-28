@@ -149,13 +149,8 @@ public class TfmBinGUI extends BinGUI {
         super.extractBackground(drawContext, mouseX, mouseY, delta);
 
         if(!gcsh.getContainer().isEmpty()){
-            if (gcsh.getContainer().getItem(AUCTION_ITEM_SLOT).getItem() != Items.AIR){ 
-                setItem(gcsh.getContainer().getItem(AUCTION_ITEM_SLOT));
-                 updateAuctionStatus(
-                        gcsh.getContainer()
-                                .getItem(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
-                );
-            }
+            syncAuctionItemFromContainer();
+            syncAuctionStatusFromContainer();
         }
 
         RenderUtils.drawRectOutline(
