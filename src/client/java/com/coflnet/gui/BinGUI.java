@@ -39,8 +39,10 @@ public abstract class BinGUI extends Screen {
     protected final int OWN_AUCTION_CLAIM_SLOT = 31;
     protected final int OWN_AUCTION_CANCEL_SLOT = 33;
     protected ItemWidget itemWidget;
-    protected ItemStack currentItem;
+    protected ItemStack currentItem = Items.AIR.getDefaultStack();
     protected FlipData flipData;
+    private String auctionItemStateKey = "";
+    private String actionItemStateKey = "";
 
     protected AuctionStatus auctionStatus;
     protected GenericContainerScreenHandler gcsh;
@@ -90,6 +92,56 @@ public abstract class BinGUI extends Screen {
     public void setItem(ItemStack item) {
         this.currentItem = item;
         this.itemWidget.item = item;
+    }
+
+    protected boolean syncAuctionItemFromContainer() {
+        ItemStack auctionItem = gcsh.getInventory().getStack(AUCTION_ITEM_SLOT);
+        String itemStateKey = getItemStateKey(auctionItem);
+        if (itemStateKey.equals(auctionItemStateKey)) {
+            if (itemWidget != null) {
+                itemWidget.item = currentItem;
+            }
+            return false;
+        }
+
+        auctionItemStateKey = itemStateKey;
+        if (auctionItem.isEmpty() || auctionItem.getItem() == Items.AIR) {
+            setItem(Items.AIR.getDefaultStack());
+            return false;
+        }
+
+        setItem(auctionItem);
+        return true;
+    }
+
+    protected AuctionStatus syncAuctionStatusFromContainer() {
+        int actionSlot = getCurrentActionSlot();
+        ItemStack actionItem = gcsh.getInventory().getStack(actionSlot);
+        String itemStateKey = actionSlot + ":" + getItemStateKey(actionItem);
+        if (itemStateKey.equals(actionItemStateKey)) {
+            return auctionStatus;
+        }
+
+        actionItemStateKey = itemStateKey;
+        if (actionItem.isEmpty() || actionItem.getItem() == Items.AIR) {
+            return auctionStatus;
+        }
+
+        return updateAuctionStatus(actionItem);
+    }
+
+    private int getCurrentActionSlot() {
+        return auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT;
+    }
+
+    protected String getItemStateKey(@NotNull ItemStack itemStack) {
+        if (itemStack.isEmpty() || itemStack.getItem() == Items.AIR) {
+            return "";
+        }
+
+        String hoverName = itemStack.getName().getString();
+        var lore = itemStack.get(DataComponentTypes.LORE);
+        return hoverName + "|" + itemStack.getCount() + "|" + (lore == null ? "" : lore);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.coflnet.gui.cofl;
 
+import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
@@ -24,6 +25,7 @@ public class CoflBinGUI extends BinGUI {
     private ScrollableTextWidget loreScrollableTextWidget;
     private ClickableWidget rightClickableWidget;
     private ClickableWidget leftClickableWidget;
+    private volatile boolean loreDirty = true;
 
     public String title = "";
     public Text lore = Text.of("");
@@ -31,6 +33,11 @@ public class CoflBinGUI extends BinGUI {
 
     public CoflBinGUI(GenericContainerScreen gcs){
         super(Text.literal("Cofl Bin Gui"), gcs, 5, 4);
+        DescriptionHandler.setRefreshCallback((lines, title) -> MinecraftClient.getInstance().execute(() -> {
+            if (MinecraftClient.getInstance().currentScreen == this) {
+                loreDirty = true;
+            }
+        }));
     }
 
     @Override
@@ -237,20 +244,26 @@ public class CoflBinGUI extends BinGUI {
         super.renderBackground(drawContext, mouseX, mouseY, delta);
 
         if(!gcsh.getInventory().isEmpty()){
-            if (gcsh.getInventory().getStack(AUCTION_ITEM_SLOT).getItem() != Items.AIR) {
-                setItem(gcsh.getInventory().getStack(AUCTION_ITEM_SLOT));
-                lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), currentItem));
-                loreScrollableTextWidget.setMessage(lore == null ? Text.empty() : lore);
+            boolean itemChanged = syncAuctionItemFromContainer();
+            if (itemChanged) {
+                loreDirty = true;
             }
 
-            if (gcsh.getInventory()
-                    .getStack(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
-                    .getItem() != Items.AIR) {
-                AuctionStatus as = updateAuctionStatus(
-                        gcsh.getInventory()
-                                .getStack(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT)
-                );
-                //System.out.println(as);
+            if (currentItem.isEmpty() || currentItem.getItem() == Items.AIR) {
+                if (itemChanged) {
+                    lore = Text.empty();
+                    loreScrollableTextWidget.setMessage(Text.empty());
+                    loreDirty = false;
+                }
+            } else if (loreDirty) {
+                lore = convertTextList(getTooltipFromItem(MinecraftClient.getInstance(), currentItem));
+                loreScrollableTextWidget.setMessage(lore == null ? Text.empty() : lore);
+                loreDirty = false;
+            }
+
+            AuctionStatus previousStatus = auctionStatus;
+            AuctionStatus as = syncAuctionStatusFromContainer();
+            if (itemChanged || as != previousStatus) {
                 setRightButtonConfig(as);
             }
         }

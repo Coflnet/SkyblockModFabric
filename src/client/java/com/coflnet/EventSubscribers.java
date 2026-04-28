@@ -137,15 +137,25 @@ public class EventSubscribers {
 
     @Subscribe
     public void onOpenAuctionGUI(OnOpenAuctionGUI event){
-        flipData = event.flip;
-        MinecraftClient.getInstance().getNetworkHandler().sendChatMessage(event.openAuctionCommand);
+        MinecraftClient.getInstance().execute(() -> {
+            flipData = event.flip;
+            if (MinecraftClient.getInstance().getNetworkHandler() != null) {
+                MinecraftClient.getInstance().getNetworkHandler().sendChatMessage(event.openAuctionCommand);
+            }
+        });
     }
 
     @Subscribe
     public void onExecuteCommand(OnExecuteCommand event){
         System.out.println("Skycofl executes:"+event.Command);
-        String command =event.Command.substring(1);
-        MinecraftClient.getInstance().getNetworkHandler().sendChatCommand(command);
+        MinecraftClient.getInstance().execute(() -> {
+            if (MinecraftClient.getInstance().getNetworkHandler() == null) {
+                return;
+            }
+
+            String command = event.Command;
+            MinecraftClient.getInstance().getNetworkHandler().sendChatMessage(command);
+        });
     }
 
     @Subscribe
