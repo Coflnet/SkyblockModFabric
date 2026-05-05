@@ -543,9 +543,9 @@ public class CoflModClient implements ClientModInitializer {
             lastCheckedUsername = currentUsername;
         }
         
-            CoflSkyCommand.start(username);
         Thread.startVirtualThread(() -> {
             try {
+                CoflSkyCommand.start(username);
                 Thread.sleep(5000); // wait 5 seconds for the scoreboard to be populated
                 WSClientWrapper w = CoflCore.Wrapper;
                 if(w == null || !w.isRunning)
