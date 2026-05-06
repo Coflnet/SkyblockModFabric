@@ -6,6 +6,9 @@ import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import CoflCore.classes.Position;
 import CoflCore.classes.Settings;
@@ -124,6 +127,9 @@ public class CoflModClient implements ClientModInitializer {
     // Staggered refresh tracking: inventory name -> last request time
     private static final Map<String, Long> lastRefreshTimePerInventory = new HashMap<>();
     private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
+    private static final AtomicBoolean connectionStartInProgress = new AtomicBoolean(false);
+    private static final ExecutorService connectionLifecycleExecutor =
+            Executors.newSingleThreadExecutor(Thread.ofVirtual().name("cofl-connection-", 0).factory());
     
     // Maps new UUIDs to original UUID when items update with new UUIDs but same title
     // This allows finding descriptions loaded for the original UUID when hovering an item with updated UUID
@@ -241,7 +247,7 @@ public class CoflModClient implements ClientModInitializer {
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
                 System.out.println("Disconnected from server");
-                wrapper.stop();
+                stopConnectionAsync();
             }
         });
 
@@ -529,7 +535,8 @@ public class CoflModClient implements ClientModInitializer {
 
     private void autoStart(){
         WSClientWrapper wrapper = CoflCore.Wrapper;
-        if (wrapper != null && wrapper.isRunning || CoflCore.config == null || !CoflCore.config.autoStart)
+        if ((wrapper != null && wrapper.isRunning) || connectionStartInProgress.get()
+                || CoflCore.config == null || !CoflCore.config.autoStart)
             return;
         String currentUsername = MinecraftClient.getInstance().getSession().getUsername();
         if (!currentUsername.equals(username)) {
@@ -538,15 +545,14 @@ public class CoflModClient implements ClientModInitializer {
             lastCheckedUsername = currentUsername;
         }
         
-            CoflSkyCommand.start(username);
+        startConnectionAsync(username);
         Thread.startVirtualThread(() -> {
             try {
                 Thread.sleep(5000); // wait 5 seconds for the scoreboard to be populated
                 WSClientWrapper w = CoflCore.Wrapper;
                 if(w == null || !w.isRunning)
                     return;
-                uploadScoreboard();
-                uploadTabList();
+                uploadScoreboardAndTabList();
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -793,8 +799,10 @@ public class CoflModClient implements ClientModInitializer {
      * Called by EventSubscribers when the backend signals it's ready (OnLoggedIn event).
      */
     public static void uploadScoreboardAndTabList() {
-        uploadScoreboard();
-        uploadTabList();
+        runOnClientThread(() -> {
+            uploadScoreboard();
+            uploadTabList();
+        });
     }
 
     public static FlipData popFlipData() {
@@ -1512,6 +1520,47 @@ public class CoflModClient implements ClientModInitializer {
         }
     }
 
+    private static void runOnClientThread(Runnable action) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null) {
+            client.execute(action);
+        }
+    }
+
+    private static void runConnectionLifecycleTask(String actionName, Runnable action) {
+        connectionLifecycleExecutor.execute(() -> {
+            try {
+                action.run();
+            } catch (Throwable t) {
+                System.out.println("Failed to " + actionName + ": " + t.getMessage());
+                t.printStackTrace();
+            }
+        });
+    }
+
+    private static void startConnectionAsync(String currentUsername) {
+        String usernameSnapshot = currentUsername;
+        if (!connectionStartInProgress.compareAndSet(false, true)) {
+            return;
+        }
+        runConnectionLifecycleTask("start CoflCore connection", () -> {
+            try {
+                CoflSkyCommand.start(usernameSnapshot);
+            } finally {
+                connectionStartInProgress.set(false);
+            }
+        });
+    }
+
+    private static void stopConnectionAsync() {
+        runConnectionLifecycleTask("stop CoflCore connection", () -> {
+            WSClientWrapper currentWrapper = CoflCore.Wrapper;
+            if (currentWrapper != null && currentWrapper.isRunning) {
+                currentWrapper.stop();
+            }
+        });
+    }
+
     /**
      * Check if the Minecraft account has changed and update SkyCoflCore connection if needed.
      * This handles runtime account switches from other mods.
@@ -1528,9 +1577,8 @@ public class CoflModClient implements ClientModInitializer {
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
                 System.out.println("Restarting CoflCore connection for new account: " + currentUsername);
-                wrapper.stop();
                 username = currentUsername;
-                CoflSkyCommand.start(username);
+                startConnectionAsync(username);
             } else {
                 // Just update the username for next time
                 username = currentUsername;

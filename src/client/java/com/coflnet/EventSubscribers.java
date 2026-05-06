@@ -20,13 +20,14 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.text.Text;
+import CoflCore.handlers.DescriptionHandler;
 
 public class EventSubscribers {
-    public static FlipData flipData = null;
-    public static Countdown countdownData = null;
-    public static long countdownExpiryTime = 0L; // Target time when countdown expires (in milliseconds)
-    public static boolean showCountdown = false;
-    public static List<Position> positions = null;
+    public static volatile FlipData flipData = null;
+    public static volatile Countdown countdownData = null;
+    public static volatile long countdownExpiryTime = 0L; // Target time when countdown expires (in milliseconds)
+    public static volatile boolean showCountdown = false;
+    public static volatile List<Position> positions = null;
     
     /**
      * Gets the current remaining countdown time in seconds.
@@ -44,6 +45,13 @@ public class EventSubscribers {
         }
         
         return remainingMs / 1000.0f;
+    }
+
+    private static void runOnClientThread(Runnable action) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client != null) {
+            client.execute(action);
+        }
     }
 
     @Subscribe
@@ -176,15 +184,34 @@ public class EventSubscribers {
 
     @Subscribe
     public void onGetInventory(OnGetInventory event){
-        try {
-            DefaultedList<ItemStack> itemStacks = DefaultedList.of();
-            for (Iterator<ItemStack> it = MinecraftClient.getInstance().player.getInventory().iterator(); it.hasNext(); ) {
-                itemStacks.add(it.next());
+        runOnClientThread(() -> {
+            try {
+                PlayerEntity player = MinecraftClient.getInstance().player;
+                if (player == null) {
+                    return;
+                }
+
+                DefaultedList<ItemStack> itemStacks = DefaultedList.of();
+                for (Iterator<ItemStack> it = player.getInventory().iterator(); it.hasNext(); ) {
+                    itemStacks.add(it.next().copy());
+                }
+
+                String[] visibleItems = CoflModClient.getItemIdsFromInventory(itemStacks);
+                String nbtString = CoflModClient.inventoryToNBT(itemStacks);
+                String currentUsername = MinecraftClient.getInstance().getSession().getUsername();
+                Position position = CoflModClient.posToUpload;
+
+                Thread.startVirtualThread(() -> DescriptionHandler.loadDescriptionForInventory(
+                        visibleItems,
+                        "Inventory",
+                        nbtString,
+                        currentUsername,
+                        position
+                ));
+            } catch (Exception e){
+                System.out.println(e);
             }
-            CoflModClient.loadDescriptionsForItems("Inventory", itemStacks);
-        } catch (Exception e){
-            System.out.println(e);
-        }
+        });
     }
 
     @Subscribe
@@ -194,7 +221,7 @@ public class EventSubscribers {
 
     @Subscribe
     public void onHotkeyRegister(HotkeyRegister[] hotkeys){
-        CoflModClient.setHotKeys(hotkeys);
+        runOnClientThread(() -> CoflModClient.setHotKeys(hotkeys));
     }
 
     @Subscribe
