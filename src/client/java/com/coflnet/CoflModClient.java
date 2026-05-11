@@ -8,11 +8,13 @@ import java.util.*;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import CoflCore.classes.Position;
 import CoflCore.classes.Settings;
 import CoflCore.commands.models.HotkeyRegister;
+import CoflCore.configuration.Config;
 import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
 import com.mojang.brigadier.CommandDispatcher;
@@ -53,6 +55,7 @@ import CoflCore.commands.models.FlipData;
 import CoflCore.commands.models.ModListData;
 import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
+import CoflCore.network.QueryServerCommands;
 import CoflCore.network.WSClientWrapper;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.fabricmc.api.ClientModInitializer;
@@ -130,10 +133,30 @@ public class CoflModClient implements ClientModInitializer {
     private static final AtomicBoolean connectionStartInProgress = new AtomicBoolean(false);
     private static final ExecutorService connectionLifecycleExecutor =
             Executors.newSingleThreadExecutor(Thread.ofVirtual().name("cofl-connection-", 0).factory());
+        private static final Map<Integer, Integer> uploadedMapHashes = new ConcurrentHashMap<>();
+        private static volatile long lastMapUploadCheckMs = 0L;
+        private static final long MAP_UPLOAD_CHECK_INTERVAL_MS = 1000L;
+    private static volatile ServerContext currentServerContext = ServerContext.UNKNOWN;
     
     // Maps new UUIDs to original UUID when items update with new UUIDs but same title
     // This allows finding descriptions loaded for the original UUID when hovering an item with updated UUID
     public static final Map<String, String> uuidToOriginalUuid = new HashMap<>();
+
+    private enum ServerContext {
+        UNKNOWN(null),
+        SKYBLOCK(null),
+        DONUT("donut");
+
+        private final String requestValue;
+
+        ServerContext(String requestValue) {
+            this.requestValue = requestValue;
+        }
+
+        private boolean isSupported() {
+            return this != UNKNOWN;
+        }
+    }
 
     public class TooltipMessage implements  Message{
         private final String text;
@@ -187,6 +210,14 @@ public class CoflModClient implements ClientModInitializer {
                     System.out.println("Error processing scoreboard update: " + e.getMessage());
                 }
             }
+
+            if (isDonutServerContext()) {
+                long now = System.currentTimeMillis();
+                if (now - lastMapUploadCheckMs >= MAP_UPLOAD_CHECK_INTERVAL_MS) {
+                    lastMapUploadCheckMs = now;
+                    tryUploadViewedMapData(client);
+                }
+            }
             
             if (bestflipsKeyBinding.isPressed()) {
                 if (counter == 0) {
@@ -230,10 +261,11 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            if (MinecraftClient.getInstance() != null && MinecraftClient.getInstance().getCurrentServerEntry() != null
-                    && MinecraftClient.getInstance().getCurrentServerEntry().address.contains("hypixel.net")) {
-                System.out.println("Connected to Hypixel");
-                
+            ServerContext detectedServerContext = detectServerContext(null);
+            applyServerContext(detectedServerContext);
+            if (detectedServerContext.isSupported()) {
+                System.out.println("Connected to " + detectedServerContext.name().toLowerCase(Locale.ROOT));
+
                 // Update username in case of account switch before joining
                 autoStart();
             }
@@ -244,6 +276,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            applyServerContext(ServerContext.UNKNOWN);
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
                 System.out.println("Disconnected from server");
@@ -503,6 +536,8 @@ public class CoflModClient implements ClientModInitializer {
     private static void processScoreboardUpdate() {
         try {
             String[] scores = getScoreboard().toArray(new String[0]);
+            ServerContext detectedServerContext = detectServerContext(scores);
+            applyServerContext(detectedServerContext);
             if (scores == null || scores.length < 7) 
                 return;
             Pair<String,String> newData = getRelevantLinesFromScoreboard(scores);
@@ -515,15 +550,7 @@ public class CoflModClient implements ClientModInitializer {
                     
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper == null || !wrapper.isRunning) {
-                // Only auto-start if any scoreboard line indicates Hypixel (ends with "hypixel.net")
-                boolean isHypixel = false;
-                for (String score : scores) {
-                    if (score.toLowerCase().endsWith("hypixel.net")) {
-                        isHypixel = true;
-                        break;
-                    }
-                }
-                if (isHypixel && instance != null) {
+                if (currentServerContext.isSupported() && instance != null) {
                     instance.autoStart();
                 }
             }
@@ -536,7 +563,8 @@ public class CoflModClient implements ClientModInitializer {
     private void autoStart(){
         WSClientWrapper wrapper = CoflCore.Wrapper;
         if ((wrapper != null && wrapper.isRunning) || connectionStartInProgress.get()
-                || CoflCore.config == null || !CoflCore.config.autoStart)
+                || CoflCore.config == null || !CoflCore.config.autoStart
+                || !currentServerContext.isSupported())
             return;
         String currentUsername = MinecraftClient.getInstance().getSession().getUsername();
         if (!currentUsername.equals(username)) {
@@ -764,9 +792,184 @@ public class CoflModClient implements ClientModInitializer {
         MinecraftClient client = MinecraftClient.getInstance();
         if (client.player == null || hoveredStack == null) return;
 
+        scheduleMapUpload(client, hoveredStack);
+
         RawCommand data = new RawCommand("hotkey", gson.toJson("upload_item" + getContextToAppend(hoveredStack)));
         WSClientWrapper wrapper = CoflCore.Wrapper;
         if (wrapper != null) wrapper.SendMessage(data);
+    }
+
+    private static void tryUploadViewedMapData(MinecraftClient client) {
+        if (client == null || client.player == null || client.world == null)
+            return;
+
+        scheduleMapUpload(client, client.player.getMainHandStack());
+        scheduleMapUpload(client, client.player.getOffHandStack());
+    }
+
+    private static void scheduleMapUpload(MinecraftClient client, ItemStack stack) {
+        if (!isDonutServerContext() || client == null || client.world == null || stack == null || stack.isEmpty())
+            return;
+
+        String itemId = extractItemIdFromStack(stack);
+        if (!"minecraft:filled_map".equals(itemId))
+            return;
+
+        Integer mapId = extractMapIdFromStack(stack);
+        if (mapId == null)
+            return;
+
+        byte[] mapColors = getMapColorsReflectively(stack, client.world);
+        if (mapColors == null || mapColors.length == 0)
+            return;
+
+        int colorHash = Arrays.hashCode(mapColors);
+        Integer previousHash = uploadedMapHashes.put(mapId, colorHash);
+        if (previousHash != null && previousHash == colorHash)
+            return;
+
+        byte[] colorsCopy = Arrays.copyOf(mapColors, mapColors.length);
+        String displayName = stack.getName().getString();
+        String username = client.getSession().getUsername();
+        Thread.startVirtualThread(() -> uploadMapContent(mapId, colorsCopy, itemId, displayName, username, colorHash));
+    }
+
+    private static void uploadMapContent(int mapId, byte[] mapColors, String itemId, String displayName, String username, int colorHash) {
+        JsonObject body = new JsonObject();
+        body.addProperty("colorsBase64", Base64.getEncoder().encodeToString(mapColors));
+        body.addProperty("width", 128);
+        body.addProperty("height", 128);
+        body.addProperty("hash", Integer.toHexString(colorHash));
+        body.addProperty("itemId", itemId);
+        body.addProperty("displayName", displayName);
+        body.addProperty("source", "skyblockmodfabric");
+
+        String response = QueryServerCommands.PostRequest(getDonutApiBaseUrl() + "/api/donut/maps/" + mapId, body.toString(), username);
+        if (response == null)
+            uploadedMapHashes.remove(mapId, colorHash);
+    }
+
+    private static String getDonutApiBaseUrl() {
+        if (Config.BaseUrl != null && Config.BaseUrl.contains("localhost"))
+            return "http://localhost:8000";
+
+        return "https://donut.coflnet.com";
+    }
+
+    private static String extractItemIdFromStack(ItemStack stack) {
+        NbtCompound itemNbt = extractSingleStackNbt(stack);
+        if (itemNbt == null)
+            return "";
+
+        return itemNbt.getString("id").orElse("");
+    }
+
+    private static Integer extractMapIdFromStack(ItemStack stack) {
+        NbtCompound itemNbt = extractSingleStackNbt(stack);
+        if (itemNbt == null)
+            return null;
+
+        NbtCompound components = itemNbt.getCompound("components").orElse(null);
+        if (components == null)
+            return null;
+
+        Integer directMapId = components.getInt("minecraft:map_id").orElse(null);
+        if (directMapId != null)
+            return directMapId;
+
+        NbtCompound customData = components.getCompound("minecraft:custom_data").orElse(null);
+        if (customData == null)
+            return null;
+
+        NbtCompound publicBukkitValues = customData.getCompound("PublicBukkitValues").orElse(null);
+        if (publicBukkitValues == null)
+            return null;
+
+        Integer copyId = publicBukkitValues.getInt("minecraft:copyid").orElse(null);
+        if (copyId != null)
+            return copyId;
+
+        return publicBukkitValues.getInt("minecraft:map_id").orElse(null);
+    }
+
+    private static NbtCompound extractSingleStackNbt(ItemStack stack) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null || stack == null || stack.isEmpty())
+            return null;
+
+        DefaultedList<ItemStack> singleItem = DefaultedList.of();
+        singleItem.add(stack);
+        NbtCompound root = writeNbt(new NbtCompound(), singleItem, client.player.getRegistryManager());
+        NbtList items = root.getList("i").orElse(null);
+        if (items == null || items.isEmpty())
+            return null;
+
+        return items.getCompound(0).orElse(null);
+    }
+
+    private static byte[] getMapColorsReflectively(ItemStack stack, Object level) {
+        Object mapState = invokeMapStateGetter(stack, level);
+        if (mapState == null)
+            return null;
+
+        Object colors = getFieldValue(mapState, "colors", "field_122");
+        return colors instanceof byte[] bytes ? bytes : null;
+    }
+
+    private static Object invokeMapStateGetter(ItemStack stack, Object level) {
+        String[] candidateClassNames = new String[] {
+                "net.minecraft.world.item.MapItem",
+                "net.minecraft.world.item.FilledMapItem",
+                "net.minecraft.item.FilledMapItem"
+        };
+        String[] candidateMethodNames = new String[] { "getSavedData", "getMapState" };
+
+        for (String className : candidateClassNames) {
+            try {
+                Class<?> owner = Class.forName(className);
+                for (String methodName : candidateMethodNames) {
+                    for (java.lang.reflect.Method method : owner.getDeclaredMethods()) {
+                        if (!java.lang.reflect.Modifier.isStatic(method.getModifiers())
+                                || !method.getName().equals(methodName)
+                                || method.getParameterCount() != 2) {
+                            continue;
+                        }
+
+                        Class<?>[] parameterTypes = method.getParameterTypes();
+                        if (!parameterTypes[0].isAssignableFrom(stack.getClass())
+                                || !parameterTypes[1].isAssignableFrom(level.getClass())) {
+                            continue;
+                        }
+
+                        method.setAccessible(true);
+                        return method.invoke(null, stack, level);
+                    }
+                }
+            } catch (ClassNotFoundException ignored) {
+                // Try the next candidate name.
+            } catch (ReflectiveOperationException e) {
+                System.out.println("[CoflModClient] Failed to resolve map state: " + e.getMessage());
+            }
+        }
+
+        return null;
+    }
+
+    private static Object getFieldValue(Object target, String... fieldNames) {
+        for (String fieldName : fieldNames) {
+            try {
+                Field field = target.getClass().getDeclaredField(fieldName);
+                field.setAccessible(true);
+                return field.get(target);
+            } catch (NoSuchFieldException ignored) {
+                // Try the next candidate field name.
+            } catch (IllegalAccessException e) {
+                System.out.println("[CoflModClient] Failed to read field " + fieldName + ": " + e.getMessage());
+                return null;
+            }
+        }
+
+        return null;
     }
 
     private static String getContextToAppend(ItemStack hoveredStack) {
@@ -934,7 +1137,8 @@ public class CoflModClient implements ClientModInitializer {
 
     public void loadDescriptionsForInv(HandledScreen screen) {
         String menuSlot = MinecraftClient.getInstance().player.getInventory().getStack(8).getComponents().toString();
-        if (!menuSlot.contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")
+        if (!isDonutServerContext()
+            && !menuSlot.contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")
             && !menuSlot.contains("Scaffolding") && !menuSlot.contains("Quiver")
             && !menuSlot.contains("Your Score Summary") // dungeon completion
             )
@@ -1518,6 +1722,77 @@ public class CoflModClient implements ClientModInitializer {
         if (client.player != null) {
             client.player.sendMessage(Text.literal(message), false);
         }
+    }
+
+    private static boolean isDonutServerContext() {
+        return currentServerContext == ServerContext.DONUT;
+    }
+
+    private static void applyServerContext(ServerContext serverContext) {
+        if (serverContext == null) {
+            return;
+        }
+        currentServerContext = serverContext;
+        // Config.ServerContext = serverContext.requestValue; // Not yet available in this CoflCore version
+    }
+
+    private static ServerContext detectServerContext(String[] scores) {
+        if (containsDonutScoreboard(scores)) {
+            return ServerContext.DONUT;
+        }
+        if (containsHypixelScoreboard(scores)) {
+            return ServerContext.SKYBLOCK;
+        }
+        return detectServerContextFromConnection();
+    }
+
+    private static ServerContext detectServerContextFromConnection() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.getCurrentServerEntry() == null || client.getCurrentServerEntry().address == null) {
+            return ServerContext.UNKNOWN;
+        }
+        String serverIp = client.getCurrentServerEntry().address.toLowerCase(Locale.ROOT);
+        if (serverIp.contains("hypixel.net")) {
+            return ServerContext.SKYBLOCK;
+        }
+        if (serverIp.contains("donut") || serverIp.contains("donutsmp")) {
+            return ServerContext.DONUT;
+        }
+        return ServerContext.UNKNOWN;
+    }
+
+    private static boolean containsHypixelScoreboard(String[] scores) {
+        if (scores == null) {
+            return false;
+        }
+        for (String score : scores) {
+            if (normalizeScoreboardLine(score).endsWith("hypixel.net")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsDonutScoreboard(String[] scores) {
+        if (scores == null) {
+            return false;
+        }
+        for (String score : scores) {
+            String normalizedScore = normalizeScoreboardLine(score);
+            if ((normalizedScore.contains("donut") && normalizedScore.contains("smp"))
+                    || normalizedScore.contains("donutsmp")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static String normalizeScoreboardLine(String score) {
+        String stripped = Formatting.strip(score);
+        if (stripped == null) {
+            return "";
+        }
+        return stripped.replace('\u00A0', ' ').trim().toLowerCase(Locale.ROOT);
     }
 
     private static void runOnClientThread(Runnable action) {
