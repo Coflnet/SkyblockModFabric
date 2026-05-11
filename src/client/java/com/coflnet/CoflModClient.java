@@ -3,6 +3,9 @@ package com.coflnet;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.net.URI;
+import java.security.SecureRandom;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
@@ -30,6 +33,7 @@ import net.minecraft.item.Item;
 import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.nbt.*;
 import net.minecraft.registry.RegistryWrapper;
+import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
@@ -136,6 +140,11 @@ public class CoflModClient implements ClientModInitializer {
         private static final Map<Integer, Integer> uploadedMapHashes = new ConcurrentHashMap<>();
         private static volatile long lastMapUploadCheckMs = 0L;
         private static final long MAP_UPLOAD_CHECK_INTERVAL_MS = 1000L;
+    private static final SecureRandom connectConfirmationRandom = new SecureRandom();
+    private static final long UNTRUSTED_CONNECT_CONFIRMATION_TIMEOUT_MS = 30_000L;
+    private static volatile String pendingUntrustedConnectToken;
+    private static volatile String[] pendingUntrustedConnectArgs;
+    private static volatile long pendingUntrustedConnectExpiresAtMs;
     private static volatile ServerContext currentServerContext = ServerContext.UNKNOWN;
     
     // Maps new UUIDs to original UUID when items update with new UUIDs but same title
@@ -776,6 +785,14 @@ public class CoflModClient implements ClientModInitializer {
                             sendChatMessage("§cUsage: /cofl bazaarsearch <item>");
                             return 1;
                         }
+                    }
+
+                    if (handlePendingConnectConfirmation(args, username)) {
+                        return 1;
+                    }
+
+                    if (queueUntrustedConnectConfirmation(args)) {
+                        return 1;
                     }
 
                     // Pass to CoflSkyCommand for other commands
@@ -1722,6 +1739,197 @@ public class CoflModClient implements ClientModInitializer {
         if (client.player != null) {
             client.player.sendMessage(Text.literal(message), false);
         }
+    }
+
+    private static void sendChatComponent(Text message) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player != null) {
+            client.player.sendMessage(message, false);
+        }
+    }
+
+    private static boolean handlePendingConnectConfirmation(String[] args, String username) {
+        if (args.length == 0 || !args[0].equalsIgnoreCase("confirmconnect")) {
+            return false;
+        }
+
+        if (args.length != 2) {
+            sendChatMessage("§cUsage: /cofl confirmconnect <token>");
+            return true;
+        }
+
+        if (pendingUntrustedConnectArgs == null || pendingUntrustedConnectToken == null) {
+            sendChatMessage("§cNo pending untrusted connection to confirm.");
+            return true;
+        }
+
+        if (isPendingUntrustedConnectExpired()) {
+            clearPendingUntrustedConnect();
+            sendChatMessage("§cThe untrusted connection confirmation expired. Run /cofl connect again if you still want to continue.");
+            return true;
+        }
+
+        if (!pendingUntrustedConnectToken.equals(args[1])) {
+            sendChatMessage("§cInvalid confirmation token. Run /cofl connect again to get a new confirmation button.");
+            return true;
+        }
+
+        String[] confirmedArgs = pendingUntrustedConnectArgs;
+        String confirmedDestination = decodeConnectDestination(confirmedArgs[1]);
+        String confirmedHost = extractConnectHost(confirmedDestination);
+        clearPendingUntrustedConnect();
+        sendChatMessage("§eConfirmed untrusted connection to §c" + getDisplayedConnectTarget(confirmedDestination, confirmedHost) + "§e.");
+        CoflSkyCommand.processCommand(confirmedArgs, username);
+        return true;
+    }
+
+    private static boolean queueUntrustedConnectConfirmation(String[] args) {
+        if (args.length != 2 || !args[0].equalsIgnoreCase("connect")) {
+            return false;
+        }
+
+        String destination = decodeConnectDestination(args[1]);
+        String host = extractConnectHost(destination);
+        if (isTrustedConnectHost(host)) {
+            clearPendingUntrustedConnect();
+            return false;
+        }
+
+        String confirmationToken = generateConnectConfirmationToken();
+        pendingUntrustedConnectToken = confirmationToken;
+        pendingUntrustedConnectArgs = Arrays.copyOf(args, args.length);
+        pendingUntrustedConnectExpiresAtMs = System.currentTimeMillis() + UNTRUSTED_CONNECT_CONFIRMATION_TIMEOUT_MS;
+
+        String displayedTarget = getDisplayedConnectTarget(destination, host);
+        sendChatMessage("§c⚠ Warning: §e" + displayedTarget + " §cis not a §bcoflnet.com §cserver.");
+        sendChatMessage("§cThat server can reuse your authentication against the main SkyCofl instance.");
+        sendChatMessage("§cYou can lose all CoflCoins and get banned, only continue if you trust this server.");
+        sendChatMessage("§eThe connection was blocked. Click the confirmation button below within 30 seconds if you want to continue.");
+        sendChatComponent(Text.literal("[Confirm untrusted connection]")
+                .styled(style -> style
+                        .withColor(Formatting.RED)
+                        .withBold(true)
+                        .withUnderline(true)
+                        .withClickEvent(new ClickEvent.RunCommand("/cofl confirmconnect " + confirmationToken))
+                        .withHoverEvent(new HoverEvent.ShowText(Text.literal(
+                                "Connect to " + displayedTarget + " anyway\n"
+                                        + "This confirmation expires in 30 seconds.")))));
+        return true;
+    }
+
+    private static String generateConnectConfirmationToken() {
+        byte[] tokenBytes = new byte[24];
+        connectConfirmationRandom.nextBytes(tokenBytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes);
+    }
+
+    private static boolean isPendingUntrustedConnectExpired() {
+        return pendingUntrustedConnectExpiresAtMs > 0L
+                && System.currentTimeMillis() > pendingUntrustedConnectExpiresAtMs;
+    }
+
+    private static void clearPendingUntrustedConnect() {
+        pendingUntrustedConnectToken = null;
+        pendingUntrustedConnectArgs = null;
+        pendingUntrustedConnectExpiresAtMs = 0L;
+    }
+
+    private static String getDisplayedConnectTarget(String destination, String host) {
+        if (host != null) {
+            return host;
+        }
+        if (destination == null || destination.isBlank()) {
+            return "unknown target";
+        }
+        return destination;
+    }
+
+    private static String decodeConnectDestination(String rawDestination) {
+        if (rawDestination == null) {
+            return null;
+        }
+
+        String trimmedDestination = rawDestination.trim();
+        if (trimmedDestination.isEmpty() || trimmedDestination.contains("://")) {
+            return trimmedDestination;
+        }
+
+        try {
+            return new String(Base64.getDecoder().decode(trimmedDestination), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return trimmedDestination;
+        }
+    }
+
+    private static String extractConnectHost(String destination) {
+        String normalizedDestination = normalizeConnectHost(destination);
+        if (normalizedDestination == null) {
+            return null;
+        }
+
+        try {
+            URI uri = URI.create(normalizedDestination.contains("://") ? normalizedDestination : "wss://" + normalizedDestination);
+            String parsedHost = normalizeConnectHost(uri.getHost());
+            if (parsedHost != null) {
+                return parsedHost;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // Fall back to manual parsing below.
+        }
+
+        String hostCandidate = normalizedDestination;
+        int pathIndex = hostCandidate.indexOf('/');
+        if (pathIndex >= 0) {
+            hostCandidate = hostCandidate.substring(0, pathIndex);
+        }
+
+        int queryIndex = hostCandidate.indexOf('?');
+        if (queryIndex >= 0) {
+            hostCandidate = hostCandidate.substring(0, queryIndex);
+        }
+
+        int fragmentIndex = hostCandidate.indexOf('#');
+        if (fragmentIndex >= 0) {
+            hostCandidate = hostCandidate.substring(0, fragmentIndex);
+        }
+
+        int credentialsIndex = hostCandidate.lastIndexOf('@');
+        if (credentialsIndex >= 0) {
+            hostCandidate = hostCandidate.substring(credentialsIndex + 1);
+        }
+
+        if (hostCandidate.startsWith("[")) {
+            int closingBracketIndex = hostCandidate.indexOf(']');
+            if (closingBracketIndex > 0) {
+                hostCandidate = hostCandidate.substring(1, closingBracketIndex);
+            }
+        } else {
+            int portSeparatorIndex = hostCandidate.indexOf(':');
+            if (portSeparatorIndex >= 0) {
+                hostCandidate = hostCandidate.substring(0, portSeparatorIndex);
+            }
+        }
+
+        return normalizeConnectHost(hostCandidate);
+    }
+
+    private static boolean isTrustedConnectHost(String host) {
+        String normalizedHost = normalizeConnectHost(host);
+        return normalizedHost != null
+                && (normalizedHost.equals("coflnet.com") || normalizedHost.endsWith(".coflnet.com"));
+    }
+
+    private static String normalizeConnectHost(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String normalizedValue = value.trim().toLowerCase(Locale.ROOT);
+        while (normalizedValue.endsWith(".")) {
+            normalizedValue = normalizedValue.substring(0, normalizedValue.length() - 1);
+        }
+
+        return normalizedValue.isEmpty() ? null : normalizedValue;
     }
 
     private static boolean isDonutServerContext() {
