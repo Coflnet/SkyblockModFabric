@@ -55,7 +55,11 @@ public abstract class ItemHighlightMixin {
                 for (DescriptionHandler.DescModification tooltip : tooltips) {
                     if (tooltip.type.equals("HIGHLIGHT")) {
                         int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000;
-                        RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, hexColor);
+                        if (tooltip.line < 0) {
+                            RenderUtils.drawRectOutline(context, slot.x, slot.y, 16, 16, 2, 0x00000000, hexColor);
+                        } else {
+                            RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, hexColor);
+                        }
                     }
                 }
             }
