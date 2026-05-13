@@ -21,6 +21,7 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.sound.SoundCategory;
 import net.minecraft.text.Text;
 import CoflCore.handlers.DescriptionHandler;
+import net.minecraft.util.Util;
 
 public class EventSubscribers {
     public static volatile FlipData flipData = null;
@@ -59,6 +60,15 @@ public class EventSubscribers {
         MinecraftClient.getInstance().execute(() -> 
             MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(ChatComponent(command.ChatMessage))
         );
+    }
+
+    @Subscribe
+    public void onOpenUrl(OnOpenUrlReceive event) {
+        if (event == null || event.url == null || event.url.isBlank()) {
+            return;
+        }
+
+        runOnClientThread(() -> Util.getOperatingSystem().open(java.net.URI.create(event.url)));
     }
 
     @Subscribe
