@@ -21,6 +21,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Util;
 
 public class EventSubscribers {
     public static volatile FlipData flipData = null;
@@ -59,6 +60,15 @@ public class EventSubscribers {
         Minecraft.getInstance().execute(() -> 
             Minecraft.getInstance().gui.getChat().addServerSystemMessage(ChatComponent(command.ChatMessage))
         );
+    }
+
+    @Subscribe
+    public void onOpenUrl(OnOpenUrlReceive event) {
+        if (event == null || event.url == null || event.url.isBlank()) {
+            return;
+        }
+
+        runOnClientThread(() -> Util.getPlatform().openUri(event.url));
     }
 
     @Subscribe
