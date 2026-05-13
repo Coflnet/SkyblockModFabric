@@ -1124,13 +1124,37 @@ public class CoflModClient implements ClientModInitializer {
         return res.toArray(String[]::new);
     }
 
-    public static String getIdFromStack(ItemStack stack) {
+    public static String getUuidFromStack(ItemStack stack) {
         JsonObject stackJson = null;
         for (ComponentType<?> type : stack.getComponents().getTypes()) {
             if (type.toString().contains("minecraft:custom_data")) {
                 stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
             }
         }
+        return extractUuidFromCustomData(stackJson);
+    }
+
+    public static String extractUuidFromCustomData(JsonObject stackJson) {
+        if (stackJson == null) {
+            return null;
+        }
+
+        return stringifyCustomDataValue(stackJson.get("uuid"));
+    }
+
+    public static String stringifyCustomDataValue(JsonElement value) {
+        if (value == null || value.isJsonNull()) {
+            return null;
+        }
+
+        if (value.isJsonPrimitive()) {
+            return value.getAsString();
+        }
+
+        return gson.toJson(value);
+    }
+
+    public static String getIdFromStack(ItemStack stack) {
         String itemName = stack.getCustomName() == null ? stack.getItem().getName().getString() : stack.getCustomName().getString();
         if(itemName.contains("BUY") || itemName.contains("SELL"))
         {
@@ -1142,12 +1166,9 @@ public class CoflModClient implements ClientModInitializer {
                 }
             }
         }
-        if (stackJson == null)
-            return itemName + ";" + stack.getCount();
-
-        JsonElement uuid = stackJson.get("uuid");
+        String uuid = getUuidFromStack(stack);
         if (uuid != null)
-            return uuid.getAsString();
+            return uuid;
         // If "id" is not present, use the item's name
         return itemName + ";" + stack.getCount();
     }

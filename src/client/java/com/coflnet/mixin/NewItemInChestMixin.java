@@ -1,12 +1,8 @@
 package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.component.ComponentType;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.item.ItemStack;
 import net.minecraft.network.packet.s2c.play.ScreenHandlerSlotUpdateS2CPacket;
@@ -19,8 +15,6 @@ import net.minecraft.client.network.ClientPlayNetworkHandler;
 
 @Mixin(ClientPlayNetworkHandler.class)
 public class NewItemInChestMixin {
-    
-    private static final Gson gson = new Gson();
 
     @Inject(method = "onScreenHandlerSlotUpdate", at = @At("HEAD"))
     private void onSlotUpdateHead(ScreenHandlerSlotUpdateS2CPacket packet, CallbackInfo ci) {
@@ -47,8 +41,8 @@ public class NewItemInChestMixin {
             // this prevents remapping between items that share the same plain text name
             // but differ in color (e.g. pets of different tiers like RARE vs MYTHIC).
             if (prevName != null && prevName.equals(newName)) {
-                String prevUuid = extractUuid(previousStack);
-                String newUuid = extractUuid(newStack);
+                String prevUuid = CoflModClient.getUuidFromStack(previousStack);
+                String newUuid = CoflModClient.getUuidFromStack(newStack);
                 
                 if (prevUuid != null && newUuid != null && !prevUuid.equals(newUuid)) {
                     // Find the original UUID (follow chain if exists)
@@ -100,20 +94,5 @@ public class NewItemInChestMixin {
             // You can log the exception or handle it as needed.
             System.out.println("[NewItemInChestMixin] Failed to process packet: " + e.getMessage());
         }
-    }
-    
-    private String extractUuid(ItemStack stack) {
-        for (ComponentType<?> type : stack.getComponents().getTypes()) {
-            if (type.toString().contains("minecraft:custom_data")) {
-                JsonObject stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
-                if (stackJson != null) {
-                    JsonElement uuid = stackJson.get("uuid");
-                    if (uuid != null) {
-                        return uuid.getAsString();
-                    }
-                }
-            }
-        }
-        return null;
     }
 }
