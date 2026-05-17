@@ -1765,15 +1765,37 @@ public class CoflModClient implements ClientModInitializer {
     private static void sendChatMessage(String message) {
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
-            client.player.sendSystemMessage(Component.literal(message));
+            client.player.sendSystemMessage(Component.literal(withSkyCoflTunnelPrefix(message)));
         }
     }
 
     private static void sendChatComponent(Component message) {
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
-            client.player.sendSystemMessage(message);
+            client.player.sendSystemMessage(withSkyCoflTunnelPrefix(message));
         }
+    }
+
+    public static String withSkyCoflTunnelPrefix(String message) {
+        if (message == null) {
+            return "§b[SkyCofl]§r";
+        }
+        String strippedMessage = ChatFormatting.stripFormatting(message);
+        if (strippedMessage != null && strippedMessage.startsWith("[SkyCofl]")) {
+            return message;
+        }
+        return "§b[SkyCofl]§r " + message;
+    }
+
+    public static Component withSkyCoflTunnelPrefix(Component message) {
+        if (message == null) {
+            return Component.literal("[SkyCofl]").withStyle(ChatFormatting.AQUA);
+        }
+        String strippedMessage = ChatFormatting.stripFormatting(message.getString());
+        if (strippedMessage != null && strippedMessage.startsWith("[SkyCofl]")) {
+            return message;
+        }
+        return Component.literal("[SkyCofl] ").withStyle(ChatFormatting.AQUA).append(message.copy());
     }
 
     private static boolean handlePendingConnectConfirmation(String[] args, String username) {
