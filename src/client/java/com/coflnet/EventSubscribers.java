@@ -57,9 +57,7 @@ public class EventSubscribers {
 
     @Subscribe
     public void WriteToChat(OnWriteToChatReceive command){
-        Minecraft.getInstance().execute(() -> 
-            Minecraft.getInstance().gui.getChat().addServerSystemMessage(ChatComponent(command.ChatMessage))
-        );
+        CoflModClient.displayModMessage(ChatComponent(command.ChatMessage));
     }
 
     @Subscribe
@@ -88,16 +86,12 @@ public class EventSubscribers {
                 combinedMessage.append(styledPart);
             }
         }
-        Minecraft.getInstance().execute(() -> 
-            Minecraft.getInstance().gui.getChat().addServerSystemMessage(combinedMessage)
-        );
+        CoflModClient.displayModMessage(combinedMessage);
     }
 
     @Subscribe
     public void onModChatMessage(OnModChatMessage event){
-        Minecraft.getInstance().execute(() -> 
-            Minecraft.getInstance().gui.getChat().addServerSystemMessage(Component.literal(event.message))
-        );
+        CoflModClient.displayModMessage(Component.literal(event.message));
     }
 
     @Subscribe

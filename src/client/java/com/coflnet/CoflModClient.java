@@ -6,6 +6,7 @@ import java.lang.reflect.Field;
 import java.net.URI;
 import java.security.SecureRandom;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
@@ -45,8 +46,10 @@ import com.coflnet.gui.cofl.CoflSettingsScreen;
 import com.coflnet.gui.tfm.TfmBinGUI;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mojang.brigadier.Message;
 import com.mojang.brigadier.arguments.StringArgumentType;
 
@@ -98,6 +101,7 @@ import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FontDescription;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.ChatFormatting;
@@ -108,6 +112,10 @@ import oshi.util.tuples.Pair;
 public class CoflModClient implements ClientModInitializer {
     public static final String targetVersion = "26.1.2";
     public static final int InventorysizeWithOffHand = 5 * 9 + 1;
+    // Private-use marker rendered with a zero-width custom font so text_Tunnels
+    // can match it without showing a missing-glyph box in chat.
+    static final String TEXT_TUNNELS_MESSAGE_PREFIX = "\uE000";
+    static final Identifier TEXT_TUNNELS_MESSAGE_FONT = Identifier.fromNamespaceAndPath("coflmod", "hidden_marker");
     public static Gson gson = new GsonBuilder().excludeFieldsWithoutExposeAnnotation().create();
     private static boolean keyPressed = false;
     private static boolean coflInfoShown = false;
@@ -193,6 +201,7 @@ public class CoflModClient implements ClientModInitializer {
         CoflCore cofl = new CoflCore();
         cofl.init(configDir);
         cofl.registerEventFile(new EventSubscribers());
+        ensureTextTunnelsConfig();
 
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
             RenderUtils.init();
@@ -476,22 +485,25 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
-            EventRegistry.onChatMessage(message.getString());
-            // iterate over all components of the message
-            String previousHover = null;
-            for (Component component : message.getSiblings()) {
-                if(component.getStyle().getHoverEvent() != null
-                        && component.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest) {
-                    String text = hest.value().getString();
-                    if (text.equals(previousHover))
-                        continue; // skip if the text is the same as the previous one, different colored text often has the same hover text
-                    previousHover = text;
-                    EventRegistry.onChatMessage(hest.value().getString());
+            String messageText = message.getString();
+            // Skip backend processing for our own display messages to avoid a feedback loop.
+            if (!messageText.startsWith(TEXT_TUNNELS_MESSAGE_PREFIX)) {
+                EventRegistry.onChatMessage(messageText);
+                // iterate over all components of the message
+                String previousHover = null;
+                for (Component component : message.getSiblings()) {
+                    if(component.getStyle().getHoverEvent() != null
+                            && component.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest) {
+                        String text = hest.value().getString();
+                        if (text.equals(previousHover))
+                            continue; // skip if the text is the same as the previous one, different colored text often has the same hover text
+                        previousHover = text;
+                        EventRegistry.onChatMessage(hest.value().getString());
+                    }
                 }
+                if(EventRegistry.shouldBlockChatMessage(messageText))
+                    return false;
             }
-            if(EventRegistry.shouldBlockChatMessage(message.getString()))
-                return false;
-
             return true;
         });
 
@@ -1763,16 +1775,162 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     private static void sendChatMessage(String message) {
-        Minecraft client = Minecraft.getInstance();
-        if (client.player != null) {
-            client.player.sendSystemMessage(Component.literal(message));
-        }
+        displayModMessage(Component.literal(message));
     }
 
     private static void sendChatComponent(Component message) {
+        displayModMessage(message);
+    }
+
+    /**
+     * Displays a mod-originated message in the chat HUD.
+     * When text_Tunnels is installed the message is routed through
+     * ClientReceiveMessageEvents.ALLOW_GAME so text_Tunnels records its gui-tick
+     * in the matching tunnel's time set, enabling per-tunnel filtering.
+     */
+    public static void displayModMessage(Component message) {
         Minecraft client = Minecraft.getInstance();
-        if (client.player != null) {
-            client.player.sendSystemMessage(message);
+        if (client == null) return;
+        client.execute(() -> {
+            if (!isTextTunnelsInstalled()) {
+                client.gui.getChat().addServerSystemMessage(message);
+                return;
+            }
+            Component prefixed = prefixCompatMessage(message);
+            // Manually fire ALLOW_GAME so text_Tunnels can record this message's
+            // gui-tick in the matching tunnel set. Return value is ignored because
+            // our own messages must always be displayed.
+            ClientReceiveMessageEvents.ALLOW_GAME.invoker().allowReceiveGameMessage(prefixed, false);
+            client.gui.getChat().addServerSystemMessage(prefixed);
+        });
+    }
+
+    static Component prefixCompatMessage(Component message) {
+        if (message == null || !isTextTunnelsInstalled()) {
+            return message;
+        }
+
+        String plainMessage = message.getString();
+        if (plainMessage.startsWith(TEXT_TUNNELS_MESSAGE_PREFIX)) {
+            return message;
+        }
+
+        return Component.empty()
+            .append(Component.literal(TEXT_TUNNELS_MESSAGE_PREFIX)
+                .withStyle(style -> style.withFont(new FontDescription.Resource(TEXT_TUNNELS_MESSAGE_FONT))))
+            .append(message);
+    }
+
+    public static boolean isTextTunnelsInstalled() {
+        return FabricLoader.getInstance().isModLoaded("text_tunnels");
+    }
+
+    /**
+     * Writes a SkyCofl tunnel entry into text_Tunnels' config JSON for all known
+     * Hypixel server IPs (mc.hypixel.net, hypixel.net, alpha.hypixel.net).
+     * Silently skips if text_Tunnels is not installed or the entry already exists.
+     * On completion it attempts a live config-reload via reflection so the change
+     * takes effect without restarting.
+     */
+    private static void ensureTextTunnelsConfig() {
+        if (!isTextTunnelsInstalled()) return;
+        Thread.startVirtualThread(() -> {
+            try {
+                Path configFile = FabricLoader.getInstance().getConfigDir().resolve("textTunnels.json");
+                JsonObject root;
+                if (Files.exists(configFile)) {
+                    root = JsonParser.parseString(Files.readString(configFile)).getAsJsonObject();
+                } else {
+                    root = new JsonObject();
+                }
+                if (!root.has("serversConfigs")) {
+                    root.add("serversConfigs", new JsonArray());
+                }
+                JsonArray serversConfigs = root.getAsJsonArray("serversConfigs");
+                boolean modified = false;
+                for (String ip : new String[]{"mc.hypixel.net", "hypixel.net", "alpha.hypixel.net"}) {
+                    modified |= ensureServerHasSkyCoflTunnel(serversConfigs, ip);
+                }
+                if (modified) {
+                    Files.writeString(configFile, new GsonBuilder().setPrettyPrinting().create().toJson(root));
+                    System.out.println("[CoflMod] Added SkyCofl tunnel to text_Tunnels config");
+                    triggerTextTunnelsConfigReload();
+                }
+            } catch (Exception e) {
+                System.out.println("[CoflMod] Failed to update text_Tunnels config: " + e.getMessage());
+            }
+        });
+    }
+
+    private static boolean ensureServerHasSkyCoflTunnel(JsonArray serversConfigs, String ip) {
+        JsonObject serverEntry = null;
+        for (JsonElement el : serversConfigs) {
+            if (el.isJsonObject()) {
+                JsonObject obj = el.getAsJsonObject();
+                if (obj.has("ip") && ip.equals(obj.get("ip").getAsString())) {
+                    serverEntry = obj;
+                    break;
+                }
+            }
+        }
+        if (serverEntry == null) {
+            serverEntry = new JsonObject();
+            serverEntry.addProperty("name", "Hypixel");
+            serverEntry.addProperty("ip", ip);
+            serverEntry.addProperty("enabled", true);
+            serverEntry.add("tunnelConfigs", new JsonArray());
+            serversConfigs.add(serverEntry);
+        }
+        JsonArray tunnelConfigs = serverEntry.has("tunnelConfigs")
+                ? serverEntry.getAsJsonArray("tunnelConfigs")
+                : new JsonArray();
+        String expectedReceivePrefix = java.util.regex.Pattern.quote(TEXT_TUNNELS_MESSAGE_PREFIX);
+        for (JsonElement el : tunnelConfigs) {
+            if (el.isJsonObject() && "SkyCofl".equals(
+                    el.getAsJsonObject().has("name")
+                            ? el.getAsJsonObject().get("name").getAsString() : null)) {
+                JsonObject existing = el.getAsJsonObject();
+                boolean modified = false;
+                if (!existing.has("receivePrefix") || !expectedReceivePrefix.equals(existing.get("receivePrefix").getAsString())) {
+                    existing.addProperty("receivePrefix", expectedReceivePrefix);
+                    modified = true;
+                }
+                if (!existing.has("sendPrefix") || !"/cofl chat ".equals(existing.get("sendPrefix").getAsString())) {
+                    existing.addProperty("sendPrefix", "/cofl chat ");
+                    modified = true;
+                }
+                if (!existing.has("enabled") || !existing.get("enabled").getAsBoolean()) {
+                    existing.addProperty("enabled", true);
+                    modified = true;
+                }
+                return modified;
+            }
+        }
+        JsonObject tunnel = new JsonObject();
+        tunnel.addProperty("enabled", true);
+        tunnel.addProperty("name", "SkyCofl");
+        // Regex that matches messages prefixed with our invisible marker.
+        tunnel.addProperty("receivePrefix", expectedReceivePrefix);
+        // Marker: ChatScreenMixin intercepts this prefix before it reaches the network
+        tunnel.addProperty("sendPrefix", "/cofl chat ");
+        tunnelConfigs.add(tunnel);
+        serverEntry.add("tunnelConfigs", tunnelConfigs);
+        return true;
+    }
+
+    /**
+     * Best-effort: triggers a live reload of text_Tunnels' config by calling its
+     * ConfigManager.init() + Text_tunnels.configUpdated() via reflection.
+     * Fails silently if the API has changed or the mod is not on the classpath.
+     */
+    private static void triggerTextTunnelsConfigReload() {
+        try {
+            Class<?> configManager = Class.forName("org.olim.text_tunnels.config.ConfigManager");
+            configManager.getDeclaredMethod("init").invoke(null);
+            Class<?> textTunnels = Class.forName("org.olim.text_tunnels.Text_tunnels");
+            textTunnels.getDeclaredMethod("configUpdated").invoke(null);
+        } catch (Exception ignored) {
+            // Silently ignored: the JSON is already saved; changes apply on next launch.
         }
     }
 
