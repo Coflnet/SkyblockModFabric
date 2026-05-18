@@ -47,15 +47,26 @@ public abstract class ItemHighlightMixin {
     @Inject(method = "drawSlot", at = @At("HEAD"))
     private void yourmodid_onDrawBackground(DrawContext context, Slot slot, int x, int y, CallbackInfo ci) {
         try {
-            if (!slot.hasStack())
-                return;
-            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(slot.getStack()));
-            if(tooltips == null)
-                return;
-            for (DescriptionHandler.DescModification tooltip : tooltips) {
-                if (tooltip.type.equals("HIGHLIGHT")) {
-                    int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000; // Ensure alpha is set to fully opaque
-                    RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, hexColor);
+            if (focusedSlot != null && focusedSlot.hasStack()) {
+                CoflModClient.maybeUploadHoveredMapContent(focusedSlot.getStack());
+            }
+
+            HandledScreen<?> screen = (HandledScreen<?>)(Object)this;
+            for (Slot invSlot : screen.getScreenHandler().slots) {
+                if (!invSlot.hasStack())
+                    continue;
+                DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(invSlot.getStack()));
+                if(tooltips == null)
+                    continue;
+                for (DescriptionHandler.DescModification tooltip : tooltips) {
+                    if (tooltip.type.equals("HIGHLIGHT")) {
+                        int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000;
+                        if (tooltip.line < 0) {
+                            RenderUtils.drawRectOutline(context, invSlot.x, invSlot.y, 16, 16, 2, 0x00000000, hexColor);
+                        } else {
+                            RenderUtils.drawRect(context, invSlot.x, invSlot.y, 16, 16, hexColor);
+                        }
+                    }
                 }
             }
         } catch (Exception e) {

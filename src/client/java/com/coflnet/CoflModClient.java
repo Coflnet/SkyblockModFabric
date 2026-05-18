@@ -124,6 +124,15 @@ public class CoflModClient implements ClientModInitializer {
     public static Map<KeyBinding, HotkeyRegister> keybindingsToHotkeys = new HashMap<KeyBinding, HotkeyRegister>();
     public static ArrayList<String> knownIds = new ArrayList<>();
     public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
+    private static final Set<String> DONUT_VALUABLE_ENCHANTS = Set.of(
+            "sharpness", "protection", "efficiency", "fortune", "looting",
+            "unbreaking", "mending", "silk_touch", "power", "infinity",
+            "flame", "punch", "thorns", "fire_aspect", "knockback",
+            "smite", "bane_of_arthropods", "sweeping", "respiration",
+            "aqua_affinity", "depth_strider", "frost_walker", "soul_speed",
+            "swift_sneak", "feather_falling", "blast_protection", "fire_protection",
+            "projectile_protection", "luck_of_the_sea", "lure", "channeling",
+            "impaling", "loyalty", "riptide", "multishot", "piercing", "quick_charge");
 
     private String username = "";
     private String lastCheckedUsername = ""; // Track last username to detect account switches
@@ -144,10 +153,12 @@ public class CoflModClient implements ClientModInitializer {
     private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
     private static final AtomicBoolean connectionStartInProgress = new AtomicBoolean(false);
     private static final ExecutorService connectionLifecycleExecutor =
-            Executors.newSingleThreadExecutor(Thread.ofVirtual().name("cofl-connection-", 0).factory());
-        private static final Map<Integer, Integer> uploadedMapHashes = new ConcurrentHashMap<>();
-        private static volatile long lastMapUploadCheckMs = 0L;
-        private static final long MAP_UPLOAD_CHECK_INTERVAL_MS = 1000L;
+    Executors.newSingleThreadExecutor(Thread.ofVirtual().name("cofl-connection-", 0).factory());
+    private static final Set<Integer> uploadedMapIds = ConcurrentHashMap.newKeySet();
+    private static volatile long lastMapUploadCheckMs = 0L;
+    private static final long MAP_UPLOAD_CHECK_INTERVAL_MS = 1000L;
+    private static volatile long lastHoveredMapUploadCheckMs = 0L;
+    private static final long HOVERED_MAP_UPLOAD_INTERVAL_MS = 250L;
     private static final SecureRandom connectConfirmationRandom = new SecureRandom();
     private static final long UNTRUSTED_CONNECT_CONFIRMATION_TIMEOUT_MS = 30_000L;
     private static volatile String pendingUntrustedConnectToken;
@@ -828,6 +839,19 @@ public class CoflModClient implements ClientModInitializer {
         if (wrapper != null) wrapper.SendMessage(data);
     }
 
+    public static void maybeUploadHoveredMapContent(ItemStack hoveredStack) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client == null || client.player == null || hoveredStack == null)
+            return;
+
+        long now = System.currentTimeMillis();
+        if (now - lastHoveredMapUploadCheckMs < HOVERED_MAP_UPLOAD_INTERVAL_MS)
+            return;
+
+        lastHoveredMapUploadCheckMs = now;
+        scheduleMapUpload(client, hoveredStack);
+    }
+
     private static void tryUploadViewedMapData(MinecraftClient client) {
         if (client == null || client.player == null || client.world == null)
             return;
@@ -852,11 +876,11 @@ public class CoflModClient implements ClientModInitializer {
         if (mapColors == null || mapColors.length == 0)
             return;
 
-        int colorHash = Arrays.hashCode(mapColors);
-        Integer previousHash = uploadedMapHashes.put(mapId, colorHash);
-        if (previousHash != null && previousHash == colorHash)
+        // Upload each effective map id at most once per client session.
+        if (!uploadedMapIds.add(mapId))
             return;
 
+        int colorHash = Arrays.hashCode(mapColors);
         byte[] colorsCopy = Arrays.copyOf(mapColors, mapColors.length);
         String displayName = stack.getName().getString();
         String username = client.getSession().getUsername();
@@ -875,7 +899,7 @@ public class CoflModClient implements ClientModInitializer {
 
         String response = QueryServerCommands.PostRequest(getDonutApiBaseUrl() + "/api/donut/maps/" + mapId, body.toString(), username);
         if (response == null)
-            uploadedMapHashes.remove(mapId, colorHash);
+            System.out.println("[CoflModClient] Map upload failed for map " + mapId + ", not retrying to avoid backend spam.");
     }
 
     private static String getDonutApiBaseUrl() {
@@ -1178,11 +1202,111 @@ public class CoflModClient implements ClientModInitializer {
                 }
             }
         }
+        if (isDonutServerContext()) {
+            String donutItemKey = getDonutItemKeyFromStack(stack);
+            if (donutItemKey != null)
+                return donutItemKey;
+        }
         String uuid = getUuidFromStack(stack);
         if (uuid != null)
             return uuid;
         // If "id" is not present, use the item's name
         return itemName + ";" + stack.getCount();
+    }
+
+    private static String getDonutItemKeyFromStack(ItemStack stack) {
+        NbtCompound itemNbt = extractSingleStackNbt(stack);
+        if (itemNbt == null)
+            return null;
+
+        String itemId = itemNbt.getString("id").orElse("");
+        if (itemId.isBlank())
+            return null;
+
+        ArrayList<String> keyParts = new ArrayList<>();
+        keyParts.add(itemId.toLowerCase(Locale.ROOT));
+
+        NbtCompound components = itemNbt.getCompound("components").orElse(null);
+        addDonutEnchantments(keyParts, components, "minecraft:enchantments");
+        addDonutEnchantments(keyParts, components, "minecraft:stored_enchantments");
+        addDonutTrim(keyParts, components);
+
+        Integer mapId = extractMapIdFromStack(stack);
+        if (mapId != null)
+            keyParts.add("mapId:" + mapId);
+
+        int countBucket = getDonutCountBucket(stack.getCount());
+        if (countBucket > 1)
+            keyParts.add("count:" + countBucket);
+
+        return String.join("|", keyParts);
+    }
+
+    private static void addDonutEnchantments(ArrayList<String> keyParts, NbtCompound components, String componentName) {
+        if (components == null)
+            return;
+
+        NbtCompound enchantComponent = components.getCompound(componentName).orElse(null);
+        if (enchantComponent == null)
+            return;
+
+        NbtCompound levels = enchantComponent.getCompound("levels").orElse(enchantComponent);
+        ArrayList<String> enchantParts = new ArrayList<>();
+        for (String enchantKey : levels.getKeys()) {
+            int level = levels.getInt(enchantKey).orElse(0);
+            String normalizedEnchant = normalizeDonutKeyValue(enchantKey);
+            if (level >= 3 && DONUT_VALUABLE_ENCHANTS.contains(normalizedEnchant))
+                enchantParts.add(normalizedEnchant + ":" + level);
+        }
+
+        enchantParts.sort(String::compareTo);
+        keyParts.addAll(enchantParts);
+    }
+
+    private static void addDonutTrim(ArrayList<String> keyParts, NbtCompound components) {
+        if (components == null)
+            return;
+
+        NbtCompound trim = components.getCompound("minecraft:trim").orElse(null);
+        if (trim == null)
+            return;
+
+        String pattern = readDonutTrimValue(trim, "pattern");
+        String material = readDonutTrimValue(trim, "material");
+        if (pattern != null || material != null)
+            keyParts.add("trim:" + (pattern == null ? "none" : pattern) + ":" + (material == null ? "none" : material));
+    }
+
+    private static String readDonutTrimValue(NbtCompound trim, String key) {
+        String directValue = trim.getString(key).orElse(null);
+        if (directValue != null && !directValue.isBlank())
+            return normalizeDonutKeyValue(directValue);
+
+        NbtCompound nested = trim.getCompound(key).orElse(null);
+        if (nested == null)
+            return null;
+
+        String assetId = nested.getString("asset_id").orElse(null);
+        if (assetId != null && !assetId.isBlank())
+            return normalizeDonutKeyValue(assetId);
+
+        String id = nested.getString("id").orElse(null);
+        return id == null || id.isBlank() ? null : normalizeDonutKeyValue(id);
+    }
+
+    private static String normalizeDonutKeyValue(String value) {
+        String normalized = value.replace("\"", "").trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("minecraft:"))
+            normalized = normalized.substring("minecraft:".length());
+        return normalized;
+    }
+
+    private static int getDonutCountBucket(int count) {
+        if (count <= 0) return 1;
+        if (count >= 64) return 64;
+        if (count >= 16) return 16;
+        if (count >= 4) return 4;
+        return 1;
     }
 
     public void loadDescriptionsForInv(HandledScreen screen) {
