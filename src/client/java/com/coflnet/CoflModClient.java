@@ -895,12 +895,17 @@ public class CoflModClient implements ClientModInitializer {
         if (!isDonutServerContext() || client == null || client.level == null || stack == null || stack.isEmpty())
             return;
 
-        String itemId = extractItemIdFromStack(stack);
-        if (!"minecraft:filled_map".equals(itemId))
+        if (stack.getItem() != Items.FILLED_MAP)
             return;
+
+        String itemId = "minecraft:filled_map";
 
         Integer mapId = extractMapIdFromStack(stack);
         if (mapId == null)
+            return;
+
+        // Fast path: avoid reflective color extraction for map ids already uploaded.
+        if (uploadedMapIds.contains(mapId))
             return;
 
         byte[] mapColors = getMapColorsReflectively(stack, client.level);
@@ -938,14 +943,6 @@ public class CoflModClient implements ClientModInitializer {
             return "http://localhost:8000";
 
         return "https://donut.coflnet.com";
-    }
-
-    private static String extractItemIdFromStack(ItemStack stack) {
-        CompoundTag itemNbt = extractSingleStackNbt(stack);
-        if (itemNbt == null)
-            return "";
-
-        return itemNbt.getString("id").orElse("");
     }
 
     private static Integer extractMapIdFromStack(ItemStack stack) {
@@ -1362,7 +1359,7 @@ public class CoflModClient implements ClientModInitializer {
                     if(itemStacks.size() <= InventorysizeWithOffHand || !itemStacks.get(itemStacks.size() - InventorysizeWithOffHand).isEmpty())
                         break;
                     Thread.sleep(50); // wait for the screen to load
-                    System.out.println("Waiting for itemStacks to load, current size: " + getIdFromStack(itemStacks.get(itemStacks.size() - InventorysizeWithOffHand)));
+                    System.out.println("Waiting for item stacks to load...");
                     itemStacks = screen.getMenu().getItems();
                 }
             } catch (InterruptedException e) {
@@ -1467,11 +1464,12 @@ public class CoflModClient implements ClientModInitializer {
                         // Inventory changed, use the items we have
                         currentItems = items;
                     }
-                    String[] visibleItems = getItemIdsFromInventory(currentItems);
+                        String currentNbt = inventoryToNBT(currentItems);
+                        String[] visibleItems = getItemIdsFromInventory(currentItems);
                     DescriptionHandler.loadDescriptionForInventory(
                             visibleItems,
                             title,
-                            inventoryToNBT(currentItems),
+                            currentNbt,
                             userName,
                             posToUpload
                     );
@@ -1543,9 +1541,7 @@ public class CoflModClient implements ClientModInitializer {
         ClientPacketListener networkHandler = client.getConnection();
 
         if (networkHandler != null) {
-            // Get the collection of player list entries
-            List<PlayerInfo> playerList = new ArrayList<>(networkHandler.getOnlinePlayers());
-            for (PlayerInfo playerListEntry : playerList) {
+            for (PlayerInfo playerListEntry : networkHandler.getOnlinePlayers()) {
                 if (playerListEntry != null) {
                     // Get the display name (the text shown in the tab list)
                     if (playerListEntry.getTabListDisplayName() != null) {
