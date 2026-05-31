@@ -127,7 +127,7 @@ public class CoflModClient implements ClientModInitializer {
     public static KeyMapping openSettingsKeyBinding;
     public static List<KeyMapping> additionalKeyBindings = new ArrayList<KeyMapping>();
     public static Map<KeyMapping, HotkeyRegister> keybindingsToHotkeys = new HashMap<KeyMapping, HotkeyRegister>();
-    public static ArrayList<String> knownIds = new ArrayList<>();
+    public static final Set<String> knownIds = ConcurrentHashMap.newKeySet();
     public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
     private static final Set<String> DONUT_VALUABLE_ENCHANTS = Set.of(
             "sharpness", "protection", "efficiency", "fortune", "looting",
@@ -141,7 +141,7 @@ public class CoflModClient implements ClientModInitializer {
 
     private String username = "";
     private String lastCheckedUsername = ""; // Track last username to detect account switches
-    private static String lastNbtRequest = "";
+    private static volatile String lastNbtRequest = "";
     private boolean uploadedScoreboard = false;
     private static boolean popupShown = false;
     public static Position posToUpload = null;
@@ -152,10 +152,14 @@ public class CoflModClient implements ClientModInitializer {
     
     // Scoreboard dirty flag - set by ScoreboardMixin when packets arrive
     private static volatile boolean scoreboardDirty = false;
+    private static volatile long lastScoreboardProcessMs = 0L;
+    private static final long SCOREBOARD_PROCESS_INTERVAL_MS = 250L;
     
     // Staggered refresh tracking: inventory name -> last request time
-    private static final Map<String, Long> lastRefreshTimePerInventory = new HashMap<>();
+    private static final Map<String, Long> lastRefreshTimePerInventory = new ConcurrentHashMap<>();
+    private static final Map<String, Long> lastDescriptionLoadRequestByMenu = new ConcurrentHashMap<>();
     private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
+    private static final long DESCRIPTION_LOAD_TRIGGER_DEBOUNCE_MS = 250;
     private static final AtomicBoolean connectionStartInProgress = new AtomicBoolean(false);
     private static final ExecutorService connectionLifecycleExecutor =
     Executors.newSingleThreadExecutor(Thread.ofVirtual().name("cofl-connection-", 0).factory());
@@ -173,7 +177,7 @@ public class CoflModClient implements ClientModInitializer {
     
     // Maps new UUIDs to original UUID when items update with new UUIDs but same title
     // This allows finding descriptions loaded for the original UUID when hovering an item with updated UUID
-    public static final Map<String, String> uuidToOriginalUuid = new HashMap<>();
+    public static final Map<String, String> uuidToOriginalUuid = new ConcurrentHashMap<>();
 
     private enum ServerContext {
         UNKNOWN(null),
@@ -237,11 +241,15 @@ public class CoflModClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Process scoreboard updates if dirty flag is set (set by ScoreboardMixin)
             if (scoreboardDirty && client.player != null) {
-                scoreboardDirty = false;
-                try {
-                    processScoreboardUpdate();
-                } catch (Exception e) {
-                    System.out.println("Error processing scoreboard update: " + e.getMessage());
+                long now = System.currentTimeMillis();
+                if (now - lastScoreboardProcessMs >= SCOREBOARD_PROCESS_INTERVAL_MS) {
+                    scoreboardDirty = false;
+                    lastScoreboardProcessMs = now;
+                    try {
+                        processScoreboardUpdate();
+                    } catch (Exception e) {
+                        System.out.println("Error processing scoreboard update: " + e.getMessage());
+                    }
                 }
             }
 
@@ -297,11 +305,13 @@ public class CoflModClient implements ClientModInitializer {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             ServerContext detectedServerContext = detectServerContext(null);
             applyServerContext(detectedServerContext);
+            lastScoreboardProcessMs = 0L;
             if (detectedServerContext.isSupported()) {
                 System.out.println("Connected to " + detectedServerContext.name().toLowerCase(Locale.ROOT));
 
-                // Update username in case of account switch before joining
-                autoStart();
+                // Delay startup slightly so the join flow can finish before background
+                // initialization begins.
+                scheduleAutoStartAfterJoin();
             }
             // reset cached data for different island
             DescriptionHandler.emptyTooltipData();
@@ -621,6 +631,22 @@ public class CoflModClient implements ClientModInitializer {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
+        });
+    }
+
+    private void scheduleAutoStartAfterJoin() {
+        Thread.startVirtualThread(() -> {
+            try {
+                Thread.sleep(1500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            Minecraft client = Minecraft.getInstance();
+            if (client == null || client.player == null) {
+                return;
+            }
+            autoStart();
         });
     }
 
@@ -1316,6 +1342,10 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public void loadDescriptionsForInv(AbstractContainerScreen screen) {
+        if (screen == null || !shouldTriggerDescriptionLoad(screen)) {
+            return;
+        }
+
         String menuSlot = Minecraft.getInstance().player.getInventory().getItem(8).getComponents().toString();
         if (!isDonutServerContext()
             && !menuSlot.contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")
@@ -1393,6 +1423,17 @@ public class CoflModClient implements ClientModInitializer {
                         + inventoryToNBT(itemStacks));
             }
         });
+    }
+
+    private static boolean shouldTriggerDescriptionLoad(AbstractContainerScreen screen) {
+        String title = screen.getTitle().getString();
+        String menuKey = title + "#" + System.identityHashCode(screen.getMenu());
+        long now = System.currentTimeMillis();
+        Long previous = lastDescriptionLoadRequestByMenu.put(menuKey, now);
+        if (previous != null && (now - previous) < DESCRIPTION_LOAD_TRIGGER_DEBOUNCE_MS) {
+            return false;
+        }
+        return true;
     }
 
     public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items)
