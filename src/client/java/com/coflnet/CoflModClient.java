@@ -1161,33 +1161,17 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static String getUuidFromStack(ItemStack stack) {
-        JsonObject stackJson = null;
-        for (ComponentType<?> type : stack.getComponents().getTypes()) {
-            if (type.toString().contains("minecraft:custom_data")) {
-                stackJson = gson.fromJson(stack.get(type).toString(), JsonObject.class);
-            }
-        }
-        return extractUuidFromCustomData(stackJson);
-    }
-
-    public static String extractUuidFromCustomData(JsonObject stackJson) {
-        if (stackJson == null) {
-            return null;
-        }
-
-        return stringifyCustomDataValue(stackJson.get("uuid"));
-    }
-
-    public static String stringifyCustomDataValue(JsonElement value) {
-        if (value == null || value.isJsonNull()) {
-            return null;
-        }
-
-        if (value.isJsonPrimitive()) {
-            return value.getAsString();
-        }
-
-        return gson.toJson(value);
+        // O(1) direct component access instead of O(n) iteration + toString + contains
+        var customData = stack.get(DataComponentTypes.CUSTOM_DATA);
+        if (customData == null || customData.isEmpty()) return null;
+        CompoundTag tag = customData.copyTag();
+        // Fast path: string uuid (most common case, no serialization needed)
+        String uuid = tag.getString("uuid").orElse(null);
+        if (uuid != null) return uuid;
+        // Slow path: complex uuid type (object/list) — use NBT directly, not Gson+SNBT
+        Tag uuidTag = tag.get("uuid");
+        if (uuidTag == null) return null;
+        return uuidTag.toString();
     }
 
     public static String getIdFromStack(ItemStack stack) {
