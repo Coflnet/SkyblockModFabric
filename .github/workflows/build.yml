@@ -27,11 +27,11 @@ jobs:
           - java: 25
             branch: main
             minecraft_version: "26.1.2"
-            fabric_version: "0.146.0+26.1.2"
+            fabric_version: "0.149.1+26.1.2"
           - java: 21
             branch: "1.21.11"
             minecraft_version: "1.21.11"
-            fabric_version: "0.146.0+26.1.2"
+            fabric_version: "0.131.0+1.21.11"
     runs-on: ubuntu-latest
     steps:
       - name: checkout repository
