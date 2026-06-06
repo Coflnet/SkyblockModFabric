@@ -1164,12 +1164,12 @@ public class CoflModClient implements ClientModInitializer {
         // O(1) direct component access instead of O(n) iteration + toString + contains
         var customData = stack.get(DataComponentTypes.CUSTOM_DATA);
         if (customData == null || customData.isEmpty()) return null;
-        CompoundTag tag = customData.copyTag();
+        NbtCompound tag = customData.copyNbt();
         // Fast path: string uuid (most common case, no serialization needed)
         String uuid = tag.getString("uuid").orElse(null);
         if (uuid != null) return uuid;
         // Slow path: complex uuid type (object/list) — use NBT directly, not Gson+SNBT
-        Tag uuidTag = tag.get("uuid");
+        NbtElement uuidTag = tag.get("uuid");
         if (uuidTag == null) return null;
         return uuidTag.toString();
     }
