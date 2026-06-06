@@ -16,6 +16,7 @@ import static com.coflnet.Utils.ChatComponent;
 import CoflCore.CoflCore;
 import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
+import net.fabricmc.fabric.impl.command.client.ClientCommandInternals;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.sound.SoundCategory;
@@ -160,14 +161,8 @@ public class EventSubscribers {
     @Subscribe
     public void onExecuteCommand(OnExecuteCommand event){
         System.out.println("Skycofl executes:"+event.Command);
-        MinecraftClient.getInstance().execute(() -> {
-            if (MinecraftClient.getInstance().getNetworkHandler() == null) {
-                return;
-            }
-
-            String command = event.Command;
-            MinecraftClient.getInstance().getNetworkHandler().sendChatMessage(command);
-        });
+        String command = event.Command.substring(1);
+        MinecraftClient.getInstance().getNetworkHandler().sendChatCommand(command);
     }
 
     @Subscribe
