@@ -45,33 +45,36 @@ public abstract class ItemHighlightMixin {
     }
 
     @Inject(method = "drawSlot", at = @At("HEAD"))
-    private void yourmodid_onDrawBackground(DrawContext context, Slot slot, int x, int y, CallbackInfo ci) {
+    private void onDrawSlot(DrawContext context, Slot slot, int x, int y, CallbackInfo ci) {
         try {
-            if (focusedSlot != null && focusedSlot.hasStack()) {
-                CoflModClient.maybeUploadHoveredMapContent(focusedSlot.getStack());
-            }
-
-            HandledScreen<?> screen = (HandledScreen<?>)(Object)this;
-            for (Slot invSlot : screen.getScreenHandler().slots) {
-                if (!invSlot.hasStack())
-                    continue;
-                DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(invSlot.getStack()));
-                if(tooltips == null)
-                    continue;
-                for (DescriptionHandler.DescModification tooltip : tooltips) {
-                    if (tooltip.type.equals("HIGHLIGHT")) {
-                        int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000;
-                        if (tooltip.line < 0) {
-                            RenderUtils.drawRectOutline(context, invSlot.x, invSlot.y, 16, 16, 2, 0x00000000, hexColor);
-                        } else {
-                            RenderUtils.drawRect(context, invSlot.x, invSlot.y, 16, 16, hexColor);
-                        }
+            if (!slot.hasStack())
+                return;
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(slot.getStack()));
+            if (tooltips == null)
+                return;
+            for (DescriptionHandler.DescModification tooltip : tooltips) {
+                if (tooltip.type.equals("HIGHLIGHT")) {
+                    int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000;
+                    if (tooltip.line < 0) {
+                        RenderUtils.drawRectOutline(context, slot.x, slot.y, 16, 16, 2, 0x00000000, hexColor);
+                    } else {
+                        RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, hexColor);
                     }
                 }
             }
         } catch (Exception e) {
             System.out.println("[ItemHighlightMixin] drawSlot failed: " + e.getMessage());
         }
+    }
 
+    @Inject(method = "render", at = @At("HEAD"))
+    private void onRender(DrawContext context, int mouseX, int mouseY, float delta, CallbackInfo ci) {
+        try {
+            if (focusedSlot != null && focusedSlot.hasStack()) {
+                CoflModClient.maybeUploadHoveredMapContent(focusedSlot.getStack());
+            }
+        } catch (Exception e) {
+            System.out.println("[ItemHighlightMixin] render failed: " + e.getMessage());
+        }
     }
 }
