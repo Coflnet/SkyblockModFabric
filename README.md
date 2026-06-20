@@ -5,7 +5,7 @@ It provides in-game access to [sky.coflnet.com](https://sky.coflnet.com) auction
 
 For the Forge edition, see [Coflnet/Skyblockmod](https://github.com/Coflnet/Skyblockmod).
 
-Current version: **1.9.0** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
+Current version: **1.9.3** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
 
 ## License
 
@@ -22,7 +22,7 @@ Tested with the following mods as of 2026-06-01:
 | [Iris Shaders](https://modrinth.com/mod/iris) | 1.7.3+1.21 | Compatible |
 | [Essential](https://essential.gg/versions) | 1.3.10.9 | Compatible |
 | [YACL](https://modrinth.com/mod/yacl) | 3.9.4+26.2 | Optional — required for the in-game settings GUI |
-| [Text Tunnels](https://modrinth.com/mod/text-tunnels) | 1.3.2 | Optional — supported for own SkyCofl text channel |
+| [Text Tunnels](https://modrinth.com/mod/text-tunnels) | 1.3.3 | Optional — supported for own SkyCofl text channel |
 
 Compatibility may change with future updates of any of these mods.
 
