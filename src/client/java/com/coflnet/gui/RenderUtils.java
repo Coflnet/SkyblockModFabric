@@ -1,22 +1,16 @@
 package com.coflnet.gui;
 
-import com.coflnet.CoflMod;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Camera;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.*;
-import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.gizmos.Gizmos;
+import net.minecraft.gizmos.GizmoStyle;
 import org.jetbrains.annotations.NotNull;
-import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.spongepowered.asm.mixin.injection.invoke.arg.ArgumentCountException;
 
@@ -27,14 +21,11 @@ import java.awt.*;
  * Modified by iroot-work
  */
 public class RenderUtils {
-    private static Tesselator tessellator = null;
-    private static BufferBuilder buffer = null;
     public static Font textRenderer = null;
     public static int z = 0;
 
     public static void init(){
         z = 0; // 401
-        tessellator = Tesselator.getInstance();
         textRenderer = Minecraft.getInstance().font;
     }
 
@@ -371,7 +362,7 @@ public class RenderUtils {
      * Renders a highlight box at the specified position.
      * The box is rendered through walls (with depth test disabled) for visibility.
      *
-     * @param matrices The matrix stack for transformations
+     * @param matrices The matrix stack for transformations (unused with Gizmo API)
      * @param cameraPos The camera position for offsetting
      * @param minXYZ The minimum corner coordinates [x, y, z]
      * @param maxXYZ The maximum corner coordinates [x, y, z]
@@ -389,101 +380,27 @@ public class RenderUtils {
         int blue = (int) (rgba[2] * 255);
         int color = (alpha << 24) | (red << 16) | (green << 8) | blue;
 
+        // Create world-space AABB (not camera-relative - the Gizmo API handles this)
         AABB box = new AABB(
-            minXYZ[0] - cameraPos.x,
-            minXYZ[1] - cameraPos.y,
-            minXYZ[2] - cameraPos.z,
-            maxXYZ[0] - cameraPos.x,
-            maxXYZ[1] - cameraPos.y,
-            maxXYZ[2] - cameraPos.z
+            minXYZ[0], minXYZ[1], minXYZ[2],
+            maxXYZ[0], maxXYZ[1], maxXYZ[2]
         );
 
-        // Draw the filled box using debugFilledBox render layer (renders through walls)
-        drawFilledBox(matrices, box, color);
+        // Use the new Gizmo API to render a filled cuboid that renders through walls
+        Gizmos.cuboid(box, GizmoStyle.strokeAndFill(color, 2.0f, color));
     }
 
     /**
      * Renders a highlight box at the specified position using the old Camera-based API.
      * This method is deprecated - use the Vec3 version instead.
      *
-     * @param matrices The matrix stack for transformations
+     * @param matrices The matrix stack for transformations (unused with Gizmo API)
      * @param camera The camera for position offset
      * @param minXYZ The minimum corner coordinates [x, y, z]
      * @param maxXYZ The maximum corner coordinates [x, y, z]
      * @param rgba The color values [r, g, b, a] where each is 0.0-1.0
      */
     public static void renderHighlightBox(PoseStack matrices, Camera camera, double[] minXYZ, double[] maxXYZ, float[] rgba) {
-        // Get the focused entity's position for camera-relative rendering
-        // Camera.getPos() was removed, so we use the focused entity's position
-        Vec3 cameraPos = camera.position();
-        renderHighlightBox(matrices, cameraPos, minXYZ, maxXYZ, rgba);
-    }
-
-    /**
-     * Draws a filled box at the specified position.
-     * This method draws a filled box using quads for each face, rendered through walls.
-     *
-     * @param matrices The matrix stack for transformations
-     * @param box The bounding box to draw (should be camera-relative)
-     * @param color The ARGB color value
-     */
-    public static void drawFilledBox(PoseStack matrices, AABB box, int color) {
-        Matrix4f matrix4f = matrices.last().pose();
-
-        // Get the tessellator and create a buffer for quads
-        Tesselator tessellator = Tesselator.getInstance();
-
-        // Use the RenderType's format to properly render
-        RenderType renderLayer = RenderTypes.debugFilledBox();
-        VertexFormat vertexFormat = renderLayer.format();
-        VertexFormat.Mode drawMode = renderLayer.mode();
-        
-        BufferBuilder bufferBuilder = tessellator.begin(drawMode, vertexFormat);
-
-        float minX = (float) box.minX;
-        float minY = (float) box.minY;
-        float minZ = (float) box.minZ;
-        float maxX = (float) box.maxX;
-        float maxY = (float) box.maxY;
-        float maxZ = (float) box.maxZ;
-
-        // Front face (negative Z)
-        bufferBuilder.addVertex(matrix4f, minX, minY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, minY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, maxY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, minX, maxY, minZ).setColor(color);
-
-        // Back face (positive Z)
-        bufferBuilder.addVertex(matrix4f, maxX, minY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, minX, minY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, minX, maxY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, maxY, maxZ).setColor(color);
-
-        // Left face (negative X)
-        bufferBuilder.addVertex(matrix4f, minX, minY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, minX, minY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, minX, maxY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, minX, maxY, maxZ).setColor(color);
-
-        // Right face (positive X)
-        bufferBuilder.addVertex(matrix4f, maxX, minY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, minY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, maxY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, maxY, minZ).setColor(color);
-
-        // Top face (positive Y)
-        bufferBuilder.addVertex(matrix4f, minX, maxY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, maxY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, maxY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, minX, maxY, maxZ).setColor(color);
-
-        // Bottom face (negative Y)
-        bufferBuilder.addVertex(matrix4f, minX, minY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, minY, maxZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, maxX, minY, minZ).setColor(color);
-        bufferBuilder.addVertex(matrix4f, minX, minY, minZ).setColor(color);
-
-        // Draw with the render layer
-        renderLayer.draw(bufferBuilder.buildOrThrow());
+        renderHighlightBox(matrices, camera.position(), minXYZ, maxXYZ, rgba);
     }
 }

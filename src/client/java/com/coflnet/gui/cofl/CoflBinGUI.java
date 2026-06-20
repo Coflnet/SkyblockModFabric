@@ -34,7 +34,7 @@ public class CoflBinGUI extends BinGUI {
     public CoflBinGUI(ContainerScreen gcs){
         super(Component.literal("Cofl Bin Gui"), gcs, 5, 4);
         DescriptionHandler.setRefreshCallback((lines, title) -> Minecraft.getInstance().execute(() -> {
-            if (Minecraft.getInstance().screen == this) {
+            if (Minecraft.getInstance().gui.screen() == this) {
                 loreDirty = true;
             }
         }));

@@ -66,7 +66,7 @@ public class NewItemInChestMixin {
             || itemTitle.contains("AUCTION FOR") // putting item in auction create
             )) {
                 try {
-                    if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?> hs)
+                    if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs)
                         CoflModClient.instance.loadDescriptionsForInv(hs);
                     System.out.println("Trade Slot Update Packet received." + packet.getItem().getCustomName());
                 } catch (Exception inner) {

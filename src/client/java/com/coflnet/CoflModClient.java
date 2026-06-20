@@ -110,7 +110,7 @@ import net.minecraft.world.entity.player.Inventory;
 import oshi.util.tuples.Pair;
 
 public class CoflModClient implements ClientModInitializer {
-    public static final String targetVersion = "26.1.2";
+    public static final String targetVersion = "26.2";
     public static final int InventorysizeWithOffHand = 5 * 9 + 1;
     // Private-use marker rendered with a zero-width custom font so text_Tunnels
     // can match it without showing a missing-glyph box in chat.
@@ -277,7 +277,7 @@ public class CoflModClient implements ClientModInitializer {
             if (openSettingsKeyBinding.consumeClick()) {
                 CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
                 try {
-                    client.setScreen(CoflSettingsScreen.create(client.screen));
+                    client.gui.setScreen(CoflSettingsScreen.create(client.gui.screen()));
                 } catch (Throwable t) {
                     sendChatMessage("§cFailed to open settings GUI. YACL is missing or failed to load (please add the lastest version of YACL mod to your mods).");
                     System.out.println("Failed to open settings GUI: " + t.getMessage());
@@ -394,9 +394,9 @@ public class CoflModClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof ContainerScreen gcs && CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null ) {
                 // System.out.println(gcs.getTitle().getString());
-                if (!(client.screen instanceof BinGUI) && isBINAuction(gcs)) {
-                    if (CoflCore.config.purchaseOverlay == GUIType.COFL) client.setScreen(new CoflBinGUI(gcs));
-                    if (CoflCore.config.purchaseOverlay == GUIType.TFM) client.setScreen(new TfmBinGUI(gcs));
+                if (!(client.gui.screen() instanceof BinGUI) && isBINAuction(gcs)) {
+                    if (CoflCore.config.purchaseOverlay == GUIType.COFL) client.gui.setScreen(new CoflBinGUI(gcs));
+                    if (CoflCore.config.purchaseOverlay == GUIType.TFM) client.gui.setScreen(new TfmBinGUI(gcs));
                 }
             }
         });
@@ -421,7 +421,7 @@ public class CoflModClient implements ClientModInitializer {
             String lookupId = uuidToOriginalUuid.getOrDefault(stackId, stackId);
             
             if (!knownIds.contains(stackId) && !knownIds.contains(lookupId)
-                    && Minecraft.getInstance().screen instanceof AbstractContainerScreen<?> hs) {
+                    && Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs) {
                         
                 if(!stack.isEmpty() && !stackId.equals("Go Back;1"))
                     loadDescriptionsForInv(hs);
@@ -485,8 +485,8 @@ public class CoflModClient implements ClientModInitializer {
 
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("coflnet", "countdown_hud"), (drawContext, tickCounter) -> {
             if (EventSubscribers.showCountdown && EventSubscribers.countdownData != null
-                    && (Minecraft.getInstance().screen == null
-                            || Minecraft.getInstance().screen instanceof ChatScreen)) {
+                    && (Minecraft.getInstance().gui.screen() == null
+                            || Minecraft.getInstance().gui.screen() instanceof ChatScreen)) {
                 int heightPercentage = EventSubscribers.countdownData.getHeightPercentage();
                 int widthPercentage = EventSubscribers.countdownData.getWidthPercentage();
                 int screenWidth = drawContext.guiWidth();
@@ -529,15 +529,15 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ScreenEvents.AFTER_INIT.register((minecraftClient, screen, i, i1) -> {
-            if(!(Minecraft.getInstance().screen instanceof TitleScreen)) return;
+            if(!(Minecraft.getInstance().gui.screen() instanceof TitleScreen)) return;
             
             // Check for account switches in the title screen
             checkAndHandleAccountSwitch();
             
             if (!popupShown && !checkVersionCompability()) {
                 popupShown = true;
-                Screen currentScreen = Minecraft.getInstance().screen;
-                Minecraft.getInstance().setScreen(
+                Screen currentScreen = Minecraft.getInstance().gui.screen();
+                Minecraft.getInstance().gui.setScreen(
                         new PopupScreen.Builder(currentScreen, Component.literal("Warning"))
                                 .addButton(Component.literal("Modrinth"), popupScreen -> {
                                     Util.getPlatform().openUri("https://modrinth.com/mod/skycofl/versions");
@@ -681,7 +681,7 @@ public class CoflModClient implements ClientModInitializer {
                     client.execute(() -> {
                         try {
                             CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
-                            client.setScreen(CoflSettingsScreen.create(client.screen));
+                            client.gui.setScreen(CoflSettingsScreen.create(client.gui.screen()));
                         } catch (Throwable t) {
                             sendChatMessage("§7Install §eYACL §7mod to access the settings GUI with §a/cofl§7.");
                         }
@@ -1349,7 +1349,7 @@ public class CoflModClient implements ClientModInitializer {
                 e.printStackTrace();
             }
             try {
-                AbstractContainerScreen currentScreen = Minecraft.getInstance().screen instanceof AbstractContainerScreen ? (AbstractContainerScreen) Minecraft.getInstance().screen : null;
+                AbstractContainerScreen currentScreen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen ? (AbstractContainerScreen) Minecraft.getInstance().gui.screen() : null;
                 if (currentScreen == null || currentScreen.getMenu() != screen.getMenu()){
                     System.out.println("Inventory changed already, not refreshing descriptions");
                     return; // inventory changed, don't refresh
@@ -1384,7 +1384,7 @@ public class CoflModClient implements ClientModInitializer {
                     }
                 }
                 if (refresh) {
-                    currentScreen = Minecraft.getInstance().screen instanceof AbstractContainerScreen ? (AbstractContainerScreen) Minecraft.getInstance().screen : null;
+                    currentScreen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen ? (AbstractContainerScreen) Minecraft.getInstance().gui.screen() : null;
                     if (currentScreen == null || currentScreen.getMenu() != screen.getMenu()){
                         System.out.println("Inventory changed, not refreshing descriptions");
                         return; // inventory changed, don't refresh 
@@ -1438,8 +1438,8 @@ public class CoflModClient implements ClientModInitializer {
                     Thread.sleep(delayMs);
                     // Request with current inventory state (in case it updated)
                     NonNullList<ItemStack> currentItems = NonNullList.create();
-                    AbstractContainerScreen currentScreen = Minecraft.getInstance().screen instanceof AbstractContainerScreen 
-                        ? (AbstractContainerScreen) Minecraft.getInstance().screen 
+                    AbstractContainerScreen currentScreen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen 
+                        ? (AbstractContainerScreen) Minecraft.getInstance().gui.screen() 
                         : null;
                     if (currentScreen != null && currentScreen.getTitle().getString().equals(title)) {
                         currentItems.addAll(currentScreen.getMenu().getItems());
@@ -1546,7 +1546,7 @@ public class CoflModClient implements ClientModInitializer {
 
     public static boolean isOwnAuction(ContainerScreen gcs) {
         ItemStack stack = gcs.getMenu().getContainer().getItem(31);
-        return (BinGUI.isAuctionInit(gcs) && (stack.getItem() == Items.GRAY_STAINED_GLASS_PANE || stack.getItem() == Items.GOLD_BLOCK));
+        return (BinGUI.isAuctionInit(gcs) && (stack.getItem() == Items.STAINED_GLASS_PANE.gray() || stack.getItem() == Items.GOLD_BLOCK));
     }
 
     /**
@@ -1578,7 +1578,7 @@ public class CoflModClient implements ClientModInitializer {
      */
     public static void searchInBazaar(String searchTerm) {
         Minecraft client = Minecraft.getInstance();
-        if (!(client.screen instanceof ContainerScreen gcs)) {
+        if (!(client.gui.screen() instanceof ContainerScreen gcs)) {
             System.out.println("Current screen is not a container screen");
             return;
         }
@@ -1799,7 +1799,7 @@ public class CoflModClient implements ClientModInitializer {
 
             // Check if we're in a screen with "➜" in title
             Minecraft client = Minecraft.getInstance();
-            if (client.screen instanceof AbstractContainerScreen<?> screen) {
+            if (client.gui.screen() instanceof AbstractContainerScreen<?> screen) {
                 String screenTitle = screen.getTitle().getString();
                 if (!screenTitle.contains("➜")) {
                     return;
@@ -1937,7 +1937,7 @@ public class CoflModClient implements ClientModInitializer {
         if (client == null) return;
         client.execute(() -> {
             if (!isTextTunnelsInstalled()) {
-                client.gui.getChat().addServerSystemMessage(message);
+                client.gui.chatListener().handleSystemMessage(message, false);
                 return;
             }
             Component prefixed = prefixCompatMessage(message);
@@ -1945,7 +1945,7 @@ public class CoflModClient implements ClientModInitializer {
             // gui-tick in the matching tunnel set. Return value is ignored because
             // our own messages must always be displayed.
             ClientReceiveMessageEvents.ALLOW_GAME.invoker().allowReceiveGameMessage(prefixed, false);
-            client.gui.getChat().addServerSystemMessage(prefixed);
+            client.gui.chatListener().handleSystemMessage(prefixed, false);
         });
     }
 

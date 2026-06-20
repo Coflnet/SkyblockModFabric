@@ -78,9 +78,9 @@ public class ClientPlayerEntityMixin {
             try {
                 Thread.sleep(200); // Increased delay to ensure sign text is processed
                 client.execute(() -> {
-                    if (client.screen != null) {
+                    if (client.gui.screen() != null) {
                         System.out.println("Closing sign screen to complete bazaar search");
-                        client.screen.onClose();
+                        client.gui.screen().onClose();
                     }
                 });
             } catch (InterruptedException e) {

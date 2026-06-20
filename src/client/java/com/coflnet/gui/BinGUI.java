@@ -66,17 +66,17 @@ public abstract class BinGUI extends Screen {
 
         flipData = CoflModClient.popFlipData();
 
-        screenWidth = Minecraft.getInstance().screen.width;
-        screenHeight = Minecraft.getInstance().screen.height;
+        screenWidth = Minecraft.getInstance().gui.screen().width;
+        screenHeight = Minecraft.getInstance().gui.screen().height;
         initSize(screenWidth, screenHeight);
         clearAndInitWidgets(screenWidth, screenHeight);
     }
 
     private void initSize(int screenWidth, int screenHeight){
-        this.width = Minecraft.getInstance().screen.width / 2;
+        this.width = Minecraft.getInstance().gui.screen().width / 2;
         if (width < 300) this.width = 300;
 
-        this.height = Minecraft.getInstance().screen.height / 3 * 2;
+        this.height = Minecraft.getInstance().gui.screen().height / 3 * 2;
         if (height < 225) this.height = 225;
     }
 
@@ -174,12 +174,12 @@ public abstract class BinGUI extends Screen {
      */
     protected AuctionStatus updateAuctionStatus(@NotNull ItemStack itemStack){
         Item item = itemStack.getItem();
-        if (item == Items.BLACK_STAINED_GLASS_PANE) {
+        if (item == Items.STAINED_GLASS_PANE.black()) {
             auctionStatus = AuctionStatus.OWN_AUCTION_CANCELING;
             return auctionStatus;
         }
 
-        if (item == Items.RED_BED) {
+        if (item == Items.BED.red()) {
             auctionStatus = AuctionStatus.AUCTION_WAITING;
             return auctionStatus;
         }
@@ -218,10 +218,10 @@ public abstract class BinGUI extends Screen {
      */
     @Override
     public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        if (screenWidth != Minecraft.getInstance().screen.width
-            || screenHeight != Minecraft.getInstance().screen.height){
-            screenWidth = Minecraft.getInstance().screen.width;
-            screenHeight = Minecraft.getInstance().screen.height;
+        if (screenWidth != Minecraft.getInstance().gui.screen().width
+            || screenHeight != Minecraft.getInstance().gui.screen().height){
+            screenWidth = Minecraft.getInstance().gui.screen().width;
+            screenHeight = Minecraft.getInstance().gui.screen().height;
             initSize(screenWidth, screenHeight);
             clearAndInitWidgets(screenWidth, screenHeight);
         }

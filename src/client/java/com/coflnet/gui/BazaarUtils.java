@@ -23,7 +23,7 @@ public class BazaarUtils {
     public static boolean autoSearchBazaar(String itemName) {
         Minecraft client = Minecraft.getInstance();
         
-        if (!(client.screen instanceof ContainerScreen gcs)) {
+        if (!(client.gui.screen() instanceof ContainerScreen gcs)) {
             return false;
         }
         
@@ -53,7 +53,7 @@ public class BazaarUtils {
     public static boolean isCurrentlyOnBazaar() {
         Minecraft client = Minecraft.getInstance();
         
-        if (!(client.screen instanceof ContainerScreen gcs)) {
+        if (!(client.gui.screen() instanceof ContainerScreen gcs)) {
             return false;
         }
         
@@ -68,7 +68,7 @@ public class BazaarUtils {
     public static ContainerScreen getCurrentBazaarScreen() {
         Minecraft client = Minecraft.getInstance();
         
-        if (!(client.screen instanceof ContainerScreen gcs)) {
+        if (!(client.gui.screen() instanceof ContainerScreen gcs)) {
             return null;
         }
         
@@ -95,7 +95,7 @@ public class BazaarUtils {
         for (int i = 0; i < bazaar.getMenu().getContainer().getContainerSize(); i++) {
             ItemStack stack = bazaar.getMenu().getContainer().getItem(i);
             
-            if (stack.isEmpty() || stack.getItem() == Items.BLACK_STAINED_GLASS_PANE) {
+            if (stack.isEmpty() || stack.getItem() == Items.STAINED_GLASS_PANE.black()) {
                 continue;
             }
             

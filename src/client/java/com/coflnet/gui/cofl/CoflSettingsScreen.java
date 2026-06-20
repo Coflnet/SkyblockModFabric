@@ -323,10 +323,10 @@ public class CoflSettingsScreen {
         Minecraft client = Minecraft.getInstance();
         if (client == null) return;
         client.execute(() -> {
-            Screen current = client.screen;
+            Screen current = client.gui.screen();
             if (current != null && current.getTitle() != null
                     && "SkyCofl Settings".equals(current.getTitle().getString())) {
-                client.setScreen(create(lastParent));
+                client.gui.setScreen(create(lastParent));
             }
         });
     }

@@ -179,7 +179,7 @@ public class EventSubscribers {
     @Subscribe
     public void onCloseGUI(OnCloseGUI event){
         Minecraft.getInstance().execute(() -> {
-            if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?> hs) {
+            if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs) {
                 System.out.println("Closing GUI: " + hs.getClass().getName());
                 hs.onClose();
             }
