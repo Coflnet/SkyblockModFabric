@@ -309,6 +309,12 @@ public class CoflModClient implements ClientModInitializer {
             if (detectedServerContext.isSupported()) {
                 System.out.println("Connected to " + detectedServerContext.name().toLowerCase(Locale.ROOT));
 
+                // Ensure the SkyCofl tunnel is present in text_Tunnels' config before
+                // text_Tunnels loads its server-specific config.
+                if (detectedServerContext == ServerContext.SKYBLOCK) {
+                    ensureTextTunnelsConfig();
+                }
+
                 // Delay startup slightly so the join flow can finish before background
                 // initialization begins.
                 scheduleAutoStartAfterJoin();
@@ -1970,40 +1976,43 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     /**
-     * Writes a SkyCofl tunnel entry into text_Tunnels' config JSON for all known
-     * Hypixel server IPs (mc.hypixel.net, hypixel.net, alpha.hypixel.net).
+    /**
+     * Ensures a SkyCofl tunnel entry exists in text_Tunnels' config JSON for all
+     * known Hypixel server IPs (mc.hypixel.net, hypixel.net, alpha.hypixel.net).
+     * Runs synchronously so the config is written before text_Tunnels loads its
+     * server-specific configuration on join.
+     * <p>
      * Silently skips if text_Tunnels is not installed or the entry already exists.
-     * On completion it attempts a live config-reload via reflection so the change
+     * On completion it triggers a live config-reload via reflection so the change
      * takes effect without restarting.
      */
     private static void ensureTextTunnelsConfig() {
         if (!isTextTunnelsInstalled()) return;
-        Thread.startVirtualThread(() -> {
-            try {
-                Path configFile = FabricLoader.getInstance().getConfigDir().resolve("textTunnels.json");
-                JsonObject root;
-                if (Files.exists(configFile)) {
-                    root = JsonParser.parseString(Files.readString(configFile)).getAsJsonObject();
-                } else {
-                    root = new JsonObject();
-                }
-                if (!root.has("serversConfigs")) {
-                    root.add("serversConfigs", new JsonArray());
-                }
-                JsonArray serversConfigs = root.getAsJsonArray("serversConfigs");
-                boolean modified = false;
-                for (String ip : new String[]{"mc.hypixel.net", "hypixel.net", "alpha.hypixel.net"}) {
-                    modified |= ensureServerHasSkyCoflTunnel(serversConfigs, ip);
-                }
-                if (modified) {
-                    Files.writeString(configFile, new GsonBuilder().setPrettyPrinting().create().toJson(root));
-                    System.out.println("[CoflMod] Added SkyCofl tunnel to text_Tunnels config");
-                    triggerTextTunnelsConfigReload();
-                }
-            } catch (Exception e) {
-                System.out.println("[CoflMod] Failed to update text_Tunnels config: " + e.getMessage());
+        try {
+            Path configFile = FabricLoader.getInstance().getConfigDir().resolve("textTunnels.json");
+            JsonObject root;
+            if (Files.exists(configFile)) {
+                root = JsonParser.parseString(Files.readString(configFile)).getAsJsonObject();
+            } else {
+                root = new JsonObject();
             }
-        });
+            if (!root.has("serversConfigs")) {
+                root.add("serversConfigs", new JsonArray());
+            }
+            JsonArray serversConfigs = root.getAsJsonArray("serversConfigs");
+            boolean modified = false;
+            for (String ip : new String[]{"mc.hypixel.net", "hypixel.net", "alpha.hypixel.net"}) {
+                modified |= ensureServerHasSkyCoflTunnel(serversConfigs, ip);
+            }
+            if (modified) {
+                Files.writeString(configFile, new GsonBuilder().setPrettyPrinting().create().toJson(root));
+                System.out.println("[CoflMod] Added SkyCofl tunnel to text_Tunnels config");
+                triggerTextTunnelsConfigReload();
+            }
+        } catch (Exception e) {
+            System.out.println("[CoflMod] Failed to update text_Tunnels config: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     private static boolean ensureServerHasSkyCoflTunnel(JsonArray serversConfigs, String ip) {
@@ -2065,16 +2074,17 @@ public class CoflModClient implements ClientModInitializer {
     /**
      * Best-effort: triggers a live reload of text_Tunnels' config by calling its
      * ConfigManager.init() + Text_tunnels.configUpdated() via reflection.
-     * Fails silently if the API has changed or the mod is not on the classpath.
+     * Logs a warning if the reflection fails (e.g. API has changed).
      */
     private static void triggerTextTunnelsConfigReload() {
         try {
             Class<?> configManager = Class.forName("org.olim.text_tunnels.config.ConfigManager");
+            // Call ConfigManager.init() which internally calls HANDLER.load()
             configManager.getDeclaredMethod("init").invoke(null);
             Class<?> textTunnels = Class.forName("org.olim.text_tunnels.Text_tunnels");
             textTunnels.getDeclaredMethod("configUpdated").invoke(null);
-        } catch (Exception ignored) {
-            // Silently ignored: the JSON is already saved; changes apply on next launch.
+        } catch (Exception e) {
+            System.out.println("[CoflMod] Failed to trigger text_Tunnels config reload (API may have changed): " + e.getMessage());
         }
     }
 
