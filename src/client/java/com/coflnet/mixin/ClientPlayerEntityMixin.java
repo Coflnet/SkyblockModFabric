@@ -16,6 +16,12 @@ public class ClientPlayerEntityMixin {
     @Inject(method = "openTextEdit", at = @At("HEAD"))
     private void openTextEdit(SignBlockEntity sign, boolean front, CallbackInfo ci){
         try {
+            // Handle trade coins input first (auto-fill the coin amount sign).
+            if (CoflModClient.pendingCoinAmount != null) {
+                handleCoinInput(sign, front);
+                return;
+            }
+
             // Handle bazaar search first
             if (CoflModClient.pendingBazaarSearch != null) {
                 handleBazaarSearch(sign, front);
@@ -42,6 +48,45 @@ public class ClientPlayerEntityMixin {
         } catch (Exception e) {
             System.out.println("[ClientPlayerEntityMixin] openEditSignScreen failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Handles filling in the trade coin amount and closing the sign. Mirrors the
+     * bazaar-search auto-fill flow exactly — fills line 0 with the digit string
+     * and closes the sign after a short delay so Hypixel registers the amount.
+     */
+    private void handleCoinInput(SignBlockEntity sign, boolean front) {
+        String amount = CoflModClient.pendingCoinAmount;
+        System.out.println("Filling trade coins with: " + amount);
+
+        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
+        lines[0] = Component.literal(amount);
+        lines[1] = Component.literal("");
+        lines[2] = Component.literal("");
+        lines[3] = Component.literal("");
+
+        sign.updateText(signText -> new SignText(
+                lines, lines,
+                signText.getColor(),
+                signText.hasGlowingText()
+        ), front);
+
+        CoflModClient.pendingCoinAmount = null;
+
+        Minecraft client = Minecraft.getInstance();
+        Thread.startVirtualThread(() -> {
+            try {
+                Thread.sleep(200);
+                client.execute(() -> {
+                    if (client.gui.screen() != null) {
+                        System.out.println("Closing sign screen to complete coin input");
+                        client.gui.screen().onClose();
+                    }
+                });
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
     }
 
     /**

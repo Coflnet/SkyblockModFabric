@@ -21,6 +21,18 @@ public class CoflModConfig {
     public long sellProtectionThreshold = 1000000; // Default: 1 million coins
 
     public boolean angryCoopProtectionEnabled = true;
+
+    // Developer mode: when on, container screens show a "Copy Dump" button that
+    // copies the open container's title/size/slots to the clipboard. Off by default.
+    public boolean devMode = false;
+
+    // Trade overlay: when on, the SkyCofl TradeGUI replaces the Hypixel trade
+    // window. Independent of dev mode (which only controls the Copy Dump button).
+    public boolean tradeGuiEnabled = false;
+
+    // TradeGUI item-list column count (1-3). Persisted so the user's choice
+    // sticks across trades and restarts. Default 1 (the original look).
+    public int tradeListColumns = 1;
     
     public static CoflModConfig load() {
         try {
