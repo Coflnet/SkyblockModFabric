@@ -147,7 +147,9 @@ public class CoflModClient implements ClientModInitializer {
     public static Position posToUpload = null;
     public static CoflModClient instance;
     public static SignBlockEntity sign = null;
-    public static String pendingBazaarSearch = null;
+    // Written from the render/client thread and consumed by ClientPlayerEntityMixin
+    // on the network thread, so it must be volatile for the write to be visible.
+    public static volatile String pendingBazaarSearch = null;
     // Trade coins input: when set, the next sign editor that opens (from clicking
     // the trade Coins-transaction slot) is auto-filled with this value, mirroring
     // the bazaar-search auto-fill flow. Format is a plain digit string.
