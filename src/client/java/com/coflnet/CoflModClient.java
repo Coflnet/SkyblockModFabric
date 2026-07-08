@@ -446,9 +446,33 @@ public class CoflModClient implements ClientModInitializer {
             var text = stack.get(DataComponents.LORE);
             List<Component> ogLoreLines = text == null ? new ArrayList<>() : text.lines();
 
+            // lore engine re render the backend append values from the users
+            // templates and append any client only modules e.g. purchased for .
+            // falls back to the stock strings whenever the engine returns null
+            //  blacklisted item or nothing changed so it can never blank an item.
+            List<String> appendValues = new ArrayList<>();
+            for (DescriptionHandler.DescModification t : tooltips) {
+                if ("APPEND".equals(t.type) && t.value != null) {
+                    appendValues.add(t.value);
+                }
+            }
+            List<String> templated = com.coflnet.lore.LoreEngine.render(appendValues, stackId,
+                    net.minecraft.ChatFormatting.stripFormatting(stack.getHoverName().getString()));
+
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type) {
                     case "APPEND":
+                        // when the engine produced templated lines emit them once
+                        //  on the first append and skip the raw backend appends.
+                        if (templated != null) {
+                            if (!templated.isEmpty()) {
+                                for (String line : templated) {
+                                    lines.add(Component.literal(line));
+                                }
+                                templated = java.util.Collections.emptyList();
+                            }
+                            break;
+                        }
                         lines.add(Component.literal(tooltip.value + " "));
                         break;
                     case "REPLACE":
@@ -513,6 +537,18 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();
+            // capture ah purchases so the purchased for lore can show what you paid.
+            capturePurchase(messageText);
+            // while a lore save is being verified watch backend chat for a
+            // rejection so the failure is reported with its real reason.
+            com.coflnet.lore.LoreSync.observeChat(net.minecraft.ChatFormatting.stripFormatting(messageText));
+            // intercept the cofl lore menu parse the real field layout from its
+            // clickable rm commands and store it as the source of
+            // truth then suppress the noisy menu from chat. this replaces the old
+            // guessed mirror that drifted and caused duplicate adds failed removes.
+            if (captureLoreMenu(message)) {
+                return false;
+            }
             // Skip backend processing for our own display messages to avoid a feedback loop.
             if (!messageText.startsWith(TEXT_TUNNELS_MESSAGE_PREFIX)) {
                 EventRegistry.onChatMessage(messageText);
@@ -670,6 +706,88 @@ public class CoflModClient implements ClientModInitializer {
         return render + "s";
     }
 
+    /**
+     * captures auction house purchases so the purchased for lore can show what
+     * you paid for an item the backend has no field for your own buy price .
+     * hypixel prints on a successful bin buy 
+     *  you purchased hyperion for 1 234 567 890 coins 
+     * and for auctions you won 
+     *  you claimed hyperion from ... for 900 000 000 coins 
+     * we key the price by the clean item display name matched the same way in
+     * the lore engine. stores the highest price seen for a name so a later cheap
+     * relisting of a same named item does not overwrite an expensive purchase.
+     */
+    public static void capturePurchase(String message) {
+        if (message == null) {
+            return;
+        }
+        String plain = ChatFormatting.stripFormatting(message).trim();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("You (?:purchased|bought|claimed) (.+?) (?:from .+? )?for ([0-9,]+) coins")
+                .matcher(plain);
+        if (!m.find()) {
+            return;
+        }
+        String name = m.group(1).trim();
+        // strip a leading count like 64x or 2x that hypixel adds for stacks.
+        name = name.replaceFirst("^\\d+x\\s+", "");
+        long coins;
+        try {
+            coins = Long.parseLong(m.group(2).replace(",", ""));
+        } catch (NumberFormatException e) {
+            return;
+        }
+        if (coins <= 0 || name.isBlank()) {
+            return;
+        }
+        Long existing = com.coflnet.config.LoreManager.purchasePrice(name);
+        if (existing == null || coins > existing) {
+            com.coflnet.config.LoreManager.recordPurchase(name, coins);
+        }
+    }
+
+    /**
+     * Detects the {@code /cofl lore} chat menu (or the "Imported settings" echo the
+     * backend prints after a json write and suppresses it from chat since the
+     * gui replaces that menu entirely. we no longer parse the menu the layout is
+     * read as a whole object via {@code /cofl lore json} (see
+     * {@link com.coflnet.lore.LoreSync}); this only hides the leftover echo so a
+     * save doesnt spam chat with the clickable menu. returns true when the
+     * message was a lore menu so the caller drops it .
+     */
+    public static boolean captureLoreMenu(Component message) {
+        if (message == null) {
+            return false;
+        }
+        List<String> commands = new ArrayList<>();
+        collectRunCommands(message, commands);
+        for (String cmd : commands) {
+            if (cmd == null) {
+                continue;
+            }
+            String lower = cmd.toLowerCase(java.util.Locale.ROOT);
+            // the menus clickable entries are all cofl lore add rm up down left ....
+            if (lower.matches("/cofl\\s+lore\\s+(add|rm|up|down|left)\\s+.*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Recursively gathers every RunCommand string from a component tree. */
+    private static void collectRunCommands(Component component, List<String> out) {
+        if (component == null) {
+            return;
+        }
+        var click = component.getStyle() == null ? null : component.getStyle().getClickEvent();
+        if (click instanceof net.minecraft.network.chat.ClickEvent.RunCommand rc) {
+            out.add(rc.command());
+        }
+        for (Component sibling : component.getSiblings()) {
+            collectRunCommands(sibling, out);
+        }
+    }
+
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
         dispatcher.register(ClientCommands.literal(name)
                 .executes(context -> {
@@ -771,6 +889,29 @@ public class CoflModClient implements ClientModInitializer {
                 .executes(context -> {
                     String[] args = context.getArgument("args", String.class).split(" ");
                     
+
+                    // lore engine on off toggles the renderer bare lore or
+                    // loregui opens the lore configuration gui replaces the
+                    // clickable cofl lore chat menu . the engine is always on now 
+                    // so there is no on off toggle.
+                    if (args.length >= 1 && (args[0].equalsIgnoreCase("lore") || args[0].equalsIgnoreCase("loregui"))) {
+                        // open the lore gui on the next tick so the chat screen closes first.
+                        Minecraft loreClient = Minecraft.getInstance();
+                        loreClient.execute(() -> {
+                            try {
+                                com.coflnet.gui.cofl.LoreConfigScreen.open(loreClient.gui.screen());
+                            } catch (Throwable t) {
+                                // the lore gui is a custom screen and uses no yacl so a
+                                // failure here is a real bug in the screen surface it
+                                // instead of the misleading install yacl message.
+                                System.out.println("[Lore] failed to open LoreConfigScreen: " + t);
+                                t.printStackTrace();
+                                sendChatMessage("§cFailed to open the lore GUI (see log).");
+                            }
+                        });
+                        return 1;
+                    }
+
                     // Handle sell protection commands locally
                     if (args.length >= 2 && args[0].equals("set")) {
                         if (args[1].equals("sellProtectionEnabled")) {
@@ -1482,6 +1623,38 @@ public class CoflModClient implements ClientModInitializer {
         );
     }
 
+    /**
+     * forces the open containers coflnet descriptions to be re fetched right now 
+     * so a lore layout edit becomes visible without relogging or changing lobby.
+     *  
+     * Item descriptions are cached in {@link DescriptionHandler#tooltipItemIdMap}
+     * and a re fetch is normally suppressed when the inventory nbt is unchanged
+     * ({@link #lastNbtRequest}) and throttled per inventory title. A lore edit
+     * changes neither the nbt nor opens a new screen so without this the stale
+     * cached lore lingers until an island change clears it. here we drop the
+     * cache clear the nbt throttle guards and re trigger a load on the screen
+     * that is currently open. runs on the client thread.
+     */
+    public static void refreshOpenInventoryDescriptions() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) {
+            return;
+        }
+        mc.execute(() -> {
+            try {
+                DescriptionHandler.emptyTooltipData();
+                lastNbtRequest = "";
+                lastRefreshTimePerInventory.clear();
+                if (instance != null
+                        && mc.gui.screen() instanceof AbstractContainerScreen<?> cs) {
+                    instance.loadDescriptionsForInv(cs);
+                }
+            } catch (Throwable t) {
+                System.out.println("[Lore] refreshOpenInventoryDescriptions failed: " + t);
+            }
+        });
+    }
+
     private static List<String> getScoreboard() {
         ObjectArrayList<String> scoreboardAsText = new ObjectArrayList<>();
         if (Minecraft.getInstance() == null || Minecraft.getInstance().level == null) {
@@ -1924,7 +2097,7 @@ public class CoflModClient implements ClientModInitializer {
         }
     }
 
-    private static void sendChatMessage(String message) {
+    public static void sendChatMessage(String message) {
         displayModMessage(Component.literal(message));
     }
 
@@ -1981,7 +2154,7 @@ public class CoflModClient implements ClientModInitializer {
      * known Hypixel server IPs (mc.hypixel.net, hypixel.net, alpha.hypixel.net).
      * Runs synchronously so the config is written before text_Tunnels loads its
      * server-specific configuration on join.
-     * <p>
+     *  
      * Silently skips if text_Tunnels is not installed or the entry already exists.
      * On completion it triggers a live config-reload via reflection so the change
      * takes effect without restarting.

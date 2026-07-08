@@ -86,11 +86,16 @@ public class EventSubscribers {
                 combinedMessage.append(styledPart);
             }
         }
+        // let a pending lore save see the backends imported settings rejection echo.
+        com.coflnet.lore.LoreSync.observeChat(
+                net.minecraft.ChatFormatting.stripFormatting(combinedMessage.getString()));
         CoflModClient.displayModMessage(combinedMessage);
     }
 
     @Subscribe
     public void onModChatMessage(OnModChatMessage event){
+        com.coflnet.lore.LoreSync.observeChat(
+                net.minecraft.ChatFormatting.stripFormatting(event.message));
         CoflModClient.displayModMessage(Component.literal(event.message));
     }
 
@@ -126,6 +131,16 @@ public class EventSubscribers {
         
     }
 
+    /**
+     * The backend replied to {@code /cofl lore json} with the whole
+     * descriptionsetting object. hand it to loresync which stores it mirrors the
+     * layout into the config gui and adopts any synced styling.
+     */
+    @Subscribe
+    public void onLoreSettingsReceive(OnLoreSettingsReceive event){
+        com.coflnet.lore.LoreSync.onBackendJson(event.Json);
+    }
+
     @Subscribe
     public void onCountdownReceive(OnCountdownReceive event){
         countdownData = event.CountdownData;
@@ -140,7 +155,7 @@ public class EventSubscribers {
 
         if (CoflModClient.bestflipsKeyBinding.isDown()) {
             EventBus.getDefault().post(new OnOpenAuctionGUI("/viewauction "+f.Id, f));
-        } else 
+        } else
             CoflCore.flipHandler.fds.Insert(f);
 
         EventBus.getDefault().post(new OnChatMessageReceive(f.Messages));
