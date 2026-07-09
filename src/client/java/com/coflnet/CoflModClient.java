@@ -456,8 +456,16 @@ public class CoflModClient implements ClientModInitializer {
                     appendValues.add(t.value);
                 }
             }
-            List<String> templated = com.coflnet.lore.LoreEngine.render(appendValues, stackId,
-                    net.minecraft.ChatFormatting.stripFormatting(stack.getHoverName().getString()));
+            // this callback runs on the render thread for every tooltip a throw here
+            // would break tooltip rendering so keep the stock lore on any error.
+            List<String> templated;
+            try {
+                templated = com.coflnet.lore.LoreEngine.render(appendValues, getItemTagFromStack(stack),
+                        net.minecraft.ChatFormatting.stripFormatting(stack.getHoverName().getString()));
+            } catch (Throwable loreError) {
+                System.out.println("[Lore] tooltip render failed, keeping stock lore: " + loreError);
+                templated = null;
+            }
 
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type) {
@@ -747,13 +755,13 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     /**
-     * Detects the {@code /cofl lore} chat menu (or the "Imported settings" echo the
-     * backend prints after a json write and suppresses it from chat since the
-     * gui replaces that menu entirely. we no longer parse the menu the layout is
-     * read as a whole object via {@code /cofl lore json} (see
-     * {@link com.coflnet.lore.LoreSync}); this only hides the leftover echo so a
-     * save doesnt spam chat with the clickable menu. returns true when the
-     * message was a lore menu so the caller drops it .
+     * suppresses the clickable {@code /cofl lore add rm up down left ...} menu from
+     * chat by matching those run commands on the messages siblings the gui replaces
+     * that menu entirely so a save doesnt spam chat with it. we no longer parse the
+     * menu the layout is read as a whole object via {@code /cofl lore json} (see
+     * {@link com.coflnet.lore.LoreSync}). returns true when the message carried those
+     * run commands so the caller drops it. the imported settings echo is handled
+     * separately by loresyncs verifier not here.
      */
     public static boolean captureLoreMenu(Component message) {
         if (message == null) {
@@ -1335,6 +1343,80 @@ public class CoflModClient implements ClientModInitializer {
         return res.toArray(String[]::new);
     }
 
+    /**
+     * the stable skyblock item type tag e.g. hyperion read from custom_data id or
+     * the clean display name when there is none. the lore blacklist keys on this so
+     * every copy of an item type is matched not one per instance uuid which would
+     * only ever blacklist the single stack the user clicked.
+     *
+     * some skyblock ids are a shared umbrella over a whole family e.g. every pet is
+     * id pet with the real type in petinfo and every enchanted book rune or potion
+     * shares one id . for those the discriminating sub field or the per variant
+     * display name is folded into the key so blacklisting one does not wipe the lot.
+     */
+    public static String getItemTagFromStack(ItemStack stack) {
+        if (stack == null) return null;
+        var customData = stack.get(DataComponents.CUSTOM_DATA);
+        if (customData != null && !customData.isEmpty()) {
+            CompoundTag tag = customData.copyTag();
+            String id = tag.getString("id").orElse(null);
+            if (id != null && !id.isBlank()) {
+                // every pet is id pet with the type in petinfo so without this
+                // blacklisting one pet would hide the lore on every pet.
+                if ("PET".equalsIgnoreCase(id)) {
+                    String petType = petTypeFromCustomData(tag);
+                    return "PET;" + (petType != null && !petType.isBlank()
+                            ? petType.toUpperCase(Locale.ROOT)
+                            : cleanDisplayName(stack));
+                }
+                // enchanted books runes and potions share an id too. their display
+                // name is a stable per variant label e.g. sharpness vi so key on that
+                // so a single blacklist entry does not wipe the whole family.
+                if (isSharedFamilyId(id)) {
+                    return id + ";" + cleanDisplayName(stack);
+                }
+                return id;
+            }
+        }
+        // fall back to the clean display name so stackables and vanilla items still work.
+        return cleanDisplayName(stack);
+    }
+
+    /** the item name with colour codes stripped custom name preferred. */
+    private static String cleanDisplayName(ItemStack stack) {
+        String name = stack.getCustomName() == null
+                ? stack.getItem().getName(stack).getString()
+                : stack.getCustomName().getString();
+        return ChatFormatting.stripFormatting(name);
+    }
+
+    /** true for skyblock ids that are a shared umbrella over a whole item family. */
+    private static boolean isSharedFamilyId(String id) {
+        return "ENCHANTED_BOOK".equalsIgnoreCase(id)
+                || "RUNE".equalsIgnoreCase(id)
+                || "POTION".equalsIgnoreCase(id);
+    }
+
+    /** the pet type from the petinfo json in custom_data or null if unreadable. */
+    private static String petTypeFromCustomData(CompoundTag tag) {
+        try {
+            String petInfo = tag.getString("petInfo").orElse(null);
+            if (petInfo == null || petInfo.isBlank()) {
+                return null;
+            }
+            JsonElement el = JsonParser.parseString(petInfo);
+            if (el.isJsonObject()) {
+                JsonElement type = el.getAsJsonObject().get("type");
+                if (type != null && type.isJsonPrimitive()) {
+                    return type.getAsString();
+                }
+            }
+        } catch (Exception ignored) {
+            // malformed petinfo fall back to the display name in the caller.
+        }
+        return null;
+    }
+
     public static String getUuidFromStack(ItemStack stack) {
         // O(1) direct component access instead of O(n) iteration + toString + contains
         var customData = stack.get(DataComponents.CUSTOM_DATA);
@@ -1353,11 +1435,15 @@ public class CoflModClient implements ClientModInitializer {
         String itemName = stack.getCustomName() == null ? stack.getItem().getName(stack).getString() : stack.getCustomName().getString();
         if(itemName.contains("BUY") || itemName.contains("SELL"))
         {
-            // bazaar order, separate by price per unit as well
-            for (Component line : stack.get(DataComponents.LORE).lines()) {
-                if(line.getString().contains("Price per unit"))
-                {
-                    return itemName + line.getString();
+            // bazaar order separate by price per unit. guard a missing lore component
+            // an item named buy sell with no lore would npe here on the render thread.
+            var loreComp = stack.get(DataComponents.LORE);
+            if (loreComp != null) {
+                for (Component line : loreComp.lines()) {
+                    if(line.getString().contains("Price per unit"))
+                    {
+                        return itemName + line.getString();
+                    }
                 }
             }
         }

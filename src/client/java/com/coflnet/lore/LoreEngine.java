@@ -37,11 +37,23 @@ public class LoreEngine {
      *
      * @param backendValues the raw backend APPEND strings for this item, colour
      *  codes intact in backend order
-     * @param itemId        the SkyBlock item id (for the blacklist check)
-     * @param displayName   the item's clean display name (unused now that the
-     *  backend supplies price paid kept for signature compat 
+     * @param itemId        the stable skyblock item type tag for the blacklist check
+     *  so blacklisting one hyperion hides the lore on every hyperion not one stack
+     * @param displayName   the item's clean display name used to look up the price
+     *  you paid recorded from ah purchase chat when the backend sends no paid line
      */
     public static List<String> render(List<String> backendValues, String itemId, String displayName) {
+        try {
+            return renderInner(backendValues, itemId, displayName);
+        } catch (Throwable t) {
+            // this runs on the client render thread for every tooltip. a throw here
+            // would break tooltip rendering so on any error keep the stock lore.
+            System.out.println("[Lore] render failed, keeping stock lore: " + t);
+            return null;
+        }
+    }
+
+    private static List<String> renderInner(List<String> backendValues, String itemId, String displayName) {
         if (LoreManager.isItemBlacklisted(itemId)) {
             return null;
         }
@@ -57,6 +69,13 @@ public class LoreEngine {
                     || m.template == null || m.template.isBlank()) {
                 continue;
             }
+            // skip a module still at its stock default the user has not customised it so
+            // leave the backend line exactly as sent estimate markers abbreviations
+            // colours and all . only genuinely customised fields are ever restyled.
+            LoreSegment seg = LoreSegment.byKey(m.match);
+            if (seg != null && seg.defaultTemplate.equals(m.template)) {
+                continue;
+            }
             templates.put(m.match.toUpperCase(java.util.Locale.ROOT), m.template);
         }
         if (templates.isEmpty()) {
@@ -69,11 +88,23 @@ public class LoreEngine {
             stripped.add(ChatFormatting.stripFormatting(v));
         }
         LoreData data = LoreParser.parse(stripped);
+        // fall back to what you paid recorded from the ah purchase chat when the
+        // backend did not supply a paid line so the purchased paid tokens work.
+        if (data.purchasedFor == null && displayName != null) {
+            Long paid = LoreManager.purchasePrice(displayName);
+            if (paid != null) {
+                data.purchasedFor = (double) (long) paid;
+            }
+        }
 
         boolean changedAny = false;
         List<String> out = new ArrayList<>(backendValues.size());
 
         for (String backendLine : backendValues) {
+            if (backendLine == null) {
+                out.add(null);   // defensive the caller filters nulls but never NPE here.
+                continue;
+            }
             String line = backendLine;
             // try every segment against this line substitute the ones that match.
             for (LoreSegment seg : LoreSegment.ALL) {
@@ -86,8 +117,12 @@ public class LoreEngine {
                     continue;
                 }
                 String fragment = LoreTemplate.render(template, data);
-                if (fragment == null) {
-                    continue;   // no data for this field leave the segment alone
+                if (fragment == null || fragment.isBlank()) {
+                    continue;   // no data or renders empty leave the segment alone.
+                }
+                String matched = matcher.group();
+                if (fragment.equals(matched)) {
+                    continue;   // template reproduces the stock text no change needed.
                 }
                 // replace only this segment keep everything else on the line.
                 line = matcher.replaceFirst(Matcher.quoteReplacement(fragment));

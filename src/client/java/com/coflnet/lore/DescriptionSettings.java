@@ -73,6 +73,26 @@ public final class DescriptionSettings {
     }
 
     /**
+     * a deep copy so a write can build its payload without mutating the last
+     * confirmed object. the shared object is only promoted after the backend
+     * accepts the save so a rejected write can never leave a stale current.
+     */
+    public DescriptionSettings copy() {
+        return new DescriptionSettings(root.deepCopy());
+    }
+
+    /**
+     * whether the object actually carries a fields array. lets a caller tell a
+     * real but empty layout from a payload that simply omitted fields so a
+     * malformed or partial reply can never wipe the users saved layout.
+     */
+    public boolean hasFields() {
+        String key = actualKey("Fields");
+        JsonElement el = key == null ? null : root.get(key);
+        return el != null && el.isJsonArray();
+    }
+
+    /**
      * resolves a member name case insensitively and returns the actual key present
      * on the object, or {@code null} when absent. The backend's socket serializer
      * uses PascalCase ({@code "Fields"}, {@code "CustomFormat"}) while the REST
@@ -106,14 +126,15 @@ public final class DescriptionSettings {
             return layout;
         }
         for (JsonElement lineEl : fieldsEl.getAsJsonArray()) {
+            if (lineEl == null || !lineEl.isJsonArray()) {
+                continue;   // ignore a non array element do not synthesize an empty line.
+            }
             List<String> line = new ArrayList<>();
-            if (lineEl != null && lineEl.isJsonArray()) {
-                for (JsonElement f : lineEl.getAsJsonArray()) {
-                    if (f != null && f.isJsonPrimitive()) {
-                        String v = f.getAsString();
-                        if (v != null && !v.isBlank()) {
-                            line.add(v.trim());
-                        }
+            for (JsonElement f : lineEl.getAsJsonArray()) {
+                if (f != null && f.isJsonPrimitive()) {
+                    String v = f.getAsString();
+                    if (v != null && !v.isBlank()) {
+                        line.add(v.trim());
                     }
                 }
             }

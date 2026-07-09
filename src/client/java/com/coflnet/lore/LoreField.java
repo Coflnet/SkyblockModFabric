@@ -29,7 +29,7 @@ public final class LoreField {
             new LoreField("LBIN", "Lowest BIN", "Lowest active bin price for the item."),
             new LoreField("MEDIAN", "Median", "Median sell price from recent sales."),
             new LoreField("VOLUME", "Volume", "How many of this item sell over the sample window."),
-            new LoreField("CRAFT_COST", "Craft Cost", "Cost to craft the item from its components."),
+            new LoreField("CRAFT_COST", "Clean Craft", "Cost to craft the item from its base components (the clean craft line)."),
             new LoreField("FullCraftCost", "Full Craft Cost", "Total craft cost including all applied modifiers."),
             new LoreField("BazaarBuy", "Bazaar Buy", "Bazaar insta buy / buy order price."),
             new LoreField("BazaarSell", "Bazaar Sell", "Bazaar insta sell / sell order price."),
@@ -68,9 +68,12 @@ public final class LoreField {
         return null;
     }
 
-    /** display name for a key falling back to the key itself if unknown. */
+    /** display name for a key falling back to the key itself never null . */
     public static String displayOf(String key) {
         LoreField f = byKey(key);
-        return f != null ? f.display : key;
+        if (f != null) {
+            return f.display;
+        }
+        return key != null ? key : "?";
     }
 }

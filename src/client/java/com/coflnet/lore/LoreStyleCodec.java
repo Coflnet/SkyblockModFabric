@@ -34,10 +34,12 @@ public final class LoreStyleCodec {
     }
 
     /**
-     * serialises the modules templates into the blob. skips any module whose
-     * template is blank or equal to the segments stock default so only genuine
-     * customisations travel. returns null when nothing is customised clears
-     * {@code customFormat}).
+     * serialises the modules templates into the blob. a template equal to the
+     * segments stock default is skipped since the mod already renders that look. a
+     * blank template is written as an empty string on purpose it means show the stock
+     * backend look and must travel so that choice propagates across instances rather
+     * than reading as an absent key. returns null when nothing is left to write which
+     * clears {@code customFormat}.
      */
     public static String fromModules(List<LoreModule> modules) {
         if (modules == null || modules.isEmpty()) {
@@ -54,7 +56,8 @@ public final class LoreStyleCodec {
             // only sync a genuine customisation blank or stock default is skipped .
             String stock = seg != null ? seg.defaultTemplate : null;
             if (template.isBlank()) {
-                // a blank template means hide this field that is a customisation.
+                // a blank template shows the stock backend look still a customisation
+                // vs the mods default so sync it as an empty string.
                 obj.addProperty(key, "");
                 continue;
             }
@@ -73,18 +76,28 @@ public final class LoreStyleCodec {
      * by leaving the modules untouched.
      */
     public static void applyToModules(String customFormat, List<LoreModule> modules) {
-        if (customFormat == null || customFormat.isBlank() || modules == null) {
+        if (modules == null) {
             return;
         }
-        JsonObject obj;
-        try {
-            JsonElement el = JsonParser.parseString(customFormat);
-            if (!el.isJsonObject()) {
-                return;   // not our blob some other client wrote a plain string 
+        // a null or blank blob means the source instance is entirely stock default so
+        // it is authoritative reset every restylable module to default via the empty
+        // object below.
+        JsonObject obj = new JsonObject();
+        boolean authoritative = true;
+        if (customFormat != null && !customFormat.isBlank()) {
+            try {
+                JsonElement el = JsonParser.parseString(customFormat);
+                if (!el.isJsonObject()) {
+                    return;   // not our blob some other client wrote a plain string
+                }
+                obj = el.getAsJsonObject();
+            } catch (Exception e) {
+                return;   // opaque non json customformat from another client ignore
             }
-            obj = el.getAsJsonObject();
-        } catch (Exception e) {
-            return;   // opaque non json customformat from another client ignore
+            // only reset absent keys to default when this looks like our blob at least
+            // one key maps to a restylable segment . a foreign object we do not
+            // recognise is applied for any matching keys but never resets our fields.
+            authoritative = blobIsOurs(obj);
         }
         for (LoreModule m : modules) {
             if (m == null || m.match == null) {
@@ -95,8 +108,26 @@ public final class LoreStyleCodec {
             JsonElement val = findIgnoreCase(obj, key);
             if (val != null && val.isJsonPrimitive()) {
                 m.template = val.getAsString();
+            } else if (seg != null && authoritative) {
+                // the blob is authoritative for every restylable field a key absent
+                // from it means default so a reset or un hide made on another instance
+                // propagates here instead of leaving a stale customisation in place.
+                m.template = seg.defaultTemplate;
             }
         }
+    }
+
+    /** true when the blob is empty or carries at least one restylable segment key. */
+    private static boolean blobIsOurs(JsonObject obj) {
+        if (obj.size() == 0) {
+            return true;
+        }
+        for (String k : obj.keySet()) {
+            if (LoreSegment.byKey(k) != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** case insensitive member lookup so key casing differences do not lose styling. */

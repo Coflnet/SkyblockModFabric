@@ -22,11 +22,6 @@ public class CoflModConfig {
 
     public boolean angryCoopProtectionEnabled = true;
 
-    // lore engine when on item lore is rendered from the users templates
-    //  loremodules instead of the stock backend strings. off by default so
-    // nothing changes until the user opts in.
-    public boolean loreEngineEnabled = false;
-
     // the ordered list of lore line templates. null until first use then
     // populated from loremodule.defaults so the look matches the stock lore.
     public java.util.List<com.coflnet.lore.LoreModule> loreModules = null;
@@ -72,14 +67,32 @@ public class CoflModConfig {
         return new CoflModConfig();
     }
     
+    // serialises saves and writes atomically. the config is written from several
+    // threads chat purchases the websocket lore sync the gui so a plain truncating
+    // writer could interleave and corrupt the file wiping every setting on next load.
+    private static final Object SAVE_LOCK = new Object();
+
     public void save() {
-        try {
-            CONFIG_FILE.getParentFile().mkdirs();
-            FileWriter writer = new FileWriter(CONFIG_FILE);
-            gson.toJson(this, writer);
-            writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+        synchronized (SAVE_LOCK) {
+            try {
+                CONFIG_FILE.getParentFile().mkdirs();
+                File tmp = new File(CONFIG_FILE.getParentFile(), CONFIG_FILE.getName() + ".tmp");
+                try (FileWriter writer = new FileWriter(tmp)) {
+                    gson.toJson(this, writer);
+                }
+                // atomic replace so a reader never sees a half written file and two
+                // overlapping writers cannot corrupt the config.
+                try {
+                    java.nio.file.Files.move(tmp.toPath(), CONFIG_FILE.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                } catch (java.nio.file.AtomicMoveNotSupportedException nonAtomic) {
+                    java.nio.file.Files.move(tmp.toPath(), CONFIG_FILE.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 }

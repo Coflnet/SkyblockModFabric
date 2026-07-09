@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * the lore configuration gui a custom screen in the skycofl tradegui idiom
+ * the lore configuration gui a custom screen in the skycofl flat panel idiom
  * (flat panels via {@link RenderUtils}, the shared {@link CoflColConfig} palette,
  * manual hit-testing, {@link EditBox} widgets, deferred {@code setComponentTooltip}
  * hovers). Replaces the {@code /cofl lore} chat menu.
@@ -75,6 +75,12 @@ public class LoreConfigScreen extends Screen {
     // set once the user edits the layout so a late backend echo cant clobber
     // their in progress edits the open time fetch can land mid edit .
     private boolean userEditedLayout = false;
+    // same idea for the styling templates so a backend read that lands after the
+    // user has restyled a field does not re copy the synced modules over their edit.
+    private boolean userEditedTemplates = false;
+    // set on any real edit so closing with no changes does not fire a full
+    // cofl lore write plus a verifier and a chat line every time the screen closes.
+    private boolean dirty = false;
 
     // templates tab which module is being edited 1 none show hint .
     private int editingModule = -1;
@@ -117,28 +123,49 @@ public class LoreConfigScreen extends Screen {
     /** requests the whole lore settings object from the backend cofl lore json . */
     private void requestRealLayout() {
         current = this;
+        // if we already synced backend data this session the local mirror is current so
+        // drop the loading header immediately a fresh read that gets skipped as stale
+        // right after a save would otherwise leave it stuck even though the layout is
+        // already correct.
+        if (com.coflnet.lore.LoreSync.hasReceived()) {
+            capturedFromBackend = true;
+        }
         com.coflnet.lore.LoreSync.requestFromBackend();
     }
 
     /**
-     * called when the chat handler has parsed the real backend layout. refreshes
-     * the working copy so the user edits from true state unless they have already
-     * started editing the open time fetch can land mid edit .
+     * called when a backend settings read has landed. refreshes the working copies
+     * so the user edits from true state unless they have already started editing
+     * (the open time fetch can land mid edit). called even for an empty layout so
+     * the loading header never sticks on a stock account.
      */
     public static void onLayoutCaptured(List<List<String>> layout) {
-        if (current == null || layout == null) {
+        if (current == null) {
             return;
         }
         Minecraft.getInstance().execute(() -> {
             if (current == null) {
                 return;
             }
-            if (current.userEditedLayout) {
-                current.capturedFromBackend = true;
+            // the read has landed drop the loading header even if the layout came back
+            // empty so it can never stick on a stock account.
+            current.capturedFromBackend = true;
+            // re copy the freshly synced styling templates unless the user is already
+            // editing them so a reset or restyle done on another instance shows up here
+            // instead of the stale open time copy being saved back over it. skip while
+            // a field is open in the editor so we never yank text out from under them.
+            if (!current.userEditedTemplates && current.editingModule < 0) {
+                current.workingModules = copyModules(LoreManager.getModules());
+            }
+            if (layout == null || current.userEditedLayout) {
+                return;
+            }
+            // do not blank a non empty working layout with a content empty reply a
+            // partial or malformed backend read must not clear the editor.
+            if (!LoreManager.layoutHasField(layout) && LoreManager.layoutHasField(current.workingLayout)) {
                 return;
             }
             current.workingLayout = deepCopyLayout(layout);
-            current.capturedFromBackend = true;
             if (current.selectedLine >= current.workingLayout.size()) {
                 current.selectedLine = Math.max(0, current.workingLayout.size() - 1);
             }
@@ -147,8 +174,11 @@ public class LoreConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        panelW = Math.min(this.width - 24, 560);
-        panelH = Math.min(this.height - 24, 320);
+        // clamp to a sane minimum so the derived widths e.g. lines width equals content
+        // width minus 178 never go negative on a tiny window or a high gui scale which
+        // would render garbage negative width rects .
+        panelW = Math.max(240, Math.min(this.width - 24, 560));
+        panelH = Math.max(180, Math.min(this.height - 24, 320));
         panelX = this.width / 2 - panelW / 2;
         panelY = this.height / 2 - panelH / 2;
 
@@ -212,6 +242,8 @@ public class LoreConfigScreen extends Screen {
             templateBox.setResponder(v -> {
                 if (editingModule >= 0 && editingModule < workingModules.size()) {
                     workingModules.get(editingModule).template = v;
+                    dirty = true;
+                    userEditedTemplates = true;
                 }
             });
             addRenderableWidget(templateBox);
@@ -401,7 +433,7 @@ public class LoreConfigScreen extends Screen {
             RenderUtils.drawString(context, (hidden ? "§8" : "§f") + seg.display, contentX + 5, rowY + 3, CoflColConfig.TEXT_PRIMARY);
             if (h) {
                 queueTip(mouseX, mouseY, "§a[click to edit] §f" + seg.display,
-                        hidden ? "§8Currently hidden (empty template)." : "§7Restyle just this field.");
+                        hidden ? "§8Currently showing the stock backend look (empty template)." : "§7Restyle just this field.");
             }
         }
         if (detected.isEmpty()) {
@@ -428,12 +460,12 @@ public class LoreConfigScreen extends Screen {
             RenderUtils.drawCenteredString(context, "Reset", editorX + 30, contentY + 49, CoflColConfig.TEXT_PRIMARY);
             boolean cHover = inRect(mouseX, mouseY, editorX + 66, contentY + 46, 80, 14);
             box(context, editorX + 66, contentY + 46, 80, 14, cHover ? CoflColConfig.CANCEL_HOVER : CHIP_TINT);
-            RenderUtils.drawCenteredString(context, "Clear (hide)", editorX + 66 + 40, contentY + 49, CoflColConfig.TEXT_PRIMARY);
+            RenderUtils.drawCenteredString(context, "Show stock", editorX + 66 + 40, contentY + 49, CoflColConfig.TEXT_PRIMARY);
             if (rHover) {
                 queueTip(mouseX, mouseY, "§a[reset] §7Restore this field's default style.");
             }
             if (cHover) {
-                queueTip(mouseX, mouseY, "§c[clear] §7Empty the template so this field is hidden.");
+                queueTip(mouseX, mouseY, "§c[show stock] §7Empty the template so this field falls back to the stock backend look.");
             }
         } else {
             RenderUtils.drawString(context, "§8Select a field on the left to edit it.",
@@ -511,7 +543,9 @@ public class LoreConfigScreen extends Screen {
         if (inRect(mx, my, tabTemplatesX, tabY, tabW, tabH)) { switchTab(Tab.TEMPLATES); return true; }
         if (inRect(mx, my, tabBlacklistX, tabY, tabW, tabH)) { switchTab(Tab.BLACKLIST); return true; }
         if (inRect(mx, my, saveX, saveY, saveW, saveH)) {
-            saveAll();
+            if (dirty) {
+                saveAll();
+            }
             current = null;
             Minecraft.getInstance().gui.setScreen(parent);
             return true;
@@ -540,6 +574,7 @@ public class LoreConfigScreen extends Screen {
                 if (inRect(mx, my, paletteX + 3, py, paletteW - 6, 13)) {
                     ensureLine(selectedLine).add(f.key);
                     userEditedLayout = true;
+                    dirty = true;
                     return true;
                 }
                 py += 15;
@@ -551,6 +586,9 @@ public class LoreConfigScreen extends Screen {
         Font font = Minecraft.getInstance().font;
         for (int line = 0; line < lineCount; line++) {
             int rowY = y + line * ROW_H;
+            if (rowY + ROW_H > contentY + contentH) {
+                break;   // match the draw clamp never hit a row scrolled off the panel.
+            }
             if (!inRect(mx, my, linesX, rowY, linesW, ROW_H - 2)) {
                 continue;
             }
@@ -559,9 +597,13 @@ public class LoreConfigScreen extends Screen {
             for (int fi = 0; fi < fields.size(); fi++) {
                 String label = LoreField.displayOf(fields.get(fi));
                 int w = font.width(label) + 12;
+                if (chipX + w > linesX + linesW - 4) {
+                    break;   // match the draw clamp chips past the row edge are not shown.
+                }
                 if (inRect(mx, my, chipX, rowY + 3, w, ROW_H - 8)) {
                     workingLayout.get(line).remove(fi);
                     userEditedLayout = true;
+                    dirty = true;
                     return true;
                 }
                 chipX += w + 3;
@@ -579,6 +621,8 @@ public class LoreConfigScreen extends Screen {
             if (inRect(mx, my, editorX, contentY + 46, 60, 14)) {
                 String def = defaultTemplateFor(workingModules.get(editingModule));
                 workingModules.get(editingModule).template = def;
+                dirty = true;
+                userEditedTemplates = true;
                 if (templateBox != null) {
                     templateBox.setValue(def == null ? "" : def);
                 }
@@ -586,6 +630,8 @@ public class LoreConfigScreen extends Screen {
             }
             if (inRect(mx, my, editorX + 66, contentY + 46, 80, 14)) {
                 workingModules.get(editingModule).template = "";
+                dirty = true;
+                userEditedTemplates = true;
                 if (templateBox != null) {
                     templateBox.setValue("");
                 }
@@ -599,6 +645,9 @@ public class LoreConfigScreen extends Screen {
         List<com.coflnet.lore.LoreSegment> detected = detectedSegments();
         for (int i = 0; i < detected.size(); i++) {
             int rowY = listTop + i * (rowH + 2);
+            if (rowY + rowH > contentY + contentH) {
+                break;   // match the draw clamp never select a row scrolled off the panel.
+            }
             if (inRect(mx, my, contentX, rowY, colW, rowH)) {
                 int modIdx = moduleIndexForKey(detected.get(i).key);
                 if (modIdx >= 0) {
@@ -616,18 +665,25 @@ public class LoreConfigScreen extends Screen {
         int y = contentY + 6;
         for (int i = 0; i < workingBlacklist.size(); i++) {
             int rowY = y + i * 18;
+            if (rowY + 16 > contentY + contentH) {
+                break;   // match the draw clamp never remove a row scrolled off the panel.
+            }
             int rx = contentX + contentW - 18;
             if (inRect(mx, my, rx, rowY + 1, 14, 14)) {
                 workingBlacklist.remove(i);
+                dirty = true;
                 return true;
             }
         }
         if (inRect(mx, my, addHeldX, addHeldY, addHeldW, addHeldH)) {
             ItemStack held = heldItem();
             if (held != null && !held.isEmpty() && held.getItem() != Items.AIR) {
-                String id = com.coflnet.CoflModClient.getIdFromStack(held);
+                // key on the item type tag e.g. hyperion not the per instance uuid so
+                // the engine hides the lore on every copy not just this one stack.
+                String id = com.coflnet.CoflModClient.getItemTagFromStack(held);
                 if (id != null && !workingBlacklist.contains(id)) {
                     workingBlacklist.add(id);
+                    dirty = true;
                 }
             }
             return true;
@@ -642,7 +698,7 @@ public class LoreConfigScreen extends Screen {
             paletteScroll = Math.max(0, Math.min(max, paletteScroll + (int) (-scrollY * 18)));
             return true;
         }
-        if (tab == Tab.TEMPLATES && inRect(mouseX, mouseY, contentX, contentY + 116, contentW, contentH - 116)) {
+        if (tab == Tab.TEMPLATES && inRect(mouseX, mouseY, contentX, contentY + 77, contentW, Math.max(0, contentH - 77))) {
             int max = Math.max(0, buildPreviewLines().size() * 10);
             previewScroll = Math.max(0, Math.min(max, previewScroll + (int) (-scrollY * 12)));
             return true;
@@ -667,9 +723,13 @@ public class LoreConfigScreen extends Screen {
         while (!cleaned.isEmpty() && cleaned.get(cleaned.size() - 1).isEmpty()) {
             cleaned.remove(cleaned.size() - 1);
         }
-        LoreManager.applyLayout(cleaned);            // closed loop cofl lore commands
+        // persist the edited modules and blacklist first so applylayout which reads
+        // getmodules to build the backend customformat write sees the fresh templates
+        // not the stale persisted ones otherwise a styling edit ships old and a later
+        // read reverts it.
         LoreManager.saveModules(workingModules);
         LoreManager.saveItemBlacklist(workingBlacklist);
+        LoreManager.applyLayout(cleaned);            // closed loop cofl lore commands
     }
 
     private List<String> ensureLine(int line) {
@@ -702,6 +762,12 @@ public class LoreConfigScreen extends Screen {
                     || m.template == null || m.template.isBlank()) {
                 continue;
             }
+            // mirror the real engine a module still at its stock default is left
+            // untouched so the preview shows exactly what the engine will render.
+            com.coflnet.lore.LoreSegment seg = com.coflnet.lore.LoreSegment.byKey(m.match);
+            if (seg != null && seg.defaultTemplate.equals(m.template)) {
+                continue;
+            }
             templates.put(m.match.toUpperCase(java.util.Locale.ROOT), m.template);
         }
 
@@ -718,8 +784,12 @@ public class LoreConfigScreen extends Screen {
                     continue;
                 }
                 String fragment = LoreTemplate.render(template, data);
-                if (fragment == null) {
-                    continue;
+                if (fragment == null || fragment.isBlank()) {
+                    continue;   // mirror the real engine never blank a segment.
+                }
+                String matched = matcher.group();
+                if (fragment.equals(matched)) {
+                    continue;   // mirror the real engine no op when it reproduces stock.
                 }
                 line = matcher.replaceFirst(java.util.regex.Matcher.quoteReplacement(fragment));
             }
@@ -734,7 +804,7 @@ public class LoreConfigScreen extends Screen {
     /** single line preview for the editor render the fields template once. */
     private String onePreview(String template) {
         if (template == null || template.isBlank()) {
-            return "§8(hidden \u2014 empty template)";
+            return "§8(stock backend look \u2014 empty template)";
         }
         List<String> appends = heldAppendValues();
         LoreData data = appends != null ? parseHeld(appends) : SAMPLE;
@@ -921,8 +991,13 @@ public class LoreConfigScreen extends Screen {
 
     private static List<List<String>> deepCopyLayout(List<List<String>> src) {
         List<List<String>> out = new ArrayList<>();
+        if (src == null) {
+            return out;
+        }
         for (List<String> line : src) {
-            out.add(new ArrayList<>(line));
+            // tolerate a null line as applylayout and detectedsegments do a backend
+            // reply or a hand edited config can carry one and it must not npe.
+            out.add(line == null ? new ArrayList<>() : new ArrayList<>(line));
         }
         return out;
     }
@@ -985,7 +1060,11 @@ public class LoreConfigScreen extends Screen {
 
     @Override
     public void onClose() {
-        saveAll();
+        // only write when something actually changed opening and closing or just
+        // flipping tabs must not fire a full cofl lore write verifier and chat line.
+        if (dirty) {
+            saveAll();
+        }
         current = null;
         Minecraft.getInstance().gui.setScreen(parent);
     }

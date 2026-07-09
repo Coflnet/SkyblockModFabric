@@ -16,8 +16,10 @@ import java.util.regex.Pattern;
  * forms the bare name renders full with comma grouping lbin 690 000 
  * and a short suffix renders abbreviated lbin short 690k . ampersand
  * codes are converted to the section sign the game expects. if a token has no
- * value for the item, {@link #render} returns null so the caller can skip the
- * whole line this is how empty modules hide themselves .
+ * value for the item {@link #render} returns null so the caller leaves that
+ * segment exactly as the backend sent it. render never removes a line the engine
+ * only substitutes the segments that match so a null just means do not restyle
+ * this one.
  */
 public class LoreTemplate {
 
@@ -26,7 +28,7 @@ public class LoreTemplate {
     /**
      * renders the template against the data. returns the finished string with
      * section codes or null when a referenced price token has no value so the
-     * line should be skipped .
+     * caller keeps the backend text for that segment unchanged.
      */
     public static String render(String template, LoreData data) {
         if (template == null || template.isEmpty()) {
@@ -34,22 +36,21 @@ public class LoreTemplate {
         }
         Matcher m = TOKEN.matcher(template);
         StringBuilder out = new StringBuilder();
-        boolean sawToken = false;
         while (m.find()) {
-            sawToken = true;
             String token = m.group(1);
             String value = resolve(token, data);
             if (value == null) {
-                // a referenced price token is missing for this item hide the line.
+                // a referenced price token is missing for this item keep the backend segment as is.
                 return null;
             }
             m.appendReplacement(out, Matcher.quoteReplacement(value));
         }
         m.appendTail(out);
         String result = colorize(out.toString());
-        // templates that are pure literal text no tokens still render so a
-        // user can add a custom static line.
-        return (!sawToken && result.isBlank()) ? null : result;
+        // a template that renders to nothing whether or not it had tokens e.g.
+        // a flag token like estimate that is false returns null so the caller
+        // leaves the segment as the backend sent it and can never blank an item.
+        return result.isBlank() ? null : result;
     }
 
     /** resolves one token to its display string or null if it has no value. */
@@ -81,7 +82,13 @@ public class LoreTemplate {
         if (v == Math.rint(v) && !Double.isInfinite(v)) {
             return String.format(Locale.US, "%,d", (long) v);
         }
-        return String.format(Locale.US, "%,.2f", v);
+        // fractional values keep up to 2 decimals but drop trailing zeros so a
+        // volume of 0.2 shows as 0.2 not 0.20 matching the backends look.
+        String s = String.format(Locale.US, "%,.2f", v);
+        if (s.contains(".")) {
+            s = s.replaceAll("0+$", "").replaceAll("\\.$", "");
+        }
+        return s;
     }
 
     /** abbreviated format 690000 690k 4420000 4.42m 913980000 913.98m. */
