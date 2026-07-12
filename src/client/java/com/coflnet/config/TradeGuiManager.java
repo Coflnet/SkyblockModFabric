@@ -6,21 +6,12 @@ package com.coflnet.config;
  * controls the Copy Dump diagnostic button).
  */
 public class TradeGuiManager {
-    private static CoflModConfig config = null;
-
-    private static void ensureConfig() {
-        if (config == null) {
-            config = CoflModConfig.load();
-        }
-    }
-
     public static void reloadConfig() {
-        config = CoflModConfig.load();
+        CoflModConfig.reload();
     }
 
     public static CoflModConfig getConfig() {
-        ensureConfig();
-        return config;
+        return CoflModConfig.get();
     }
 
     public static boolean isEnabled() {
@@ -31,7 +22,6 @@ public class TradeGuiManager {
         CoflModConfig cfg = getConfig();
         cfg.tradeGuiEnabled = enabled;
         cfg.save();
-        reloadConfig();
     }
 
     /** Persisted TradeGUI item-list column count, clamped to 1-3. */
@@ -44,6 +34,5 @@ public class TradeGuiManager {
         CoflModConfig cfg = getConfig();
         cfg.tradeListColumns = (columns < 1 || columns > 3) ? 1 : columns;
         cfg.save();
-        reloadConfig();
     }
 }

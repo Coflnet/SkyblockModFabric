@@ -53,7 +53,10 @@ public class CoinInputGUI extends Screen {
     private int cancelX, cancelY, cancelW, cancelH;
 
     // Lowball slider: 10%–100%, default 70%. The LBIN/Med suggestion buttons
-    // multiply their full total by this percent.
+    // multiply their full total by this percent. This is the SkyCofl premium
+    // lowball overlay — the predecessor (SkyApi) gates it behind premium. We do
+    // NOT enforce that client-side yet, but surface a hint so it's clear it's a
+    // premium feature.
     private int sliderX, sliderY, sliderW, sliderH;
     private int lowballPercent = 70;
     private boolean draggingSlider = false;
@@ -178,8 +181,8 @@ public class CoinInputGUI extends Screen {
         RenderUtils.drawRoundedRect(context, panelX, panelY, panelW, panelH, RADIUS, CoflColConfig.BACKGROUND_PRIMARY);
         RenderUtils.drawString(context, "§lAdd Coins", panelX + PAD, panelY + PAD, CoflColConfig.TEXT_PRIMARY);
 
-        // Lowball slider.
-        RenderUtils.drawString(context, "§7Lowball: §f" + lowballPercent + "%", sliderX, sliderY - 10, CoflColConfig.TEXT_PRIMARY);
+        // Lowball slider. Labelled as a SkyCofl premium feature as the server powered version.
+        RenderUtils.drawString(context, "§7Lowball: §f" + lowballPercent + "% §r§8§o(SkyCofl Premium)", sliderX, sliderY - 10, CoflColConfig.TEXT_PRIMARY);
         RenderUtils.drawRoundedRect(context, sliderX, sliderY, sliderW, sliderH, 2, CoflColConfig.BACKGROUND_SECONDARY);
         int knobX = sliderX + (int) ((long) (lowballPercent - MIN_PCT) * (sliderW - 6) / (MAX_PCT - MIN_PCT));
         RenderUtils.drawRoundedRect(context, knobX, sliderY - 2, 6, sliderH + 4, 2, CoflColConfig.CONFIRM);

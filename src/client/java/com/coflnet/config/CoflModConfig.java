@@ -34,6 +34,27 @@ public class CoflModConfig {
     // sticks across trades and restarts. Default 1 (the original look).
     public int tradeListColumns = 1;
     
+    // Single shared, lazily-loaded instance. All managers (DevManager,
+    // TradeGuiManager, SellProtectionManager, ...) delegate to this so there is
+    // exactly one in-memory copy of the config. Without it, each manager cached
+    // its own copy and a save() from one could clobber a fresh change made
+    // through another.
+    private static CoflModConfig instance = null;
+
+    /** Returns the shared config instance, loading it from disk on first use. */
+    public static synchronized CoflModConfig get() {
+        if (instance == null) {
+            instance = load();
+        }
+        return instance;
+    }
+
+    /** Discards the cached instance and re-reads it from disk. */
+    public static synchronized CoflModConfig reload() {
+        instance = load();
+        return instance;
+    }
+
     public static CoflModConfig load() {
         try {
             if (CONFIG_FILE.exists()) {

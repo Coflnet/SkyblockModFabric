@@ -6,21 +6,12 @@ package com.coflnet.config;
  * copies the open container's signature (title, size, slots) to the clipboard.
  */
 public class DevManager {
-    private static CoflModConfig config = null;
-
-    private static void ensureConfig() {
-        if (config == null) {
-            config = CoflModConfig.load();
-        }
-    }
-
     public static void reloadConfig() {
-        config = CoflModConfig.load();
+        CoflModConfig.reload();
     }
 
     public static CoflModConfig getConfig() {
-        ensureConfig();
-        return config;
+        return CoflModConfig.get();
     }
 
     public static boolean isEnabled() {
@@ -31,6 +22,5 @@ public class DevManager {
         CoflModConfig cfg = getConfig();
         cfg.devMode = enabled;
         cfg.save();
-        reloadConfig();
     }
 }
