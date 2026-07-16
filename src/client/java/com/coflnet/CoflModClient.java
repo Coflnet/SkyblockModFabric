@@ -2141,7 +2141,10 @@ public class CoflModClient implements ClientModInitializer {
 
         for (String score : scores) {
             if (score.startsWith("Purse: ") || score.startsWith("Piggy: ")) leftVal = score;
-            if (score.startsWith(" ⏣ ")) rightVal = score;
+            // Hypixel renders the area marker either as the benzene ring ⏣ (U+23E3) or,
+            // on newer clients, a private-use font glyph (U+E067). Match both or location
+            // changes stop triggering scoreboard uploads.
+            if (score.startsWith(" ⏣ ") || score.startsWith("  ")) rightVal = score;
         }
 
         return new Pair<>(leftVal, rightVal);
