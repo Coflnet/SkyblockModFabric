@@ -517,6 +517,12 @@ public abstract class HandledScreenMixin extends Screen {
     private void handleInfoDisplayClickEvent(ClickEvent clickEvent) {
         if (clickEvent instanceof ClickEvent.RunCommand runCommand) {
             String command = runCommand.command();
+            // Arm a sign fill instead of sending to the server, and auto-open the Custom Amount sign
+            // when unambiguous (mirrors the bazaar-search flow). Format: "fillsign:<4th line>: <value>".
+            if (command.startsWith("fillsign:")) {
+                com.coflnet.CoflModClient.armSignFillAndOpen(command.substring("fillsign:".length()));
+                return;
+            }
             var player = Minecraft.getInstance().player;
             if (player != null && player.connection != null) {
                 if (command.startsWith("/")) {

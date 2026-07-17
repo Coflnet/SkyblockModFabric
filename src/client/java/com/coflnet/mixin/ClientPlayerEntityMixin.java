@@ -1,6 +1,8 @@
 package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
 import net.minecraft.client.Minecraft;
@@ -29,6 +31,12 @@ public class ClientPlayerEntityMixin {
                 return;
             }
 
+            // Handle a click-armed sign fill (e.g. the Instant Buy "buy max" suggestion).
+            if (CoflModClient.pendingSignFill != null) {
+                handleSignFill(sign, front);
+                return;
+            }
+
             // Handle existing price suggestion logic
             String toSuggest = CoflModClient.findPriceSuggestion();
             System.out.println("Value to suggest: '"+toSuggest+"'");
@@ -49,6 +57,48 @@ public class ClientPlayerEntityMixin {
         } catch (Exception e) {
             System.out.println("[ClientPlayerEntityMixin] openEditSignScreen failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Handles a click-armed sign fill: fills line 0 with the suggested value, but only when the
+     * sign's 4th line matches the armed prefix (so we never fill an unrelated sign), then closes the
+     * sign so the amount is submitted. Payload format is "<4th line>: <value>", same as the
+     * always-on price suggestion but gated behind an explicit InfoDisplay click.
+     */
+    private void handleSignFill(SignBlockEntity sign, boolean front) {
+        String payload = CoflModClient.pendingSignFill;
+        CoflModClient.pendingSignFill = null; // consume once, regardless of match
+
+        String matchLine = null;
+        String value = null;
+        if (payload != null) {
+            try {
+                JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
+                if (obj.has("line") && !obj.get("line").isJsonNull()) matchLine = obj.get("line").getAsString();
+                if (obj.has("value") && !obj.get("value").isJsonNull()) value = obj.get("value").getAsString();
+            } catch (Exception e) {
+                // malformed payload - fall through to the abort path below
+            }
+        }
+        if (matchLine == null || value == null) {
+            CoflModClient.suppressSignRender = false; // nothing to fill, don't keep hiding signs
+            return;
+        }
+
+        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
+        if (lines.length < 4 || !matchLine.equals(lines[3].getString())) {
+            CoflModClient.suppressSignRender = false; // not the sign this suggestion is for
+            return;
+        }
+
+        lines[0] = Component.literal(value.trim());
+        sign.updateText(signText -> new SignText(
+                lines, lines,
+                signText.getColor(),
+                signText.hasGlowingText()
+        ), front);
+
+        scheduleSignClose(Minecraft.getInstance(), "buy max sign fill");
     }
 
     /**
@@ -98,6 +148,9 @@ public class ClientPlayerEntityMixin {
                         System.out.println("Closing sign screen to complete " + context);
                         current.onClose();
                     }
+                    // Re-enable sign rendering now that the auto-filled sign is closing (no-op for
+                    // the bazaar-search / coin paths, where the flag is already false).
+                    CoflModClient.suppressSignRender = false;
                 });
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();

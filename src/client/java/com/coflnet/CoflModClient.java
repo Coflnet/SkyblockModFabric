@@ -154,6 +154,16 @@ public class CoflModClient implements ClientModInitializer {
     // the trade Coins-transaction slot) is auto-filled with this value, mirroring
     // the bazaar-search auto-fill flow. Format is a plain digit string.
     public static volatile String pendingCoinAmount = null;
+    // Sign suggestion armed by clicking an InfoDisplay line (onClick "fillsign:<json>"). Unlike
+    // findPriceSuggestion() (which auto-fills the next matching sign unprompted), this only fills
+    // after the user clicks the info line - used by the Instant Buy "buy max" suggestion. Payload is
+    // a JSON object: {"line":"<4th sign line to match>","value":"<text>","name":"<button item name>",
+    // "slot":<gui index>}. line+value are required; name/slot pick the right button when several exist.
+    public static volatile String pendingSignFill = null;
+    // Set while a click-armed sign fill auto-opens a sign, so SignEditScreenMixin can suppress the
+    // sign editor's rendering and avoid it flashing on screen for the brief moment before it closes.
+    // Cleared once the sign editor is closed (scheduleSignClose) or the fill is consumed/aborted.
+    public static volatile boolean suppressSignRender = false;
     // Trade partner full name captured from chat. Hypixel truncates the name in
     // the trade window title (e.g. "VerticleFr"), but the trade-request chat line
     // carries the FULL name. TradeGUI prefers this over the truncated title.
@@ -2122,6 +2132,98 @@ public class CoflModClient implements ClientModInitializer {
                 ContainerInput.PICKUP,
                 player
         );
+    }
+
+    /**
+     * Arms a click-triggered sign fill and, when the open container has exactly one "Custom Amount"
+     * button, clicks it to open the sign immediately (which then auto-fills + submits via
+     * {@link com.coflnet.mixin.ClientPlayerEntityMixin} {@code handleSignFill}). With zero or several
+     * candidates it only arms the fill and lets the player open the sign themselves, so we never
+     * auto-open the wrong slot.
+     *
+     * @param payload the JSON sign-fill payload (see {@link #pendingSignFill})
+     */
+    public static void armSignFillAndOpen(String payload) {
+        pendingSignFill = payload;
+        suppressSignRender = false;
+
+        Minecraft client = Minecraft.getInstance();
+        if (!(client.gui.screen() instanceof ContainerScreen gcs)) {
+            return; // no container open; the fill stays armed for the next sign the player opens
+        }
+
+        String name = null;
+        int slot = -1;
+        try {
+            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
+            if (obj.has("name") && !obj.get("name").isJsonNull()) name = obj.get("name").getAsString();
+            if (obj.has("slot") && !obj.get("slot").isJsonNull()) slot = obj.get("slot").getAsInt();
+        } catch (Exception e) {
+            // malformed payload: fall back to the single-button heuristic below
+        }
+
+        int target = findCustomAmountSlot(gcs, name, slot);
+        if (target != -1) {
+            // We know exactly which sign is about to open, so suppress its render to avoid the flash.
+            suppressSignRender = true;
+            clickSlotInContainer(gcs, target);
+        }
+    }
+
+    /**
+     * Picks the "Custom Amount" button to open for a click-armed fill. Prefers the explicit gui
+     * {@code slot} sent by the server (validated to match {@code name} when a name is given), then a
+     * button whose item name contains {@code name}, and finally falls back to the single-unambiguous
+     * heuristic. Returns -1 when nothing safe can be chosen, so a click never opens the wrong sign.
+     */
+    private static int findCustomAmountSlot(ContainerScreen gcs, String name, int slot) {
+        int size = gcs.getMenu().getContainer().getContainerSize();
+        String wanted = name == null ? null : name.toLowerCase();
+
+        // 1. explicit slot, if in range and (no name given or the slot's item matches the name)
+        if (slot >= 0 && slot < size) {
+            ItemStack stack = gcs.getMenu().getContainer().getItem(slot);
+            if (!stack.isEmpty() && stack.getCustomName() != null
+                    && (wanted == null || wanted.isEmpty()
+                        || stack.getCustomName().getString().toLowerCase().contains(wanted))) {
+                return slot;
+            }
+        }
+
+        // 2. first button whose name contains the wanted name
+        if (wanted != null && !wanted.isEmpty()) {
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = gcs.getMenu().getContainer().getItem(i);
+                if (stack.isEmpty() || stack.getCustomName() == null) continue;
+                if (stack.getCustomName().getString().toLowerCase().contains(wanted)) return i;
+            }
+        }
+
+        // 3. fall back to the single unambiguous "Custom Amount" button
+        return findSingleCustomAmountSlot(gcs);
+    }
+
+    /**
+     * Finds the single "Custom Amount" button slot, or -1 if there is not exactly one (zero or
+     * ambiguous), so a click never opens the wrong sign.
+     */
+    private static int findSingleCustomAmountSlot(ContainerScreen gcs) {
+        int found = -1;
+        int size = gcs.getMenu().getContainer().getContainerSize();
+        for (int i = 0; i < size; i++) {
+            ItemStack stack = gcs.getMenu().getContainer().getItem(i);
+            if (stack.isEmpty() || stack.getCustomName() == null) {
+                continue;
+            }
+            String name = stack.getCustomName().getString().toLowerCase();
+            if (name.contains("custom") && name.contains("amount")) {
+                if (found != -1) {
+                    return -1; // more than one -> ambiguous, don't auto-open
+                }
+                found = i;
+            }
+        }
+        return found;
     }
 
     private boolean checkVersionCompability() {
