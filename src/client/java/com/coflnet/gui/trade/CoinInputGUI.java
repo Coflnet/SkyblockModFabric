@@ -18,9 +18,6 @@ import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-import java.util.ArrayList;
-import java.util.List;
-
 /**
  * Coins input dialog for the trade overlay. Lets the user type any amount
  * (2m, 1.5b, 80000000) OR pick one of two suggestion buttons (their side total
@@ -40,11 +37,11 @@ public class CoinInputGUI extends Screen {
     private final ChestMenu menu;
     private final TradeGUI parent;
 
-    private final long lbinSuggestion;
-    private final long medianSuggestion;
+    private long lbinSuggestion;
+    private long medianSuggestion;
     // Worth of items already on MY side (per basis), subtracted from suggestions.
-    private final long myItemsLbin;
-    private final long myItemsMedian;
+    private long myItemsLbin;
+    private long myItemsMedian;
 
     private EditBox input;
     private int panelX, panelY, panelW, panelH;
@@ -52,29 +49,32 @@ public class CoinInputGUI extends Screen {
     private int confirmX, confirmY, confirmW, confirmH;
     private int cancelX, cancelY, cancelW, cancelH;
 
-    // Lowball slider: 10%–100%, default 70%. The LBIN/Med suggestion buttons
-    // multiply their full total by this percent. This is the SkyCofl premium
-    // lowball overlay — the predecessor (SkyApi) gates it behind premium. We do
-    // NOT enforce that client-side yet, but surface a hint so it's clear it's a
-    // premium feature.
+    // premium access controls the slider and suggestion buttons.
     private int sliderX, sliderY, sliderW, sliderH;
     private int lowballPercent = 70;
     private boolean draggingSlider = false;
     private static final int MIN_PCT = 10;
     private static final int MAX_PCT = 100;
 
+    private static final int LOCKED_TINT = 0xFF3A3F46;
+
     public CoinInputGUI(ContainerScreen backing, TradeGUI parent) {
         super(Component.literal("Coins Input"));
         this.backing = backing;
         this.menu = backing.getMenu();
         this.parent = parent;
-        this.lbinSuggestion = sideTotal(CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.LBIN);
-        this.medianSuggestion = sideTotal(CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.MEDIAN);
-        // Value of items I've ALREADY put on my side (excludes coins — those are
-        // what this dialog adds). Subtracted from the suggestion so e.g. a 4m item
-        // already offered lowers a 32m lowball suggestion to 28m of coins.
-        this.myItemsLbin = sideItemsOnly(CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.LBIN);
-        this.myItemsMedian = sideItemsOnly(CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.MEDIAN);
+        refreshSuggestions();
+    }
+
+    public ContainerScreen getBacking() {
+        return backing;
+    }
+
+    private void refreshSuggestions() {
+        lbinSuggestion = sideTotal(CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.LBIN);
+        medianSuggestion = sideTotal(CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.MEDIAN);
+        myItemsLbin = sideItemsOnly(CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.LBIN);
+        myItemsMedian = sideItemsOnly(CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.MEDIAN);
     }
 
     /** Full-value total of a side for a basis (offered coins count at face value). */
@@ -93,12 +93,7 @@ public class CoinInputGUI extends Screen {
                 total += coins;
                 continue;
             }
-            String id = CoflModClient.getIdFromStack(stack);
-            Long worth = CoflModClient.parseWorthFromTips(
-                    CoflCore.handlers.DescriptionHandler.getTooltipData(id), basis);
-            if (worth != null) {
-                total += worth * stack.getCount();
-            }
+            total += itemWorth(stack, basis);
         }
         return total;
     }
@@ -117,14 +112,14 @@ public class CoinInputGUI extends Screen {
             if (CoflModClient.parseCoinStack(stack) != null) {
                 continue; // skip coins
             }
-            String id = CoflModClient.getIdFromStack(stack);
-            Long worth = CoflModClient.parseWorthFromTips(
-                    CoflCore.handlers.DescriptionHandler.getTooltipData(id), basis);
-            if (worth != null) {
-                total += worth * stack.getCount();
-            }
+            total += itemWorth(stack, basis);
         }
         return total;
+    }
+
+    private long itemWorth(ItemStack stack, WorthBasis basis) {
+        Long worth = TradePriceCache.worth(stack, basis);
+        return worth == null ? 0L : worth * stack.getCount();
     }
 
     @Override
@@ -135,9 +130,10 @@ public class CoinInputGUI extends Screen {
         panelY = this.height / 2 - panelH / 2;
 
         Font font = Minecraft.getInstance().font;
+        String prev = input == null ? "" : input.getValue();
         input = new EditBox(font, panelX + PAD, panelY + 28, panelW - PAD * 2, 16, Component.literal("amount"));
         input.setMaxLength(20);
-        input.setValue("");
+        input.setValue(prev);
         addRenderableWidget(input);
         setInitialFocus(input);
 
@@ -178,20 +174,53 @@ public class CoinInputGUI extends Screen {
 
     @Override
     public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        boolean premium = com.coflnet.config.TradeGuiManager.hasPremium();
+        if (!premium) {
+            draggingSlider = false;
+        }
+        refreshSuggestions();
+
         RenderUtils.drawRoundedRect(context, panelX, panelY, panelW, panelH, RADIUS, CoflColConfig.BACKGROUND_PRIMARY);
         RenderUtils.drawString(context, "§lAdd Coins", panelX + PAD, panelY + PAD, CoflColConfig.TEXT_PRIMARY);
 
-        // Lowball slider. Labelled as a SkyCofl premium feature as the server powered version.
-        RenderUtils.drawString(context, "§7Lowball: §f" + lowballPercent + "% §r§8§o(SkyCofl Premium)", sliderX, sliderY - 10, CoflColConfig.TEXT_PRIMARY);
-        RenderUtils.drawRoundedRect(context, sliderX, sliderY, sliderW, sliderH, 2, CoflColConfig.BACKGROUND_SECONDARY);
-        int knobX = sliderX + (int) ((long) (lowballPercent - MIN_PCT) * (sliderW - 6) / (MAX_PCT - MIN_PCT));
-        RenderUtils.drawRoundedRect(context, knobX, sliderY - 2, 6, sliderH + 4, 2, CoflColConfig.CONFIRM);
+        Font font = Minecraft.getInstance().font;
 
-        // Suggestion buttons (scaled by the lowball percent).
-        drawButton(context, lbinBtnX, lbinBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
-                "LBIN " + fmt(scaled(lbinSuggestion, myItemsLbin)), CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.CONFIRM_HOVER);
-        drawButton(context, medBtnX, medBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
-                "Med " + fmt(scaled(medianSuggestion, myItemsMedian)), CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.CONFIRM_HOVER);
+        if (premium) {
+            RenderUtils.drawString(context, "§7lowball: §f" + lowballPercent + "% §r§8§o(skycofl premium)", sliderX, sliderY - 10, CoflColConfig.TEXT_PRIMARY);
+            RenderUtils.drawRoundedRect(context, sliderX, sliderY, sliderW, sliderH, 2, CoflColConfig.BACKGROUND_SECONDARY);
+            int knobX = sliderX + (int) ((long) (lowballPercent - MIN_PCT) * (sliderW - 6) / (MAX_PCT - MIN_PCT));
+            RenderUtils.drawRoundedRect(context, knobX, sliderY - 2, 6, sliderH + 4, 2, CoflColConfig.CONFIRM);
+
+            drawButton(context, lbinBtnX, lbinBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
+                    "lbin " + fmt(scaled(lbinSuggestion, myItemsLbin)), CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.CONFIRM_HOVER);
+            drawButton(context, medBtnX, medBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
+                    "med " + fmt(scaled(medianSuggestion, myItemsMedian)), CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.CONFIRM_HOVER);
+
+            RenderUtils.drawString(context, "§8premium suggestions enabled",
+                    panelX + PAD, panelY + 116, CoflColConfig.TEXT_PRIMARY);
+        } else {
+            RenderUtils.drawString(context, "§7lowball: §8locked", sliderX, sliderY - 10, CoflColConfig.TEXT_PRIMARY);
+            RenderUtils.drawRoundedRect(context, sliderX, sliderY, sliderW, sliderH, 2, LOCKED_TINT);
+            drawButton(context, lbinBtnX, lbinBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
+                    "§8lbin locked", LOCKED_TINT, LOCKED_TINT);
+            drawButton(context, medBtnX, medBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
+                    "§8med locked", LOCKED_TINT, LOCKED_TINT);
+            RenderUtils.drawString(context, "§8premium suggestions locked",
+                    panelX + PAD, panelY + 116, CoflColConfig.TEXT_PRIMARY);
+
+            boolean overLocked = inRect(mouseX, mouseY, sliderX, sliderY - 12, sliderW, sliderH + 14)
+                    || inRect(mouseX, mouseY, lbinBtnX, lbinBtnY, sugBtnW, sugBtnH)
+                    || inRect(mouseX, mouseY, medBtnX, medBtnY, sugBtnW, sugBtnH);
+            if (overLocked) {
+                context.setComponentTooltipForNextFrame(font, java.util.List.of(
+                        Component.literal("§6requires skycofl premium"),
+                        Component.literal("§7suggests lowball prices for you, adjustable"),
+                        Component.literal("§7with the lowball slider and lbin or med buttons."),
+                        Component.literal("§7get it with §e/cofl buy premium§7."),
+                        Component.literal("§8premium access is read from login.")),
+                        mouseX, mouseY);
+            }
+        }
 
         // Confirm / cancel.
         drawButton(context, confirmX, confirmY, confirmW, confirmH, mouseX, mouseY,
@@ -212,18 +241,32 @@ public class CoinInputGUI extends Screen {
         double mx = click.x();
         double my = click.y();
 
+        boolean premium = com.coflnet.config.TradeGuiManager.hasPremium();
+
         // Slider grab (generous vertical hit area).
         if (inRect(mx, my, sliderX, sliderY - 4, sliderW, sliderH + 8)) {
-            draggingSlider = true;
-            updateSlider(mx);
+            if (premium) {
+                draggingSlider = true;
+                updateSlider(mx);
+            }
             return true;
         }
         if (inRect(mx, my, lbinBtnX, lbinBtnY, sugBtnW, sugBtnH)) {
-            input.setValue(String.valueOf(scaled(lbinSuggestion, myItemsLbin)));
+            if (premium) {
+                long value = scaled(lbinSuggestion, myItemsLbin);
+                if (value > 0L) {
+                    input.setValue(String.valueOf(value));
+                }
+            }
             return true;
         }
         if (inRect(mx, my, medBtnX, medBtnY, sugBtnW, sugBtnH)) {
-            input.setValue(String.valueOf(scaled(medianSuggestion, myItemsMedian)));
+            if (premium) {
+                long value = scaled(medianSuggestion, myItemsMedian);
+                if (value > 0L) {
+                    input.setValue(String.valueOf(value));
+                }
+            }
             return true;
         }
         if (inRect(mx, my, confirmX, confirmY, confirmW, confirmH)) {
