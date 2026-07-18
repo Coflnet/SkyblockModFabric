@@ -313,6 +313,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            com.coflnet.gui.flip.FlipHud.clear();
             ServerContext detectedServerContext = detectServerContext(null);
             applyServerContext(detectedServerContext);
             lastScoreboardProcessMs = 0L;
@@ -336,6 +337,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            com.coflnet.gui.flip.FlipHud.clear();
             applyServerContext(ServerContext.UNKNOWN);
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
@@ -557,6 +559,13 @@ public class CoflModClient implements ClientModInitializer {
                         x,
                         y,
                         0xFFFFFFFF, EventSubscribers.countdownData.getScale().intValue());
+            }
+        });
+
+        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("coflnet", "flip_hud"), (drawContext, tickCounter) -> {
+            if (Minecraft.getInstance().gui.screen() == null
+                    || Minecraft.getInstance().gui.screen() instanceof ChatScreen) {
+                com.coflnet.gui.flip.FlipHud.render(drawContext);
             }
         });
 
@@ -1166,6 +1175,26 @@ public class CoflModClient implements ClientModInitializer {
                             boolean current = com.coflnet.config.TradeGuiManager.isEnabled();
                             sendChatMessage("§7Trade overlay is currently " + (current ? "§aon" : "§coff"));
                             sendChatMessage("§7Usage: §e/cofl tradegui <on/off>");
+                        }
+                        return 1;
+                    }
+
+                    if (args.length >= 1 && args[0].equalsIgnoreCase("fliphud")) {
+                        if (args.length >= 2 && (args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off"))) {
+                            boolean enabled = args[1].equalsIgnoreCase("on");
+                            com.coflnet.config.FlipHudManager.setEnabled(enabled);
+                            sendChatMessage("§aflip hud " + (enabled ? "§aenabled" : "§cdisabled"));
+                        } else if (args.length >= 2 && args[1].equalsIgnoreCase("move")) {
+                            Minecraft minecraft = Minecraft.getInstance();
+                            minecraft.execute(() -> minecraft.gui.setScreen(
+                                    new com.coflnet.gui.flip.FlipHudEditorScreen(minecraft.gui.screen())));
+                        } else if (args.length >= 2 && args[1].equalsIgnoreCase("reset")) {
+                            com.coflnet.config.FlipHudManager.resetPosition();
+                            sendChatMessage("§aflip hud position reset");
+                        } else {
+                            boolean enabled = com.coflnet.config.FlipHudManager.isEnabled();
+                            sendChatMessage("§7flip hud is " + (enabled ? "§aon" : "§coff"));
+                            sendChatMessage("§7usage, §e/cofl fliphud <on, off, move, reset>");
                         }
                         return 1;
                     }

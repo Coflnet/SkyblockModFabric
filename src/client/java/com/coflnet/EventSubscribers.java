@@ -4,6 +4,7 @@ import java.util.*;
 
 import CoflCore.classes.*;
 import CoflCore.commands.models.HotkeyRegister;
+import CoflCore.commands.CommandType;
 import CoflCore.events.*;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.ItemStack;
@@ -123,7 +124,12 @@ public class EventSubscribers {
 
     @Subscribe
     public void onReceiveCommand(ReceiveCommand event){
-        
+        if (event == null || event.command == null || event.command.getType() == null) {
+            return;
+        }
+        if (event.command.getType() == CommandType.Flip) {
+            com.coflnet.gui.flip.FlipHud.capture(event.command.getData());
+        }
     }
 
     @Subscribe
@@ -149,6 +155,9 @@ public class EventSubscribers {
 
     @Subscribe
     public void onOpenAuctionGUI(OnOpenAuctionGUI event){
+        if (event != null && event.flip != null) {
+            com.coflnet.gui.flip.FlipHud.markOpening(event.flip.Id);
+        }
         Minecraft.getInstance().execute(() -> {
             flipData = event.flip;
             if (Minecraft.getInstance().getConnection() != null) {

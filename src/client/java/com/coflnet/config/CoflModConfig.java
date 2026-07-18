@@ -33,6 +33,10 @@ public class CoflModConfig {
     // TradeGUI item-list column count (1-3). Persisted so the user's choice
     // sticks across trades and restarts. Default 1 (the original look).
     public int tradeListColumns = 1;
+
+    public boolean flipHudEnabled = true;
+    public int flipHudX = -1;
+    public int flipHudY = 8;
     
     // Single shared, lazily-loaded instance. All managers (DevManager,
     // TradeGuiManager, SellProtectionManager, ...) delegate to this so there is
