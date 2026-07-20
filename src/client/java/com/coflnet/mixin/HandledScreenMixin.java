@@ -58,6 +58,20 @@ public abstract class HandledScreenMixin extends Screen {
     private TextWidgetPositionConfig positionConfig;
     private int currentMaxWidth = 100;
 
+    @Inject(at = @At("HEAD"), method = "removed")
+    public void onRemoved(CallbackInfo ci){
+        try {
+            // Fires whenever this container view goes away for ANY reason: an ESC/close AND when
+            // Hypixel replaces it with another window (e.g. switching backpacks via the nav items,
+            // which does not trigger onClose). Resend the outgoing storage contents so edits made
+            // after the on-open upload aren't lost on navigation. Deduped via lastNbtRequest, so an
+            // unchanged view is a no-op.
+            CoflModClient.resendStorageOnClose(this);
+        } catch (Exception e) {
+            System.out.println("[HandledScreenMixin] resend on removed failed: " + e.getMessage());
+        }
+    }
+
     @Inject(at = @At("TAIL"), method = "init")
     public void init(CallbackInfo ci){
         try {

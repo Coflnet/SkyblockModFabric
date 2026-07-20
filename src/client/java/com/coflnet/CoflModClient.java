@@ -1891,6 +1891,38 @@ public class CoflModClient implements ClientModInitializer {
         );
     }
 
+    /**
+     * The contents of a storage container are uploaded once when it opens, but the player can still
+     * move items in or out afterwards (e.g. putting a weapon into a backpack). Those slot changes are
+     * not re-uploaded for storage menus, so the stored view would be stale. When such a container is
+     * closed, re-read its final contents and dispatch again. {@link #loadDescriptionsForItems} dedups
+     * via {@code lastNbtRequest}, so this is a no-op when nothing changed since the last upload.
+     * Must run before {@code posToUpload} is cleared so island-chest positions are still included.
+     */
+    public static void resendStorageOnClose(Object screen) {
+        if (!(screen instanceof AbstractContainerScreen<?> hs))
+            return;
+        String title = hs.getTitle().getString();
+        if (!isStorageChest(title))
+            return;
+        loadDescriptionsForItems(title, hs.getMenu().getItems());
+    }
+
+    /**
+     * Containers whose full contents the backend persists as storage. Mirrors the server-side
+     * allow-list in SkyUserState's {@code StorageListener.IsNotStorage} so we only resend real
+     * storage (backpacks, ender chests, island chests, furniture, hunting menus) on close.
+     */
+    public static boolean isStorageChest(String title) {
+        if (title == null)
+            return false;
+        return title.startsWith("Ender Chest")
+                || title.contains("Backpack (Slot")
+                || title.equals("Chest") || title.equals("Large Chest") // island chests
+                || title.equals("Chest Storage") || title.equals("Medium Shelves") || title.contains("Chest+") // furniture
+                || title.contains("Huntaxe") || title.startsWith("Hunting Toolkit"); // hunting menus
+    }
+
     private static List<String> getScoreboard() {
         ObjectArrayList<String> scoreboardAsText = new ObjectArrayList<>();
         if (Minecraft.getInstance() == null || Minecraft.getInstance().level == null) {
