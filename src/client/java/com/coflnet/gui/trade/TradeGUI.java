@@ -10,7 +10,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ChestMenu;
@@ -74,12 +73,6 @@ public class TradeGUI extends Screen {
     private int scrollYou = 0;
     private int scrollThem = 0;
 
-    // Lag fix: instead of polling the heavy backend pipeline every second from
-    // the render thread, we detect changes with a CHEAP signature of just the
-    // trade slots and only re-price OFF-thread when that signature changes.
-    private String lastTradeSig = null;
-    private volatile boolean repriceInFlight = false;
-
     private record Row(int slotId, ItemStack stack, boolean isCoins, long coinAmount) {}
 
     public TradeGUI(ContainerScreen backing) {
@@ -87,6 +80,10 @@ public class TradeGUI extends Screen {
         this.backing = backing;
         this.menu = backing.getMenu();
         this.otherName = resolveOtherName(backing.getTitle().getString());
+    }
+
+    public ContainerScreen getBacking() {
+        return backing;
     }
 
     /**
@@ -111,58 +108,6 @@ public class TradeGUI extends Screen {
         }
         t = t.trim();
         return t.isEmpty() ? "THEM" : t;
-    }
-
-    /**
-     * Cheap per-frame change detection over just the trade slots (both sides).
-     * Builds a tiny string of itemId×count per non-empty trade slot — no NBT,
-     * no gzip, no base64. Only when this signature changes do we fire the heavy
-     * backend re-price, and we do it on a virtual thread so the render thread
-     * never blocks (root cause of the add/remove FPS spikes).
-     */
-    private void maybeReprice() {
-        StringBuilder sig = new StringBuilder();
-        appendSig(sig, CoflModClient.TRADE_YOUR_SLOTS);
-        appendSig(sig, CoflModClient.TRADE_THEIR_SLOTS);
-        String current = sig.toString();
-        if (current.equals(lastTradeSig)) {
-            return;
-        }
-        // Check the in flight flag before we advance lastTradeSig, so a change
-        // that lands while a reprice is running is not swallowed. We leave
-        // lastTradeSig on the old value and just bail, and then the next frame
-        // still sees a mismatch and fires the reprice once the slot is free.
-        if (repriceInFlight) {
-            return;
-        }
-        lastTradeSig = current;
-        repriceInFlight = true;
-        final String title = backing.getTitle().getString();
-        final NonNullList<ItemStack> snapshot = NonNullList.create();
-        snapshot.addAll(menu.getItems());
-        Thread.startVirtualThread(() -> {
-            try {
-                CoflModClient.loadDescriptionsForItems(title, snapshot);
-            } catch (Exception ignored) {
-            } finally {
-                repriceInFlight = false;
-            }
-        });
-    }
-
-    private void appendSig(StringBuilder sig, int[] slots) {
-        for (int slot : slots) {
-            if (slot >= menu.slots.size()) {
-                continue;
-            }
-            ItemStack stack = menu.slots.get(slot).getItem();
-            if (stack.isEmpty()) {
-                continue;
-            }
-            sig.append(slot).append(':')
-               .append(CoflModClient.getIdFromStack(stack)).append('x')
-               .append(stack.getCount()).append(';');
-        }
     }
 
     @Override
@@ -273,9 +218,7 @@ public class TradeGUI extends Screen {
         if (row.isCoins()) {
             return row.coinAmount();
         }
-        String id = CoflModClient.getIdFromStack(row.stack());
-        Long w = CoflModClient.parseWorthFromTips(
-                CoflCore.handlers.DescriptionHandler.getTooltipData(id), basis);
+        Long w = TradePriceCache.worth(row.stack(), basis);
         return (w == null ? 0L : w) * row.stack().getCount();
     }
 
@@ -294,12 +237,6 @@ public class TradeGUI extends Screen {
             return;
         }
         Font font = Minecraft.getInstance().font;
-
-        // Re-price ONLY when the trade contents actually change, and do the heavy
-        // backend call OFF the render thread. The old code serialized all 45 slots
-        // to NBT+gzip+base64 and hit the backend synchronously every second on the
-        // render thread → multi-second FPS-to-0 spikes on every add/remove.
-        maybeReprice();
 
         List<Row> youRows = buildRows(CoflModClient.TRADE_YOUR_SLOTS);
         List<Row> themRows = buildRows(CoflModClient.TRADE_THEIR_SLOTS);

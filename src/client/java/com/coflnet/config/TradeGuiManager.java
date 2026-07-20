@@ -6,6 +6,8 @@ package com.coflnet.config;
  * controls the Copy Dump diagnostic button).
  */
 public class TradeGuiManager {
+    private static volatile String accountTier = "none";
+
     public static void reloadConfig() {
         CoflModConfig.reload();
     }
@@ -22,6 +24,18 @@ public class TradeGuiManager {
         CoflModConfig cfg = getConfig();
         cfg.tradeGuiEnabled = enabled;
         cfg.save();
+    }
+
+    public static boolean hasPremium() {
+        return accountTier.contains("premium");
+    }
+
+    public static void setAccountTier(String tier) {
+        accountTier = tier == null ? "none" : tier.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    public static void clearAccountTier() {
+        accountTier = "none";
     }
 
     /** Persisted TradeGUI item-list column count, clamped to 1-3. */

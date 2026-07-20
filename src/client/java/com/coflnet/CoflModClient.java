@@ -323,6 +323,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
             ServerContext detectedServerContext = detectServerContext(null);
             applyServerContext(detectedServerContext);
             lastScoreboardProcessMs = 0L;
@@ -346,6 +347,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
             applyServerContext(ServerContext.UNKNOWN);
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
@@ -434,8 +436,8 @@ public class CoflModClient implements ClientModInitializer {
         // loadDescriptionsForInv gates on, so we trigger the price load directly.
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof ContainerScreen cs && isTradeScreenByTitle(cs)) {
-                NonNullList<ItemStack> items = cs.getMenu().getItems();
-                loadDescriptionsForItems(cs.getTitle().getString(), items);
+                com.coflnet.gui.trade.TradePriceCache.clear();
+                com.coflnet.gui.trade.TradePriceCache.request(cs);
 
                 // Replace the trade window with the SkyCofl TradeGUI overlay ONLY
                 // when the trade overlay is enabled (/cofl tradegui on). Dev mode
@@ -778,6 +780,14 @@ public class CoflModClient implements ClientModInitializer {
     /** Worth basis selectable by the user (median vs lowest BIN). */
     public enum WorthBasis { LBIN, MEDIAN }
 
+    // these values are parsed after the existing description request completes.
+    private static final java.util.regex.Pattern LBIN_VALUE = java.util.regex.Pattern.compile(
+            "\\b(?:lbin|lowest\\s*bin)\\s*:?\\s*~?\\s*([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern MED_VALUE = java.util.regex.Pattern.compile(
+            "\\bmed(?:ian)?\\s*:?\\s*~?\\s*([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
     /**
      * Extracts a PER-ITEM coin worth from the backend tooltip lines.
      * <p>
@@ -791,7 +801,7 @@ public class CoflModClient implements ClientModInitializer {
         if (tips == null) {
             return null;
         }
-        String prefix = (basis == WorthBasis.LBIN) ? "lbin:" : "med:";
+        java.util.regex.Pattern label = (basis == WorthBasis.LBIN) ? LBIN_VALUE : MED_VALUE;
         Long bazaar = null;
         for (DescriptionHandler.DescModification t : tips) {
             if (t == null || t.value == null) {
@@ -802,15 +812,16 @@ public class CoflModClient implements ClientModInitializer {
                 continue;
             }
             plain = plain.trim();
-            String lower = plain.toLowerCase(Locale.ROOT);
-            // AH line (preferred when present).
-            if (lower.startsWith(prefix)) {
-                Long v = extractFirstNumber(plain);
-                if (v != null) {
+            // prefer the auction value when it is present.
+            java.util.regex.Matcher m = label.matcher(plain);
+            if (m.find()) {
+                Long v = parseCoinNumber(m.group(1));
+                if (v != null && v > 0) {
                     return v;
                 }
             }
             // Bazaar line: "Buy: 37.49K (585.8 each)Sell: 33.38K (521.6 each)".
+            String lower = plain.toLowerCase(Locale.ROOT);
             if (bazaar == null && (lower.contains("buy:") && lower.contains("each"))) {
                 bazaar = parseBazaarEach(plain, basis == WorthBasis.LBIN ? "buy" : "sell");
             }
@@ -828,19 +839,6 @@ public class CoflModClient implements ClientModInitializer {
                 .matcher(plain);
         if (m.find()) {
             return parseCoinNumber(m.group(1));
-        }
-        return null;
-    }
-
-    /** First comma-grouped integer in a string (e.g. "lbin: ~901,098,980 ..." -> 901098980). */
-    private static Long extractFirstNumber(String s) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d[\\d,]*)").matcher(s);
-        if (m.find()) {
-            try {
-                return Long.parseLong(m.group(1).replace(",", ""));
-            } catch (NumberFormatException e) {
-                return null;
-            }
         }
         return null;
     }
