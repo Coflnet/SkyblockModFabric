@@ -3,8 +3,10 @@ package com.coflnet.gui.trade;
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
 import com.coflnet.CoflModClient.WorthBasis;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.core.NonNullList;
+import net.minecraft.world.Container;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -16,39 +18,69 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class TradePriceCache {
+    private static final long DEBOUNCE_MS = 75L;
     private static final AtomicLong generation = new AtomicLong();
-    private static final AtomicLong requestSequence = new AtomicLong();
+    private static final AtomicLong sequence = new AtomicLong();
     private static final AtomicBoolean workerRunning = new AtomicBoolean();
     private static final AtomicReference<Request> queued = new AtomicReference<>();
+
     private static volatile Map<String, Prices> prices = Map.of();
-    private static volatile List<ItemStack> tradeItems = List.of();
+    private static final List<ItemStack> seenItems = new ArrayList<>();
 
     private TradePriceCache() {
     }
 
     public static void clear() {
         generation.incrementAndGet();
-        requestSequence.incrementAndGet();
+        sequence.incrementAndGet();
         queued.set(null);
         prices = Map.of();
-        tradeItems = List.of();
+        seenItems.clear();
     }
 
-    public static void request(ContainerScreen screen) {
-        if (screen == null || !CoflModClient.isTradeScreenByTitle(screen)) {
+    /** Ignore packets unless they belong to the verified trade menu that is actually open. */
+    public static void requestCurrentTrade(int packetContainerId) {
+        Minecraft client = Minecraft.getInstance();
+        var currentScreen = client.gui.screen();
+        ContainerScreen screen = currentScreen instanceof TradeGUI trade ? trade.getBacking()
+                : currentScreen instanceof CoinInputGUI coins ? coins.getBacking()
+                : currentScreen instanceof ContainerScreen container ? container
+                : null;
+
+        if (screen == null
+                || client.player == null
+                || client.player.containerMenu != screen.getMenu()
+                || screen.getMenu().containerId != packetContainerId
+                || !CoflModClient.isTradeScreen(screen)) {
             return;
         }
-        NonNullList<ItemStack> snapshot = NonNullList.create();
-        for (ItemStack stack : screen.getMenu().getItems()) {
-            snapshot.add(stack.copy());
+        request(screen);
+    }
+
+    /** Queue one debounced refresh when a previously unseen exact item enters the offer. */
+    public static void request(ContainerScreen screen) {
+        if (screen == null || !CoflModClient.isTradeScreen(screen)) {
+            return;
         }
-        List<ItemStack> currentTradeItems = tradeItems(snapshot);
-        if (!sameItems(currentTradeItems, tradeItems)) {
-            tradeItems = currentTradeItems;
-            prices = Map.of();
+
+        NonNullList<ItemStack> snapshot = copyItems(screen.getMenu().getItems());
+        List<ItemStack> offered = tradeItems(snapshot);
+        long requestGeneration = generation.get();
+        boolean hasNewItem = false;
+        for (ItemStack item : offered) {
+            if (shouldPrice(item) && !containsExact(seenItems, item)) {
+                seenItems.add(item.copy());
+                hasNewItem = true;
+            }
         }
-        long sequence = requestSequence.incrementAndGet();
-        queued.set(new Request(screen.getTitle().getString(), snapshot, generation.get(), sequence));
+        if (!hasNewItem) {
+            return;
+        }
+        prices = Map.copyOf(readPrices(offered, false));
+        long requestSequence = sequence.incrementAndGet();
+        queued.set(new Request(
+                screen.getTitle().getString(), snapshot, offered,
+                requestGeneration, requestSequence));
         drain();
     }
 
@@ -64,6 +96,44 @@ public final class TradePriceCache {
         return worth > 0L ? worth : null;
     }
 
+    public static Long stackWorth(ItemStack stack, WorthBasis basis) {
+        Long coins = CoflModClient.parseCoinStack(stack);
+        if (coins != null) {
+            return coins;
+        }
+        Long unitWorth = worth(stack, basis);
+        return unitWorth == null ? null : unitWorth * stack.getCount();
+    }
+
+    /** Shared valuation used by the overlay, coin suggestions, and diagnostics. */
+    public static SideValue valueSlots(Container container, int[] slots, WorthBasis basis, boolean includeCoins) {
+        long total = 0L;
+        int unpriced = 0;
+        for (int slot : slots) {
+            if (slot < 0 || slot >= container.getContainerSize()) {
+                continue;
+            }
+            ItemStack stack = container.getItem(slot);
+            if (stack.isEmpty()) {
+                continue;
+            }
+            Long coins = CoflModClient.parseCoinStack(stack);
+            if (coins != null) {
+                if (includeCoins) {
+                    total += coins;
+                }
+                continue;
+            }
+            Long worth = stackWorth(stack, basis);
+            if (worth == null) {
+                unpriced++;
+            } else {
+                total += worth;
+            }
+        }
+        return new SideValue(total, unpriced);
+    }
+
     private static void drain() {
         if (!workerRunning.compareAndSet(false, true)) {
             return;
@@ -71,7 +141,7 @@ public final class TradePriceCache {
         Thread.startVirtualThread(() -> {
             try {
                 Request request;
-                while ((request = queued.getAndSet(null)) != null) {
+                while ((request = takeDebouncedRequest()) != null) {
                     load(request);
                 }
             } finally {
@@ -83,31 +153,63 @@ public final class TradePriceCache {
         });
     }
 
+    private static Request takeDebouncedRequest() {
+        Request request = queued.getAndSet(null);
+        while (request != null) {
+            try {
+                Thread.sleep(DEBOUNCE_MS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return request;
+            }
+            Request newer = queued.getAndSet(null);
+            if (newer == null) {
+                return request;
+            }
+            request = newer;
+        }
+        return null;
+    }
+
     private static void load(Request request) {
         try {
-            CoflModClient.loadDescriptionsForItems(request.title, request.items);
             if (!isCurrent(request)) {
                 return;
             }
-            Map<String, Prices> updated = new HashMap<>();
-            for (ItemStack stack : request.items) {
-                if (stack.isEmpty()) {
-                    continue;
-                }
-                String id = CoflModClient.getIdFromStack(stack);
-                DescriptionHandler.DescModification[] tips = DescriptionHandler.getTooltipData(id);
-                Long lbin = CoflModClient.parseWorthFromTips(tips, WorthBasis.LBIN);
-                Long median = CoflModClient.parseWorthFromTips(tips, WorthBasis.MEDIAN);
-                if (lbin != null || median != null) {
-                    updated.put(id, new Prices(value(lbin), value(median)));
-                }
-            }
+            CoflModClient.loadDescriptionsForItemsBlocking(request.title, request.items);
+            Map<String, Prices> loaded = readPrices(request.offered, true);
             if (isCurrent(request)) {
-                prices = Map.copyOf(updated);
+                prices = Map.copyOf(loaded);
             }
-        } catch (Throwable throwable) {
-            System.out.println("[trade] description refresh failed, " + throwable);
+        } catch (Exception exception) {
+            System.out.println("[trade] description refresh failed, " + exception);
         }
+    }
+
+    private static Map<String, Prices> readPrices(List<ItemStack> items, boolean preferCurrentId) {
+        Map<String, Prices> result = new HashMap<>();
+        for (ItemStack stack : items) {
+            if (!shouldPrice(stack)) {
+                continue;
+            }
+            String id = CoflModClient.getIdFromStack(stack);
+            DescriptionHandler.DescModification[] tips = preferCurrentId
+                    ? DescriptionHandler.getTooltipData(id)
+                    : CoflModClient.getMappedTooltipData(id);
+            if (tips == null && preferCurrentId) {
+                tips = CoflModClient.getMappedTooltipData(id);
+            }
+            Long lbin = CoflModClient.parseWorthFromTips(tips, WorthBasis.LBIN);
+            Long median = CoflModClient.parseWorthFromTips(tips, WorthBasis.MEDIAN);
+            if (lbin != null || median != null) {
+                result.put(id, new Prices(value(lbin), value(median)));
+            }
+        }
+        return result;
+    }
+
+    private static boolean shouldPrice(ItemStack stack) {
+        return stack != null && !stack.isEmpty() && CoflModClient.parseCoinStack(stack) == null;
     }
 
     private static long value(Long value) {
@@ -115,7 +217,15 @@ public final class TradePriceCache {
     }
 
     private static boolean isCurrent(Request request) {
-        return request.generation == generation.get() && request.sequence == requestSequence.get();
+        return request.generation == generation.get() && request.sequence == sequence.get();
+    }
+
+    private static NonNullList<ItemStack> copyItems(List<ItemStack> items) {
+        NonNullList<ItemStack> copy = NonNullList.create();
+        for (ItemStack stack : items) {
+            copy.add(stack.copy());
+        }
+        return copy;
     }
 
     private static List<ItemStack> tradeItems(NonNullList<ItemStack> items) {
@@ -128,27 +238,23 @@ public final class TradePriceCache {
 
     private static void appendSlots(List<ItemStack> result, NonNullList<ItemStack> items, int[] slots) {
         for (int slot : slots) {
-            if (slot < items.size()) {
-                result.add(items.get(slot).copy());
-            } else {
-                result.add(ItemStack.EMPTY);
-            }
+            result.add(slot < items.size() ? items.get(slot).copy() : ItemStack.EMPTY);
         }
     }
 
-    private static boolean sameItems(List<ItemStack> first, List<ItemStack> second) {
-        if (first.size() != second.size()) {
-            return false;
-        }
-        for (int i = 0; i < first.size(); i++) {
-            if (!ItemStack.matches(first.get(i), second.get(i))) {
-                return false;
-            }
-        }
-        return true;
+    private static boolean containsExact(List<ItemStack> items, ItemStack candidate) {
+        return items.stream().anyMatch(item -> ItemStack.matches(item, candidate));
     }
 
-    private record Request(String title, NonNullList<ItemStack> items, long generation, long sequence) {
+    public record SideValue(long total, int unpriced) {
+    }
+
+    private record Request(
+            String title,
+            NonNullList<ItemStack> items,
+            List<ItemStack> offered,
+            long generation,
+            long sequence) {
     }
 
     private record Prices(long lbin, long median) {
