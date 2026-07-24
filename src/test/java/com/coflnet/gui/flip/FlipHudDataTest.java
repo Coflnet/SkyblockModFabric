@@ -118,6 +118,8 @@ class FlipHudDataTest {
     void recognizesBackendSessionCommands() {
         assertTrue(FlipHudData.changesBackendSession("cofl stop"));
         assertTrue(FlipHudData.changesBackendSession("COFL reset"));
+        assertTrue(FlipHudData.changesBackendSession("cl start"));
+        assertTrue(FlipHudData.changesBackendSession("CL reset"));
         assertFalse(FlipHudData.changesBackendSession("cofl connect destination"));
         assertFalse(FlipHudData.changesBackendSession("cofl status"));
         assertFalse(FlipHudData.changesBackendSession("stop"));
