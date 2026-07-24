@@ -32,7 +32,7 @@ public record FlipHudData(
             itemName = messageFallback(root);
         }
         return new FlipHudData(
-                string(root, "id", MAX_ID_LENGTH),
+                auctionId(root),
                 itemName.isBlank() ? "new flip" : itemName,
                 Math.max(1, integer(auction, "count")),
                 firstLong(longValue(auction, "startingBid"), longValue(root, "cost")),
@@ -50,12 +50,7 @@ public record FlipHudData(
         if (parts.length != 2 || !"viewauction".equalsIgnoreCase(parts[0])) {
             return "";
         }
-        String id = parts[1].trim();
-        if (id.isBlank() || id.length() > MAX_ID_LENGTH
-                || id.chars().anyMatch(Character::isWhitespace)) {
-            return "";
-        }
-        return id;
+        return normalizeAuctionId(parts[1]);
     }
 
     public static boolean changesBackendSession(String command) {
@@ -82,22 +77,50 @@ public record FlipHudData(
     }
 
     private static String string(JsonObject parent, String key, int maximumLength) {
-        JsonElement value = parent == null ? null : parent.get(key);
-        if (value == null || value.isJsonNull() || !value.isJsonPrimitive()) {
-            return "";
-        }
-        String text = value.getAsString();
+        String text = rawString(parent, key);
         return text.length() <= maximumLength ? text : text.substring(0, maximumLength);
     }
 
-    private static String displayString(JsonObject parent, String key, int maximumLength) {
-        String value = string(parent, key, maximumLength);
-        StringBuilder clean = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char character = value.charAt(i);
-            clean.append(character < 32 || character == 127 ? ' ' : character);
+    private static String rawString(JsonObject parent, String key) {
+        JsonElement value = parent == null ? null : parent.get(key);
+        if (value == null || value.isJsonNull() || !value.isJsonPrimitive()
+                || !value.getAsJsonPrimitive().isString()) {
+            return "";
         }
-        return clean.toString().trim();
+        return value.getAsString();
+    }
+
+    private static String auctionId(JsonObject root) {
+        return normalizeAuctionId(rawString(root, "id"));
+    }
+
+    static String normalizeAuctionId(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.strip();
+        if (normalized.isBlank() || normalized.length() > MAX_ID_LENGTH
+                || normalized.chars().anyMatch(Character::isWhitespace)
+                || normalized.chars().anyMatch(Character::isISOControl)) {
+            return "";
+        }
+        return normalized;
+    }
+
+    private static String displayString(JsonObject parent, String key, int maximumLength) {
+        String value = rawString(parent, key);
+        StringBuilder clean = new StringBuilder(Math.min(value.length(), maximumLength));
+        for (int i = 0; i < value.length() && clean.length() < maximumLength; i++) {
+            char character = value.charAt(i);
+            if (character == '§') {
+                if (i + 1 < value.length()) {
+                    i++;
+                }
+                continue;
+            }
+            clean.append(Character.isISOControl(character) ? ' ' : character);
+        }
+        return clean.toString().strip();
     }
 
     private static long longValue(JsonObject parent, String key) {
@@ -142,9 +165,8 @@ public record FlipHudData(
             if (!message.isJsonObject()) {
                 continue;
             }
-            String part = string(message.getAsJsonObject(), "text", MAX_ITEM_NAME_LENGTH)
-                    .replaceAll("§.", "")
-                    .trim();
+            String part = displayString(
+                    message.getAsJsonObject(), "text", MAX_ITEM_NAME_LENGTH);
             if (part.isBlank()) {
                 continue;
             }

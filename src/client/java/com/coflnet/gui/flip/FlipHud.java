@@ -33,6 +33,7 @@ public final class FlipHud {
     private static final AtomicInteger SESSION = new AtomicInteger();
     private static final Object STATE_LOCK = new Object();
     private static volatile State state;
+    private static State preview;
 
     private FlipHud() {
     }
@@ -56,7 +57,7 @@ public final class FlipHud {
                         if (session != SESSION.get()) {
                             return;
                         }
-                        state = new State(data, icon, "received");
+                        state = createState(data, icon, "received");
                     }
                 } catch (RuntimeException exception) {
                     logParseFailure(exception);
@@ -66,6 +67,10 @@ public final class FlipHud {
     }
 
     public static void markOpening(String id) {
+        String normalizedId = FlipHudData.normalizeAuctionId(id);
+        if (normalizedId.isBlank()) {
+            return;
+        }
         Minecraft client = Minecraft.getInstance();
         if (client != null) {
             int session = SESSION.get();
@@ -78,8 +83,8 @@ public final class FlipHud {
                         return;
                     }
                     State current = state;
-                    if (current != null && id != null && id.equals(current.data.id())) {
-                        state = new State(current.data, current.icon, "opening");
+                    if (current != null && normalizedId.equals(current.data.id())) {
+                        state = new State(current.data, current.icon, "opening", current.price);
                     }
                 }
             });
@@ -118,7 +123,8 @@ public final class FlipHud {
     }
 
     public static void renderAt(GuiGraphicsExtractor context, int x, int y, boolean preview) {
-        State current = preview && state == null ? previewState() : state;
+        boolean previewing = preview && state == null;
+        State current = previewing ? previewState() : state;
         if (current == null) {
             return;
         }
@@ -133,14 +139,10 @@ public final class FlipHud {
         RenderUtils.drawString(context, "§bskycofl flip", x + 8, y + 6, CoflColConfig.TEXT_PRIMARY);
         RenderUtils.drawString(context, trim(font, name, 174), x + 31, y + 19, CoflColConfig.TEXT_PRIMARY);
 
-        String price = data.cost() > 0L ? "buy " + format(data.cost()) : "price unknown";
-        long target = data.target();
-        if (target > 0L) {
-            price += ", target " + format(target);
-        }
-        RenderUtils.drawString(context, trim(font, price, 174), x + 31, y + 30, 0xFFB8C0CC);
+        RenderUtils.drawString(context, trim(font, current.price, 174), x + 31, y + 30, 0xFFB8C0CC);
 
-        String status = current.status + ", " + age(data.receivedAt());
+        String status = current.status + ", "
+                + (previewing ? "0s ago" : age(data.receivedAt()));
         if (!data.finder().isBlank()) {
             status = data.finder().toLowerCase(Locale.ROOT) + ", " + status;
         }
@@ -148,9 +150,21 @@ public final class FlipHud {
     }
 
     private static State previewState() {
+        if (preview != null) {
+            return preview;
+        }
         FlipHudData data = new FlipHudData("", "preview item", 1, 12_500_000L,
                 16_000_000L, "sniper", "emerald", System.currentTimeMillis());
-        return new State(data, new ItemStack(Items.EMERALD), "received");
+        preview = createState(data, new ItemStack(Items.EMERALD), "received");
+        return preview;
+    }
+
+    private static State createState(FlipHudData data, ItemStack icon, String status) {
+        String price = data.cost() > 0L ? "buy " + format(data.cost()) : "price unknown";
+        if (data.target() > 0L) {
+            price += ", target " + format(data.target());
+        }
+        return new State(data, icon, status, price);
     }
 
     private static ItemStack createIcon(String render) {
@@ -190,15 +204,25 @@ public final class FlipHud {
 
     private static String format(long coins) {
         if (coins >= 1_000_000_000L) {
-            return String.format(Locale.US, "%.1fb", coins / 1_000_000_000.0);
+            return abbreviated(coins, 1_000_000_000L, 'b');
         }
         if (coins >= 1_000_000L) {
-            return String.format(Locale.US, "%.1fm", coins / 1_000_000.0);
+            return abbreviated(coins, 1_000_000L, 'm');
         }
         if (coins >= 1_000L) {
-            return String.format(Locale.US, "%.1fk", coins / 1_000.0);
+            return abbreviated(coins, 1_000L, 'k');
         }
         return String.valueOf(coins);
+    }
+
+    private static String abbreviated(long coins, long unit, char suffix) {
+        long whole = coins / unit;
+        long tenth = (coins % unit + unit / 20L) / (unit / 10L);
+        if (tenth == 10L) {
+            whole++;
+            tenth = 0L;
+        }
+        return whole + "." + tenth + suffix;
     }
 
     private static String age(long receivedAt) {
@@ -212,6 +236,6 @@ public final class FlipHud {
         }
     }
 
-    private record State(FlipHudData data, ItemStack icon, String status) {
+    private record State(FlipHudData data, ItemStack icon, String status, String price) {
     }
 }

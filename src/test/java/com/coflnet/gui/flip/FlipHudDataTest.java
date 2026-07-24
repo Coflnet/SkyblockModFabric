@@ -12,10 +12,9 @@ class FlipHudDataTest {
         FlipHudData data = FlipHudData.parse("""
                 {
                   "messages": [{"text": "§aFallback name"}],
-                  "id": "auction-id",
-                  "worth": 19000000,
+                  "id": " auction-id ",
                   "auction": {
-                    "itemName": "Aspect of the End",
+                    "itemName": "§6Aspect of the End",
                     "count": 2,
                     "startingBid": 12500000
                   },
@@ -33,6 +32,21 @@ class FlipHudDataTest {
         assertEquals(17_500_000L, data.target());
         assertEquals("SNIPER", data.finder());
         assertEquals("diamond", data.render());
+    }
+
+    @Test
+    void rejectsUnsafeAuctionIdsAndCleansBackendText() {
+        FlipHudData data = FlipHudData.parse("""
+                {
+                  "id": "auction id",
+                  "auction": {"itemName": "§6Aspect §bof the End\\u0007"},
+                  "finder": "§cSNIPER"
+                }
+                """);
+
+        assertEquals("", data.id());
+        assertEquals("Aspect of the End", data.itemName());
+        assertEquals("SNIPER", data.finder());
     }
 
     @Test
@@ -100,7 +114,7 @@ class FlipHudDataTest {
                 }
                 """.formatted("i".repeat(100), "n".repeat(300), "f".repeat(100), "r".repeat(300)));
 
-        assertEquals(64, data.id().length());
+        assertEquals("", data.id());
         assertEquals(160, data.itemName().length());
         assertEquals(32, data.finder().length());
         assertEquals(128, data.render().length());
@@ -112,6 +126,7 @@ class FlipHudDataTest {
         assertEquals("auction-id", FlipHudData.auctionIdFromCommand("VIEWAUCTION   auction-id"));
         assertEquals("", FlipHudData.auctionIdFromCommand("cofl viewauction auction-id"));
         assertEquals("", FlipHudData.auctionIdFromCommand("viewauction auction-id extra"));
+        assertEquals("", FlipHudData.auctionIdFromCommand("viewauction auction\u007fid"));
     }
 
     @Test
