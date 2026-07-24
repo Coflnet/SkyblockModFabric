@@ -70,6 +70,7 @@ public class LoreConfigScreen extends Screen {
     private int selectedLine = 0;
     private int paletteScroll = 0;
     private int previewScroll = 0;
+    private int blacklistScroll = 0;
     private boolean capturedFromBackend = false;
     // set once the user edits the layout so a late backend echo cant clobber
     // their in progress edits the open time fetch can land mid edit .
@@ -77,6 +78,7 @@ public class LoreConfigScreen extends Screen {
     // same idea for the styling templates so a backend read that lands after the
     // user has restyled a field does not re copy the synced modules over their edit.
     private boolean userEditedTemplates = false;
+    private boolean userEditedBlacklist = false;
     // set on any real edit so closing with no changes does not fire a full
     // cofl lore write plus a verifier and a chat line every time the screen closes.
     private boolean dirty = false;
@@ -327,7 +329,10 @@ public class LoreConfigScreen extends Screen {
     //  layout tab
 
     private void drawLayoutTab(GuiGraphicsExtractor context, Font font, int mouseX, int mouseY) {
-        String header = capturedFromBackend
+        boolean layoutEditable = layoutFitsEditor(font);
+        String header = capturedFromBackend && !layoutEditable
+                ? "§cThis server layout is too large for this editor. Use lore commands to reduce it."
+                : capturedFromBackend
                 ? "§7Lines \u2014 click a chip to remove, click a row to select it"
                 : "§e\u231b Loading real layout from server\u2026 §7(edits sync on Save)";
         RenderUtils.drawString(context, header, linesX, contentY - 9, CoflColConfig.TEXT_PRIMARY);
@@ -501,11 +506,12 @@ public class LoreConfigScreen extends Screen {
         if (workingBlacklist.isEmpty()) {
             RenderUtils.drawString(context, "§8(no blacklisted items yet)", contentX + 4, contentY + 8, CoflColConfig.TEXT_PRIMARY);
         }
-        int y = contentY + 6;
+        int y = contentY + 6 - blacklistScroll;
+        context.enableScissor(contentX, contentY, contentX + contentW, contentY + contentH);
         for (int i = 0; i < workingBlacklist.size(); i++) {
             int rowY = y + i * 18;
-            if (rowY + 16 > contentY + contentH) {
-                break;
+            if (rowY + 16 < contentY || rowY > contentY + contentH) {
+                continue;
             }
             box(context, contentX, rowY, contentW, 16, CoflColConfig.BACKGROUND_SECONDARY);
             RenderUtils.drawString(context, "§f" + workingBlacklist.get(i), contentX + 6, rowY + 4, CoflColConfig.TEXT_PRIMARY);
@@ -517,6 +523,7 @@ public class LoreConfigScreen extends Screen {
                 queueTip(mouseX, mouseY, "§c[click to remove]", "§7Stop blacklisting this item.");
             }
         }
+        context.disableScissor();
 
         ItemStack held = heldItem();
         boolean hasHeld = held != null && !held.isEmpty() && held.getItem() != Items.AIR;
@@ -565,6 +572,10 @@ public class LoreConfigScreen extends Screen {
     }
 
     private boolean clickLayout(double mx, double my) {
+        Font font = Minecraft.getInstance().font;
+        if (!layoutFitsEditor(font)) {
+            return true;
+        }
         int listTop = paletteY + 32;
         if (inRect(mx, my, paletteX, listTop, paletteW, paletteH - (listTop - paletteY))) {
             String query = searchBox == null ? "" : searchBox.getValue().trim().toLowerCase(java.util.Locale.ROOT);
@@ -574,7 +585,7 @@ public class LoreConfigScreen extends Screen {
                     continue;
                 }
                 if (inRect(mx, my, paletteX + 3, py, paletteW - 6, 13)) {
-                    if (!containsField(f.key)) {
+                    if (!containsField(f.key) && fieldFitsSelectedLine(font, f.key)) {
                         ensureLine(selectedLine).add(f.key);
                         userEditedLayout = true;
                         dirty = true;
@@ -587,7 +598,6 @@ public class LoreConfigScreen extends Screen {
         }
         int y = contentY + 6;
         int lineCount = Math.max(workingLayout.size() + 1, 1);
-        Font font = Minecraft.getInstance().font;
         for (int line = 0; line < lineCount; line++) {
             int rowY = y + line * ROW_H;
             if (rowY + ROW_H > contentY + contentH) {
@@ -666,16 +676,18 @@ public class LoreConfigScreen extends Screen {
     }
 
     private boolean clickBlacklist(double mx, double my) {
-        int y = contentY + 6;
+        int y = contentY + 6 - blacklistScroll;
         for (int i = 0; i < workingBlacklist.size(); i++) {
             int rowY = y + i * 18;
-            if (rowY + 16 > contentY + contentH) {
-                break;   // match the draw clamp never remove a row scrolled off the panel.
+            if (rowY + 16 < contentY || rowY > contentY + contentH) {
+                continue;
             }
             int rx = contentX + contentW - 18;
             if (inRect(mx, my, rx, rowY + 1, 14, 14)) {
                 workingBlacklist.remove(i);
                 dirty = true;
+                userEditedBlacklist = true;
+                clampBlacklistScroll();
                 return true;
             }
         }
@@ -688,6 +700,8 @@ public class LoreConfigScreen extends Screen {
                 if (id != null && !workingBlacklist.contains(id)) {
                     workingBlacklist.add(id);
                     dirty = true;
+                    userEditedBlacklist = true;
+                    clampBlacklistScroll();
                 }
             }
             return true;
@@ -705,6 +719,12 @@ public class LoreConfigScreen extends Screen {
         if (tab == Tab.TEMPLATES && inRect(mouseX, mouseY, contentX, contentY + 77, contentW, Math.max(0, contentH - 77))) {
             int max = Math.max(0, buildPreviewLines().size() * 10);
             previewScroll = Math.max(0, Math.min(max, previewScroll + (int) (-scrollY * 12)));
+            return true;
+        }
+        if (tab == Tab.BLACKLIST
+                && inRect(mouseX, mouseY, contentX, contentY, contentW, contentH)) {
+            blacklistScroll = Math.max(0, Math.min(maxBlacklistScroll(),
+                    blacklistScroll + (int) (-scrollY * 18)));
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
@@ -727,13 +747,12 @@ public class LoreConfigScreen extends Screen {
         while (!cleaned.isEmpty() && cleaned.get(cleaned.size() - 1).isEmpty()) {
             cleaned.remove(cleaned.size() - 1);
         }
-        // persist the edited modules and blacklist first so applylayout which reads
-        // getmodules to build the backend customformat write sees the fresh templates
-        // not the stale persisted ones otherwise a styling edit ships old and a later
-        // read reverts it.
-        LoreManager.saveModules(workingModules);
-        LoreManager.saveItemBlacklist(workingBlacklist);
-        LoreManager.applyLayout(cleaned);
+        if (userEditedBlacklist) {
+            LoreManager.saveItemBlacklist(new ArrayList<>(workingBlacklist));
+        }
+        if (userEditedLayout || userEditedTemplates) {
+            LoreManager.applyLayout(cleaned, workingModules, userEditedTemplates);
+        }
     }
 
     private List<String> ensureLine(int line) {
@@ -741,6 +760,63 @@ public class LoreConfigScreen extends Screen {
             workingLayout.add(new ArrayList<>());
         }
         return workingLayout.get(line);
+    }
+
+    private boolean layoutFitsEditor(Font font) {
+        int visibleRows = maxVisibleLayoutRows();
+        if (visibleRows == 0 || workingLayout.size() > visibleRows) {
+            return false;
+        }
+        for (List<String> line : workingLayout) {
+            int chipX = linesX + 16;
+            if (line == null) {
+                continue;
+            }
+            for (String key : line) {
+                int width = font.width(LoreField.displayOf(key)) + 12;
+                if (chipX + width > linesX + linesW - 4) {
+                    return false;
+                }
+                chipX += width + 3;
+            }
+        }
+        return true;
+    }
+
+    private boolean fieldFitsSelectedLine(Font font, String key) {
+        if (selectedLine < 0 || selectedLine >= maxVisibleLayoutRows()) {
+            return false;
+        }
+        int chipX = linesX + 16;
+        if (selectedLine < workingLayout.size()) {
+            List<String> line = workingLayout.get(selectedLine);
+            if (line != null) {
+                for (String existing : line) {
+                    chipX += font.width(LoreField.displayOf(existing)) + 15;
+                }
+            }
+        }
+        return chipX + font.width(LoreField.displayOf(key)) + 12
+                <= linesX + linesW - 4;
+    }
+
+    private int maxVisibleLayoutRows() {
+        int rows = 0;
+        int y = contentY + 6;
+        while (y + rows * ROW_H + ROW_H <= contentY + contentH) {
+            rows++;
+        }
+        return rows;
+    }
+
+    private int maxBlacklistScroll() {
+        return Math.max(0,
+                workingBlacklist.size() * 18 - Math.max(1, contentH - 6));
+    }
+
+    private void clampBlacklistScroll() {
+        blacklistScroll = Math.max(0,
+                Math.min(blacklistScroll, maxBlacklistScroll()));
     }
 
     private boolean containsField(String key) {
@@ -912,12 +988,8 @@ public class LoreConfigScreen extends Screen {
             return List.of();
         }
         switch (layoutKey.toUpperCase(java.util.Locale.ROOT)) {
-            // the craft line shows both clean craft craft cost and full craft
-            // cost fullcraftcost either may be the layout key so surface both.
             case "FULLCRAFTCOST":
-                return List.of("CRAFT_COST");
-            case "CRAFT_COST":
-                return List.of("FullCraftCost");
+                return List.of("ObtainCost");
             default:
                 return List.of();
         }
@@ -1078,11 +1150,6 @@ public class LoreConfigScreen extends Screen {
 
     @Override
     public void onClose() {
-        // only write when something actually changed opening and closing or just
-        // flipping tabs must not fire a full cofl lore write verifier and chat line.
-        if (dirty) {
-            saveAll();
-        }
         current = null;
         Minecraft.getInstance().gui.setScreen(parent);
     }

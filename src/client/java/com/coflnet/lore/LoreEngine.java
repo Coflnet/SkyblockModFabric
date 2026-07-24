@@ -41,12 +41,10 @@ public class LoreEngine {
      *  codes intact in backend order
      * @param itemId        the stable skyblock item type tag for the blacklist check
      *  so blacklisting one hyperion hides the lore on every hyperion not one stack
-     * @param displayName   the item's clean display name used to look up the price
-     *  you paid recorded from ah purchase chat when the backend sends no paid line
      */
-    public static List<String> render(List<String> backendValues, String itemId, String displayName) {
+    public static List<String> render(List<String> backendValues, String itemId) {
         try {
-            return renderInner(backendValues, itemId, displayName);
+            return renderInner(backendValues, itemId);
         } catch (RuntimeException exception) {
             if (FAILURE_LOGGED.compareAndSet(false, true)) {
                 System.out.println("[Lore] render failed, keeping stock lore: " + exception);
@@ -55,7 +53,7 @@ public class LoreEngine {
         }
     }
 
-    private static List<String> renderInner(List<String> backendValues, String itemId, String displayName) {
+    private static List<String> renderInner(List<String> backendValues, String itemId) {
         if (LoreManager.isItemBlacklisted(itemId)) {
             return null;
         }
@@ -89,15 +87,6 @@ public class LoreEngine {
             stripped.add(v == null ? null : ChatFormatting.stripFormatting(v));
         }
         LoreData data = LoreParser.parse(stripped);
-        // fall back to what you paid recorded from the ah purchase chat when the
-        // backend did not supply a paid line so the purchased paid tokens work.
-        if (data.purchasedFor == null && displayName != null) {
-            Long paid = LoreManager.purchasePrice(displayName);
-            if (paid != null) {
-                data.purchasedFor = (double) (long) paid;
-            }
-        }
-
         boolean changedAny = false;
         List<String> out = new ArrayList<>(backendValues.size());
 

@@ -29,12 +29,80 @@ class DescriptionSettingsTest {
     }
 
     @Test
+    void acceptsACompleteBackendSnapshot() {
+        DescriptionSettings settings = DescriptionSettings.parse("""
+                {
+                  "Fields": [],
+                  "CustomFormat": null,
+                  "Disabled": true,
+                  "LowballLbinUndercut": 12
+                }
+                """);
+
+        assertNotNull(settings);
+        assertTrue(settings.isCompleteSnapshot());
+    }
+
+    @Test
+    void rejectsPartialOrInvalidBackendSnapshots() {
+        DescriptionSettings missing = DescriptionSettings.parse("""
+                {"Fields": [], "CustomFormat": null, "Disabled": true}
+                """);
+        DescriptionSettings fractional = DescriptionSettings.parse("""
+                {
+                  "Fields": [],
+                  "CustomFormat": null,
+                  "Disabled": true,
+                  "LowballLbinUndercut": 1.5
+                }
+                """);
+        DescriptionSettings outOfRange = DescriptionSettings.parse("""
+                {
+                  "Fields": [],
+                  "CustomFormat": null,
+                  "Disabled": true,
+                  "LowballLbinUndercut": 256
+                }
+                """);
+        DescriptionSettings duplicate = DescriptionSettings.parse("""
+                {
+                  "Fields": [],
+                  "fields": [["LBIN"]],
+                  "CustomFormat": null,
+                  "Disabled": true,
+                  "LowballLbinUndercut": 1
+                }
+                """);
+
+        assertNotNull(missing);
+        assertNotNull(fractional);
+        assertNotNull(outOfRange);
+        assertNotNull(duplicate);
+        assertFalse(missing.isCompleteSnapshot());
+        assertFalse(fractional.isCompleteSnapshot());
+        assertFalse(outOfRange.isCompleteSnapshot());
+        assertFalse(duplicate.isCompleteSnapshot());
+    }
+
+    @Test
     void rejectsMalformedFieldArraysWithoutTreatingThemAsEmpty() {
         DescriptionSettings settings = DescriptionSettings.parse("""
                 {
                   "Fields": [1, ["LBIN"]]
                 }
                 """);
+
+        assertNotNull(settings);
+        assertFalse(settings.hasFields());
+    }
+
+    @Test
+    void rejectsOversizedFieldNames() {
+        DescriptionSettings settings = DescriptionSettings.parse("""
+                {
+                  "Fields": [["%s"]]
+                }
+                """.formatted("x".repeat(129)));
 
         assertNotNull(settings);
         assertFalse(settings.hasFields());

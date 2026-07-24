@@ -72,7 +72,7 @@ public class LoreParser {
             }
 
             Matcher volumePair = VOL_PAIR.matcher(line);
-            if (volumePair.find() && !lower.contains("med:")) {
+            if (volumePair.find()) {
                 d.buyVol = num(volumePair.group(1), volumePair.group(2));
                 d.sellVol = num(volumePair.group(3), volumePair.group(4));
             } else {
@@ -146,7 +146,7 @@ public class LoreParser {
                     default -> { }
                 }
             }
-            return base;
+            return Double.isFinite(base) ? base : null;
         } catch (NumberFormatException e) {
             return null;
         }

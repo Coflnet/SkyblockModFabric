@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class LoreParserTest {
     @Test
@@ -41,5 +42,14 @@ class LoreParserTest {
 
         assertEquals(100.0, data.lbin);
         assertEquals(200.0, data.median);
+    }
+
+    @Test
+    void parsesVolumeBesideMedianAndDoesNotMatchBazaarPair() {
+        LoreData data = LoreParser.parse(List.of("Med: 550k Vol: 37"));
+        assertEquals(37.0, data.volume);
+
+        LoreSegment volume = LoreSegment.byKey("VOLUME");
+        assertFalse(volume.pattern.matcher("§7Vol: §e2.94k / §e1.67k").find());
     }
 }

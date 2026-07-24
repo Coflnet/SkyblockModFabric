@@ -51,7 +51,10 @@ public final class LoreStyleCodec {
                 continue;
             }
             LoreSegment seg = LoreSegment.byKey(m.match);
-            String key = seg != null ? seg.key : m.match;
+            if (seg == null) {
+                continue;
+            }
+            String key = seg.key;
             String template = m.template;
             // only sync a genuine customisation blank or stock default is skipped .
             String stock = seg != null ? seg.defaultTemplate : null;
@@ -67,6 +70,31 @@ public final class LoreStyleCodec {
             obj.addProperty(key, template);
         }
         return obj.size() == 0 ? null : GSON.toJson(obj);
+    }
+
+    public static String mergeInto(String existing, List<LoreModule> modules) {
+        JsonObject merged = new JsonObject();
+        if (existing != null && !existing.isBlank()) {
+            try {
+                JsonElement parsed = JsonParser.parseString(existing);
+                if (parsed.isJsonObject()) {
+                    merged = parsed.getAsJsonObject().deepCopy();
+                }
+            } catch (RuntimeException ignored) {
+                return fromModules(modules);
+            }
+        }
+        for (LoreSegment segment : LoreSegment.ALL) {
+            removeIgnoreCase(merged, segment.key);
+        }
+        String owned = fromModules(modules);
+        if (owned != null) {
+            JsonObject ownedObject = JsonParser.parseString(owned).getAsJsonObject();
+            for (String key : ownedObject.keySet()) {
+                merged.add(key, ownedObject.get(key));
+            }
+        }
+        return merged.size() == 0 ? null : GSON.toJson(merged);
     }
 
     /**
@@ -104,7 +132,10 @@ public final class LoreStyleCodec {
                 continue;
             }
             LoreSegment seg = LoreSegment.byKey(m.match);
-            String key = seg != null ? seg.key : m.match;
+            if (seg == null) {
+                continue;
+            }
+            String key = seg.key;
             JsonElement val = findIgnoreCase(obj, key);
             if (val != null && val.isJsonPrimitive()) {
                 m.template = val.getAsString();
@@ -142,5 +173,18 @@ public final class LoreStyleCodec {
             }
         }
         return null;
+    }
+
+    private static void removeIgnoreCase(JsonObject obj, String key) {
+        String match = null;
+        for (String member : obj.keySet()) {
+            if (member.equalsIgnoreCase(key)) {
+                match = member;
+                break;
+            }
+        }
+        if (match != null) {
+            obj.remove(match);
+        }
     }
 }

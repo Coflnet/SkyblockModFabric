@@ -3,11 +3,13 @@ package com.coflnet.lore;
 import CoflCore.CoflCore;
 import CoflCore.CoflSkyCommand;
 import CoflCore.commands.RawCommand;
+import CoflCore.network.WSClient;
 import CoflCore.network.WSClientWrapper;
 import com.coflnet.config.LoreManager;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * reads and writes the whole lore settings through the backend json path
@@ -17,7 +19,7 @@ import java.util.Locale;
  *
  *   <li>READ — sending {@code lore json} makes the server reply with a
  *       {@code loreSettings} socket message carrying the object as JSON. The
- *       reply lands in {@link #onBackendJson(String)}.</li>
+ *       reply lands in {@link #onBackendJson(WSClient, String)}.</li>
  *   <li>WRITE — running {@code lore} with the JSON object as its argument saves
  *  the whole object at once. one atomic update no re indexing no throttle.
  *
@@ -63,9 +65,8 @@ public final class LoreSync {
     // the generation of the in flight save 0 = none. a save claims the slot with
     // compareandset 0 gen so only one is ever verifying at a time the backend echoes
     // are not tagged so a second overlapping save could have its echo credited to the
-    // first. a completion the success echo a reject or the watchdog timeout releases
-    // the slot with compareandset gen 0 so exactly one of the three reports the result
-    // across the three threads no double confirm no lost update.
+    // first. a completion or rejection releases the slot. an unknown timed out write
+    // keeps the slot until the session resets so a later echo cannot confirm a newer save.
     private static final java.util.concurrent.atomic.AtomicInteger activeSave =
             new java.util.concurrent.atomic.AtomicInteger(0);
     // hands out a fresh never reused generation for each save. it only ever increments
@@ -77,15 +78,25 @@ public final class LoreSync {
     // the payload of the in flight save promoted to current only once the backend
     // confirms so a rejected or timed out write can never leave a stale current.
     private static volatile DescriptionSettings pendingPayload = null;
+    private static volatile List<LoreModule> pendingModules = null;
+    private static volatile WSClient currentSource = null;
+    private static volatile WSClient pendingSource = null;
+    private static volatile int pendingSession = 0;
+    private static final AtomicInteger session = new AtomicInteger();
 
     public static boolean hasReceived() {
         return received;
     }
 
     public static void resetSession() {
+        session.incrementAndGet();
         current = null;
+        currentSource = null;
         received = false;
         pendingPayload = null;
+        pendingModules = null;
+        pendingSource = null;
+        pendingSession = 0;
         lastSaveMs = 0L;
         activeSave.set(0);
     }
@@ -124,10 +135,14 @@ public final class LoreSync {
      * data. a read within that window of our own write is ignored entirely so it
      * cannot revert the layout styling or {@link #current} we just wrote.
      */
-    public static void onBackendJson(String json) {
+    public static void onBackendJson(WSClient source, String json) {
         DescriptionSettings parsed = DescriptionSettings.parse(json);
-        if (parsed == null) {
-            System.out.println("[Lore] ignoring unparseable loreSettings payload");
+        if (parsed == null || !parsed.isCompleteSnapshot()) {
+            System.out.println("[Lore] ignoring incomplete loreSettings payload");
+            return;
+        }
+        int receivedSession = session.get();
+        if (!isCurrentSource(source)) {
             return;
         }
         // this lands on the websocket reading thread. marshal everything incl the guard
@@ -136,6 +151,9 @@ public final class LoreSync {
         // started between receipt and the deferred run must be seen or a stale read
         // would revert the just saved state on disk.
         Runnable apply = () -> {
+            if (session.get() != receivedSession || !isCurrentSource(source)) {
+                return;
+            }
             boolean verifying = activeSave.get() != 0;
             // a read within the cache window of our own write is stale the backend json
             // cache does not reflect the write yet so ignore it entirely.
@@ -145,10 +163,9 @@ public final class LoreSync {
             }
             received = true;
             current = parsed;
-            List<List<String>> fields = parsed.hasFields() ? parsed.getFields() : null;
-            if (fields != null) {
-                LoreManager.setSyncedLayout(fields);
-            }
+            currentSource = source;
+            List<List<String>> fields = parsed.getFields();
+            LoreManager.setSyncedLayout(fields);
             // adopt synced styling only on a genuine non verify read. applytomodules is
             // authoritative for every restylable field present key sets it incl empty to
             // show stock absent or a null all default blob resets it to the default so a
@@ -156,9 +173,7 @@ public final class LoreSync {
             if (!verifying) {
                 LoreStyleCodec.applyToModules(parsed.getCustomFormat(), LoreManager.getModules());
                 LoreManager.saveModules(LoreManager.getModules());
-                if (fields != null) {
-                    com.coflnet.gui.cofl.LoreConfigScreen.onLayoutCaptured(fields);
-                }
+                com.coflnet.gui.cofl.LoreConfigScreen.onLayoutCaptured(fields);
             }
         };
         net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
@@ -177,7 +192,10 @@ public final class LoreSync {
      * accepted (via the backend's {@code Imported settings} echo) and refreshes
      * the open inventory. any failure is surfaced to the user with the reason.
      */
-    public static void save(List<List<String>> layout, List<LoreModule> modules) {
+    public static void save(
+            List<List<String>> layout,
+            List<LoreModule> modules,
+            boolean templatesChanged) {
         DescriptionSettings base = current;
         if (base == null || !received) {
             System.out.println("[Lore] refusing to save: no backend settings received yet");
@@ -188,7 +206,8 @@ public final class LoreSync {
         }
 
         WSClientWrapper wrapper = CoflCore.getWrapper();
-        if (wrapper == null || !wrapper.isRunning) {
+        if (wrapper == null || !wrapper.isRunning || wrapper.socket == null
+                || wrapper.socket != currentSource) {
             System.out.println("[Lore] refusing to save: not connected to Coflnet");
             msg("\u00A7cNot connected to Coflnet, so your lore was not saved. Run \u00A7e/cofl start"
                     + "\u00A7c and try again.");
@@ -209,7 +228,10 @@ public final class LoreSync {
         // pure local work so an exception here claims no slot and leaks no state.
         DescriptionSettings payload = base.copy();
         payload.setFields(layout);
-        payload.setCustomFormat(LoreStyleCodec.fromModules(modules));
+        if (templatesChanged) {
+            payload.setCustomFormat(
+                    LoreStyleCodec.mergeInto(base.getCustomFormat(), modules));
+        }
         String json = payload.toJson();
 
         // claim the single in flight save slot with a fresh never reused generation
@@ -223,6 +245,9 @@ public final class LoreSync {
             return;
         }
         pendingPayload = payload;
+        pendingModules = copyModules(modules);
+        pendingSource = wrapper.socket;
+        pendingSession = session.get();
         // start the stale read window the backends json read cache wont reflect this
         // write for up to a minute so reads until then must not revert it.
         lastSaveMs = System.currentTimeMillis();
@@ -252,55 +277,68 @@ public final class LoreSync {
                 Thread.currentThread().interrupt();
                 return;
             }
-            if (activeSave.compareAndSet(gen, 0)) {
-                clearFailedSave();
+            if (activeSave.get() == gen) {
                 failVerify("the server never confirmed your lore save. If your lore did not "
-                        + "change in game, tell the dev. Your other settings were not touched.");
+                        + "change in game, reconnect before trying again. The result is unknown.");
             }
         }, "cofl-lore-verify");
         verifier.setDaemon(true);
         verifier.start();
 
-        // make the change visible immediately the echo confirms it stuck.
-        com.coflnet.CoflModClient.refreshOpenInventoryDescriptions();
     }
 
     /**
-     * called for backend chat lines while a save is being verified. the backend
+     * called for backend replies while a save is being verified. the backend
      * echoes {@code Imported settings (check above)} on a successful atomic import,
-     * or an {@code invalid_arguments} error if it could not parse the JSON. This
+     * or a parse error if it could not read the JSON. This
      * turns those echoes into the user facing save result. no op when no save is
      * in flight.
      */
-    public static void observeChat(String plain) {
-        if (activeSave.get() == 0 || plain == null) {
+    public static boolean hasPendingSave() {
+        return activeSave.get() != 0;
+    }
+
+    public static void observeSaveResponse(
+            WSClient source,
+            LoreSaveResponse.Result result) {
+        int g = activeSave.get();
+        if (g <= 0 || result == null || result == LoreSaveResponse.Result.NONE
+                || source != pendingSource
+                || pendingSession != session.get()
+                || !isCurrentSource(source)) {
             return;
         }
-        String lower = plain.toLowerCase(Locale.ROOT);
-        if (lower.equals("imported settings (check above)")
-                || lower.equals("imported settings (check above).")) {
-            int g = activeSave.get();
-            if (g != 0 && activeSave.compareAndSet(g, 0)) {
-                DescriptionSettings p = pendingPayload;
-                if (p != null) {
-                    current = p;   // promote to confirmed only now the server accepted.
+        if (result == LoreSaveResponse.Result.REJECTED) {
+            if (!activeSave.compareAndSet(g, 0)) {
+                return;
+            }
+            clearFailedSave();
+            failVerify("the server rejected your lore save. The server settings were not changed.");
+            return;
+        }
+        if (!activeSave.compareAndSet(g, -g)) {
+            return;
+        }
+
+        DescriptionSettings accepted = pendingPayload;
+        List<LoreModule> acceptedModules = pendingModules;
+        int acceptedSession = pendingSession;
+        clearPending();
+        runOnClient(() -> {
+            try {
+                if (session.get() != acceptedSession || !isCurrentSource(source)
+                        || accepted == null) {
+                    return;
                 }
-                pendingPayload = null;
+                current = accepted;
+                currentSource = source;
+                LoreManager.commitConfirmed(accepted.getFields(), acceptedModules);
+                com.coflnet.CoflModClient.refreshOpenInventoryDescriptions();
                 msg("\u00A7aLore settings saved and confirmed on the server.");
+            } finally {
+                activeSave.compareAndSet(-g, 0);
             }
-            return;
-        }
-        // the backend rejects a bad write with a specific code y phrase a player is
-        // unlikely to type kept tight to avoid a false rejection.
-        if (lower.contains("could not parse the arguments")
-                || lower.contains("invalid_arguments")) {
-            int g = activeSave.get();
-            if (g != 0 && activeSave.compareAndSet(g, 0)) {
-                clearFailedSave();
-                failVerify("the server rejected your lore save: \u00A7f" + stripCodes(plain)
-                        + "\u00A7c. The server settings were not changed.");
-            }
-        }
+        });
     }
 
     private static void failVerify(String reason) {
@@ -309,8 +347,15 @@ public final class LoreSync {
     }
 
     private static void clearFailedSave() {
-        pendingPayload = null;
+        clearPending();
         lastSaveMs = 0L;
+    }
+
+    private static void clearPending() {
+        pendingPayload = null;
+        pendingModules = null;
+        pendingSource = null;
+        pendingSession = 0;
     }
 
     //  helpers
@@ -330,7 +375,34 @@ public final class LoreSync {
         });
     }
 
-    private static String stripCodes(String s) {
-        return s == null ? "" : s.replaceAll("\u00A7.", "").trim();
+    private static boolean isCurrentSource(WSClient source) {
+        WSClientWrapper wrapper = CoflCore.getWrapper();
+        return source != null && wrapper != null && wrapper.isRunning
+                && wrapper.socket == source;
+    }
+
+    private static void runOnClient(Runnable action) {
+        net.minecraft.client.Minecraft mc =
+                net.minecraft.client.Minecraft.getInstance();
+        if (mc != null) {
+            mc.execute(action);
+        } else {
+            action.run();
+        }
+    }
+
+    private static List<LoreModule> copyModules(List<LoreModule> source) {
+        List<LoreModule> copy = new ArrayList<>();
+        if (source != null) {
+            for (LoreModule module : source) {
+                if (module != null) {
+                    copy.add(new LoreModule(
+                            module.name,
+                            module.match,
+                            module.template));
+                }
+            }
+        }
+        return copy;
     }
 }

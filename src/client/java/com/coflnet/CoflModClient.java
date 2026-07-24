@@ -73,6 +73,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -194,6 +195,15 @@ public class CoflModClient implements ClientModInitializer {
     private static volatile String[] pendingUntrustedConnectArgs;
     private static volatile long pendingUntrustedConnectExpiresAtMs;
     private static volatile ServerContext currentServerContext = ServerContext.UNKNOWN;
+    private static LoreRenderCache loreRenderCache;
+
+    private record LoreRenderCache(
+            String stackId,
+            String descriptionId,
+            DescriptionHandler.DescModification[] source,
+            long revision,
+            List<String> rendered) {
+    }
     
     // Maps new UUIDs to original UUID when items update with new UUIDs but same title
     // This allows finding descriptions loaded for the original UUID when hovering an item with updated UUID
@@ -357,6 +367,11 @@ public class CoflModClient implements ClientModInitializer {
                 stopConnectionAsync();
             }
         });
+        ClientSendMessageEvents.COMMAND.register(command -> {
+            if (com.coflnet.lore.LoreCommandRouting.changesBackendSession(command)) {
+                com.coflnet.lore.LoreSync.resetSession();
+            }
+        });
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
             registerDefaultCommands(dispatcher, "cofl");
@@ -500,29 +515,20 @@ public class CoflModClient implements ClientModInitializer {
             }
 
             // Try to get descriptions using the original UUID if mapped
+            String descriptionId = lookupId;
             DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(lookupId);
-            if(tooltips == null && !lookupId.equals(stackId))
+            if(tooltips == null && !lookupId.equals(stackId)) {
                 tooltips = DescriptionHandler.getTooltipData(stackId); // fallback to current UUID
+                descriptionId = stackId;
+            }
             if(tooltips == null)
                 return;
 
             var text = stack.get(DataComponents.LORE);
             List<Component> ogLoreLines = text == null ? new ArrayList<>() : text.lines();
 
-            // lore engine re render the backend append values from the users
-            // templates and append any client only modules e.g. purchased for .
-            // falls back to the stock strings whenever the engine returns null
-            //  blacklisted item or nothing changed so it can never blank an item.
-            List<String> appendValues = new ArrayList<>();
-            for (DescriptionHandler.DescModification t : tooltips) {
-                if ("APPEND".equals(t.type)) {
-                    appendValues.add(t.value);
-                }
-            }
-            List<String> templated = com.coflnet.lore.LoreEngine.render(
-                    appendValues,
-                    getItemTagFromStack(stack),
-                    net.minecraft.ChatFormatting.stripFormatting(stack.getHoverName().getString()));
+            List<String> templated = renderLoreCached(
+                    stack, stackId, descriptionId, tooltips);
             int appendIndex = 0;
 
             for (DescriptionHandler.DescModification tooltip : tooltips) {
@@ -601,8 +607,6 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();
-            // capture ah purchases so the purchased for lore can show what you paid.
-            capturePurchase(messageText);
             // capture the full trade partner name from trade request chat lines.
             captureTradePartner(messageText);
             // Skip backend processing for our own display messages to avoid a feedback loop.
@@ -897,15 +901,43 @@ public class CoflModClient implements ClientModInitializer {
         }
     }
 
-    public static void capturePurchase(String message) {
-        if (message == null) {
-            return;
+    private static List<String> renderLoreCached(
+            ItemStack stack,
+            String stackId,
+            String descriptionId,
+            DescriptionHandler.DescModification[] tooltips) {
+        long revision = com.coflnet.config.LoreManager.revision();
+        LoreRenderCache cached = loreRenderCache;
+        if (cached != null
+                && Objects.equals(cached.stackId(), stackId)
+                && Objects.equals(cached.descriptionId(), descriptionId)
+                && cached.source() == tooltips
+                && cached.revision() == revision) {
+            return cached.rendered();
         }
-        String plain = ChatFormatting.stripFormatting(message).trim();
-        com.coflnet.lore.PurchaseMessage purchase = com.coflnet.lore.PurchaseMessage.parse(plain);
-        if (purchase != null) {
-            com.coflnet.config.LoreManager.recordPurchase(purchase.itemName(), purchase.coins());
+
+        List<String> rendered = null;
+        if (com.coflnet.config.LoreManager.hasCustomTemplates()) {
+            List<String> appendValues = new ArrayList<>();
+            for (DescriptionHandler.DescModification tooltip : tooltips) {
+                if ("APPEND".equals(tooltip.type)) {
+                    appendValues.add(tooltip.value);
+                }
+            }
+            rendered = com.coflnet.lore.LoreEngine.render(
+                    appendValues,
+                    getItemTagFromStack(stack));
+            if (rendered != null) {
+                rendered = new ArrayList<>(rendered);
+            }
         }
+        loreRenderCache = new LoreRenderCache(
+                stackId,
+                descriptionId,
+                tooltips,
+                revision,
+                rendered);
+        return rendered;
     }
 
     /**
@@ -1213,9 +1245,10 @@ public class CoflModClient implements ClientModInitializer {
                     return builder.buildFuture();
                 })
                 .executes(context -> {
-                    String[] args = context.getArgument("args", String.class).split(" ");
+                    String rawArguments = context.getArgument("args", String.class);
+                    String[] args = rawArguments.split(" ");
 
-                    if (args.length >= 1 && (args[0].equalsIgnoreCase("lore") || args[0].equalsIgnoreCase("loregui"))) {
+                    if (com.coflnet.lore.LoreCommandRouting.opensGui(rawArguments)) {
                         Minecraft loreClient = Minecraft.getInstance();
                         loreClient.execute(() -> {
                             try {
@@ -2086,6 +2119,7 @@ public class CoflModClient implements ClientModInitializer {
         }
         client.execute(() -> {
             try {
+                loreRenderCache = null;
                 DescriptionHandler.emptyTooltipData();
                 lastNbtRequest = "";
                 lastRefreshTimePerInventory.clear();
@@ -2828,6 +2862,7 @@ public class CoflModClient implements ClientModInitializer {
         String[] confirmedArgs = pendingUntrustedConnectArgs;
         String confirmedDestination = decodeConnectDestination(confirmedArgs[1]);
         String confirmedHost = extractConnectHost(confirmedDestination);
+        com.coflnet.lore.LoreSync.resetSession();
         clearPendingUntrustedConnect();
         sendChatMessage("§eConfirmed untrusted connection to §c" + getDisplayedConnectTarget(confirmedDestination, confirmedHost) + "§e.");
         CoflSkyCommand.processCommand(confirmedArgs, username);
@@ -2842,6 +2877,7 @@ public class CoflModClient implements ClientModInitializer {
         String destination = decodeConnectDestination(args[1]);
         String host = extractConnectHost(destination);
         if (isTrustedConnectHost(host)) {
+            com.coflnet.lore.LoreSync.resetSession();
             clearPendingUntrustedConnect();
             return false;
         }

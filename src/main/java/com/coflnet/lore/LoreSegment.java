@@ -36,7 +36,8 @@ public final class LoreSegment {
     private static final String VAL =
             "(?:\u00A7.)?\\s*~?\\s*[\\d,]+(?:\\.\\d+)?(?![\\d,.])(?:\\s*[kmbKMB]\\b)?";
     // volume must not match the bazaar volume pair vol 2 940 1 670.
-    private static final String VAL_VOL = VAL + "(?!\\s*(?:\u00A7.)?\\s*/)";
+    private static final String VAL_VOL =
+            "(?>" + VAL + ")(?!\\s*(?:\u00A7.)?\\s*/)";
 
     /** field key matches the layout field key where one exists . */
     public final String key;

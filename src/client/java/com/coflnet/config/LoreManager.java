@@ -3,10 +3,9 @@ package com.coflnet.config;
 import com.coflnet.lore.LoreModule;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * loads and saves the lore engine settings.
@@ -21,7 +20,7 @@ import java.util.Map;
  * driver entirely.
  */
 public class LoreManager {
-    private static final int MAX_PURCHASES = 256;
+    private static final AtomicLong REVISION = new AtomicLong();
 
     private static CoflModConfig getConfig() {
         return CoflModConfig.get();
@@ -38,6 +37,7 @@ public class LoreManager {
         CoflModConfig cfg = getConfig();
         cfg.loreModules = modules;
         cfg.save();
+        REVISION.incrementAndGet();
         // no reload after save the in memory config stays authoritative a reload
         // here re read a disk image taken before this mutation and silently dropped
         // a concurrent edit lost update .
@@ -58,6 +58,7 @@ public class LoreManager {
         CoflModConfig cfg = getConfig();
         cfg.loreItemBlacklist = ids;
         cfg.save();
+        REVISION.incrementAndGet();
         // no reload after save the in memory config stays authoritative a reload
         // here re read a disk image taken before this mutation and silently dropped
         // a concurrent edit lost update .
@@ -75,51 +76,6 @@ public class LoreManager {
             }
         }
         return false;
-    }
-
-    //  purchase history what you paid
-
-    public static Map<String, Long> getPurchases() {
-        CoflModConfig cfg = getConfig();
-        if (cfg.lorePurchases == null) {
-            cfg.lorePurchases = new LinkedHashMap<>();
-        }
-        return cfg.lorePurchases;
-    }
-
-    /** records the coins paid for an item id from an ah purchase chat line . */
-    public static void recordPurchase(String itemId, long coins) {
-        if (itemId == null || itemId.isBlank() || coins <= 0) {
-            return;
-        }
-        CoflModConfig cfg = getConfig();
-        if (cfg.lorePurchases == null) {
-            cfg.lorePurchases = new LinkedHashMap<>();
-        }
-        Long existing = cfg.lorePurchases.get(itemId);
-        if (existing != null && existing >= coins) {
-            return;
-        }
-        if (existing == null && cfg.lorePurchases.size() >= MAX_PURCHASES) {
-            java.util.Iterator<String> oldest = cfg.lorePurchases.keySet().iterator();
-            if (oldest.hasNext()) {
-                oldest.next();
-                oldest.remove();
-            }
-        }
-        cfg.lorePurchases.put(itemId, coins);
-        cfg.save();
-        // no reload after save the in memory config stays authoritative a reload
-        // here re read a disk image taken before this mutation and silently dropped
-        // a concurrent edit lost update .
-    }
-
-    /** the coins paid for an item id or null if never purchased via ah. */
-    public static Long purchasePrice(String itemId) {
-        if (itemId == null) {
-            return null;
-        }
-        return getPurchases().get(itemId);
     }
 
     //  backend layout whole object json sync
@@ -164,6 +120,7 @@ public class LoreManager {
         CoflModConfig cfg = getConfig();
         cfg.loreLayout = layout;
         cfg.save();
+        REVISION.incrementAndGet();
         // no reload after save the in memory config stays authoritative a reload
         // here re read a disk image taken before this mutation and silently dropped
         // a concurrent edit lost update .
@@ -174,22 +131,48 @@ public class LoreManager {
      * module styling preserving every unrelated setting then refreshes the
      * open inventory so the change shows without a relobby.
      */
-    public static void applyLayout(List<List<String>> target) {
+    public static void applyLayout(
+            List<List<String>> target,
+            List<LoreModule> modules,
+            boolean templatesChanged) {
         List<List<String>> goal = new ArrayList<>();
         if (target != null) {
             for (List<String> line : target) {
                 goal.add(line == null ? new ArrayList<>() : new ArrayList<>(line));
             }
         }
-        // persist the goal locally so a gui reopen reflects the users intent.
-        CoflModConfig cfg = getConfig();
-        cfg.loreLayout = goal;
-        cfg.save();
-        // no reload after save the in memory config stays authoritative a reload
-        // here re read a disk image taken before this mutation and silently dropped
-        // a concurrent edit lost update .
+        com.coflnet.lore.LoreSync.save(goal, modules, templatesChanged);
+    }
 
-        com.coflnet.lore.LoreSync.save(goal, getModules());
+    public static void commitConfirmed(
+            List<List<String>> layout,
+            List<LoreModule> modules) {
+        CoflModConfig cfg = getConfig();
+        cfg.loreLayout = copyLayout(layout);
+        if (modules != null) {
+            cfg.loreModules = copyModules(modules);
+        }
+        cfg.save();
+        REVISION.incrementAndGet();
+    }
+
+    public static long revision() {
+        return REVISION.get();
+    }
+
+    public static boolean hasCustomTemplates() {
+        for (LoreModule module : getModules()) {
+            if (module == null || module.match == null
+                    || module.template == null || module.template.isBlank()) {
+                continue;
+            }
+            com.coflnet.lore.LoreSegment segment =
+                    com.coflnet.lore.LoreSegment.byKey(module.match);
+            if (segment != null && !segment.defaultTemplate.equals(module.template)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void ensureModulesExist(CoflModConfig cfg) {
@@ -197,34 +180,32 @@ public class LoreManager {
             cfg.loreModules = LoreModule.defaults();
             return;
         }
-        // the engine now keys modules by segment key e.g. lbin fullcraftcost
-        // for per field substitution. older configs used line class keys lbin
-        // median craft ... and a null match purchased for module which
-        // the new engine cant use. detect a pre segment config and rebuild it
-        // from defaults so the user gets working per field modules. templates
-        // were the stock look anyway so nothing custom is meaningfully lost a
-        // user who hand edited can re edit per field in the new gui.
-        boolean segmentScheme = true;
-        for (LoreModule m : cfg.loreModules) {
-            if (m == null || m.match == null || com.coflnet.lore.LoreSegment.byKey(m.match) == null) {
-                segmentScheme = false;
-                break;
-            }
-        }
-        if (!segmentScheme) {
-            cfg.loreModules = LoreModule.defaults();
-            cfg.save();
-            return;
-        }
-        // same scheme merge in any segment modules the saved config predates
-        // without disturbing the users customised templates.
-        java.util.Set<String> have = new java.util.HashSet<>();
-        for (LoreModule m : cfg.loreModules) {
-            have.add(m.match.toUpperCase(Locale.ROOT));
-        }
+        List<LoreModule> cleaned = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
         boolean changed = false;
+        for (LoreModule m : cfg.loreModules) {
+            if (m == null || m.match == null || m.match.isBlank()) {
+                changed = true;
+                continue;
+            }
+            String key = m.match.toUpperCase(Locale.ROOT);
+            if (!seen.add(key)) {
+                changed = true;
+                continue;
+            }
+            com.coflnet.lore.LoreSegment segment =
+                    com.coflnet.lore.LoreSegment.byKey(m.match);
+            if (segment != null && m.template == null) {
+                m.template = segment.defaultTemplate;
+                changed = true;
+            }
+            cleaned.add(m);
+        }
+        if (changed) {
+            cfg.loreModules = cleaned;
+        }
         for (LoreModule def : LoreModule.defaults()) {
-            if (!have.contains(def.match.toUpperCase(Locale.ROOT))) {
+            if (seen.add(def.match.toUpperCase(Locale.ROOT))) {
                 cfg.loreModules.add(new LoreModule(def.name, def.match, def.template));
                 changed = true;
             }
@@ -253,6 +234,29 @@ public class LoreManager {
         }
         if (changed) {
             cfg.save();
+            REVISION.incrementAndGet();
         }
+    }
+
+    private static List<List<String>> copyLayout(List<List<String>> source) {
+        List<List<String>> copy = new ArrayList<>();
+        if (source != null) {
+            for (List<String> line : source) {
+                copy.add(line == null ? new ArrayList<>() : new ArrayList<>(line));
+            }
+        }
+        return copy;
+    }
+
+    private static List<LoreModule> copyModules(List<LoreModule> source) {
+        List<LoreModule> copy = new ArrayList<>();
+        if (source != null) {
+            for (LoreModule module : source) {
+                if (module != null) {
+                    copy.add(new LoreModule(module.name, module.match, module.template));
+                }
+            }
+        }
+        return copy;
     }
 }

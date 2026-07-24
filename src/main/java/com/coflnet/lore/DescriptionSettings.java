@@ -29,6 +29,10 @@ import java.util.List;
  * old chat menu scraping one command at a time driver entirely.
  */
 public final class DescriptionSettings {
+    private static final int MAX_ROWS = 64;
+    private static final int MAX_FIELDS_PER_ROW = 64;
+    private static final int MAX_TOTAL_FIELDS = 2048;
+    private static final int MAX_FIELD_LENGTH = 128;
 
     /**
      * Compact, non-HTML-escaping gson that PRESERVES null members ({@code
@@ -85,19 +89,74 @@ public final class DescriptionSettings {
         if (el == null || !el.isJsonArray()) {
             return false;
         }
+        if (el.getAsJsonArray().size() > MAX_ROWS) {
+            return false;
+        }
+        int totalFields = 0;
         for (JsonElement line : el.getAsJsonArray()) {
             if (line == null || !line.isJsonArray()) {
+                return false;
+            }
+            if (line.getAsJsonArray().size() > MAX_FIELDS_PER_ROW) {
                 return false;
             }
             for (JsonElement field : line.getAsJsonArray()) {
                 if (field == null || !field.isJsonPrimitive()
                         || !field.getAsJsonPrimitive().isString()
-                        || field.getAsString().isBlank()) {
+                        || field.getAsString().isBlank()
+                        || field.getAsString().length() > MAX_FIELD_LENGTH) {
+                    return false;
+                }
+                totalFields++;
+                if (totalFields > MAX_TOTAL_FIELDS) {
                     return false;
                 }
             }
         }
         return true;
+    }
+
+    /**
+     * Validates every member required by the current backend model. A partial
+     * object is never safe to write back because the lore import replaces the
+     * complete settings object.
+     */
+    public boolean isCompleteSnapshot() {
+        if (!hasSingleMember("Fields")
+                || !hasSingleMember("CustomFormat")
+                || !hasSingleMember("Disabled")
+                || !hasSingleMember("LowballLbinUndercut")
+                || !hasFields()) {
+            return false;
+        }
+        JsonElement disabled = member("Disabled");
+        if (disabled == null || !disabled.isJsonPrimitive()
+                || !disabled.getAsJsonPrimitive().isBoolean()) {
+            return false;
+        }
+        JsonElement undercut = member("LowballLbinUndercut");
+        if (undercut == null || !undercut.isJsonPrimitive()
+                || !undercut.getAsJsonPrimitive().isNumber()) {
+            return false;
+        }
+        try {
+            java.math.BigDecimal value = undercut.getAsBigDecimal();
+            if (value.stripTrailingZeros().scale() > 0
+                    || value.compareTo(java.math.BigDecimal.ZERO) < 0
+                    || value.compareTo(java.math.BigDecimal.valueOf(255)) > 0) {
+                return false;
+            }
+        } catch (RuntimeException exception) {
+            return false;
+        }
+        String customFormatKey = actualKey("CustomFormat");
+        if (customFormatKey == null) {
+            return false;
+        }
+        JsonElement customFormat = root.get(customFormatKey);
+        return customFormat == null || customFormat.isJsonNull()
+                || customFormat.isJsonPrimitive()
+                && customFormat.getAsJsonPrimitive().isString();
     }
 
     /**
@@ -119,6 +178,21 @@ public final class DescriptionSettings {
             }
         }
         return null;
+    }
+
+    private JsonElement member(String name) {
+        String key = actualKey(name);
+        return key == null ? null : root.get(key);
+    }
+
+    private boolean hasSingleMember(String name) {
+        int count = 0;
+        for (String key : root.keySet()) {
+            if (key.equalsIgnoreCase(name) && ++count > 1) {
+                return false;
+            }
+        }
+        return count == 1;
     }
 
     /**

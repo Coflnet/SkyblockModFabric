@@ -34,12 +34,6 @@ public class CoflModConfig {
     // menu title blacklist.
     public java.util.List<String> loreItemBlacklist = null;
 
-    // your own purchase history skyblock item id coins you paid. captured
-    // from you purchased x for y coins auction house chat lines and shown via
-    // the purchased token purchased for lore module so you dont resell
-    // an item below what you paid.
-    public java.util.Map<String, Long> lorePurchases = null;
-
     // Developer mode: when on, container screens show a "Copy Dump" button that
     // copies the open container's title/size/slots to the clipboard. Off by default.
     public boolean devMode = false;
@@ -92,7 +86,7 @@ public class CoflModConfig {
     }
     
     // serialises saves and writes atomically. the config is written from several
-    // threads chat purchases the websocket lore sync the gui so a plain truncating
+    // threads websocket lore sync and gui so a plain truncating
     // writer could interleave and corrupt the file wiping every setting on next load.
     private static final Object SAVE_LOCK = new Object();
 

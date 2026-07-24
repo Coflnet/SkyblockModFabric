@@ -93,16 +93,11 @@ public class EventSubscribers {
         if (CoflModClient.captureLoreMenu(combinedMessage)) {
             return;
         }
-        // let a pending lore save see the backends imported settings rejection echo.
-        com.coflnet.lore.LoreSync.observeChat(
-                net.minecraft.ChatFormatting.stripFormatting(combinedMessage.getString()));
         CoflModClient.displayModMessage(combinedMessage);
     }
 
     @Subscribe
     public void onModChatMessage(OnModChatMessage event){
-        com.coflnet.lore.LoreSync.observeChat(
-                net.minecraft.ChatFormatting.stripFormatting(event.message));
         CoflModClient.displayModMessage(Component.literal(event.message));
     }
 
@@ -260,6 +255,11 @@ public class EventSubscribers {
         com.coflnet.lore.LoreSync.resetSession();
         System.out.println("Backend logged in event received, uploading scoreboard and tab list...");
         CoflModClient.uploadScoreboardAndTabList();
+    }
+
+    @Subscribe
+    public void onLoreSocketClose(SocketClose event) {
+        com.coflnet.lore.LoreSync.resetSession();
     }
 
     @Subscribe
