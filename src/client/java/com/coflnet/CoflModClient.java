@@ -154,6 +154,16 @@ public class CoflModClient implements ClientModInitializer {
     // the trade Coins-transaction slot) is auto-filled with this value, mirroring
     // the bazaar-search auto-fill flow. Format is a plain digit string.
     public static volatile String pendingCoinAmount = null;
+    // Sign suggestion armed by clicking an InfoDisplay line (onClick "fillsign:<json>"). Unlike
+    // findPriceSuggestion() (which auto-fills the next matching sign unprompted), this only fills
+    // after the user clicks the info line - used by the Instant Buy "buy max" suggestion. Payload is
+    // a JSON object: {"line":"<4th sign line to match>","value":"<text>","name":"<button item name>",
+    // "slot":<gui index>}. line+value are required; name/slot pick the right button when several exist.
+    public static volatile String pendingSignFill = null;
+    // Set while a click-armed sign fill auto-opens a sign, so SignEditScreenMixin can suppress the
+    // sign editor's rendering and avoid it flashing on screen for the brief moment before it closes.
+    // Cleared once the sign editor is closed (scheduleSignClose) or the fill is consumed/aborted.
+    public static volatile boolean suppressSignRender = false;
     // Trade partner full name captured from chat. Hypixel truncates the name in
     // the trade window title (e.g. "VerticleFr"), but the trade-request chat line
     // carries the FULL name. TradeGUI prefers this over the truncated title.
@@ -314,6 +324,7 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             com.coflnet.gui.flip.FlipHud.clear();
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
             ServerContext detectedServerContext = detectServerContext(null);
             applyServerContext(detectedServerContext);
             lastScoreboardProcessMs = 0L;
@@ -338,6 +349,7 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             com.coflnet.gui.flip.FlipHud.clear();
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
             applyServerContext(ServerContext.UNKNOWN);
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
@@ -426,8 +438,8 @@ public class CoflModClient implements ClientModInitializer {
         // loadDescriptionsForInv gates on, so we trigger the price load directly.
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof ContainerScreen cs && isTradeScreenByTitle(cs)) {
-                NonNullList<ItemStack> items = cs.getMenu().getItems();
-                loadDescriptionsForItems(cs.getTitle().getString(), items);
+                com.coflnet.gui.trade.TradePriceCache.clear();
+                com.coflnet.gui.trade.TradePriceCache.request(cs);
 
                 // Replace the trade window with the SkyCofl TradeGUI overlay ONLY
                 // when the trade overlay is enabled (/cofl tradegui on). Dev mode
@@ -777,6 +789,14 @@ public class CoflModClient implements ClientModInitializer {
     /** Worth basis selectable by the user (median vs lowest BIN). */
     public enum WorthBasis { LBIN, MEDIAN }
 
+    // these values are parsed after the existing description request completes.
+    private static final java.util.regex.Pattern LBIN_VALUE = java.util.regex.Pattern.compile(
+            "\\b(?:lbin|lowest\\s*bin)\\s*:?\\s*~?\\s*([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern MED_VALUE = java.util.regex.Pattern.compile(
+            "\\bmed(?:ian)?\\s*:?\\s*~?\\s*([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
     /**
      * Extracts a PER-ITEM coin worth from the backend tooltip lines.
      * <p>
@@ -790,7 +810,7 @@ public class CoflModClient implements ClientModInitializer {
         if (tips == null) {
             return null;
         }
-        String prefix = (basis == WorthBasis.LBIN) ? "lbin:" : "med:";
+        java.util.regex.Pattern label = (basis == WorthBasis.LBIN) ? LBIN_VALUE : MED_VALUE;
         Long bazaar = null;
         for (DescriptionHandler.DescModification t : tips) {
             if (t == null || t.value == null) {
@@ -801,15 +821,16 @@ public class CoflModClient implements ClientModInitializer {
                 continue;
             }
             plain = plain.trim();
-            String lower = plain.toLowerCase(Locale.ROOT);
-            // AH line (preferred when present).
-            if (lower.startsWith(prefix)) {
-                Long v = extractFirstNumber(plain);
-                if (v != null) {
+            // prefer the auction value when it is present.
+            java.util.regex.Matcher m = label.matcher(plain);
+            if (m.find()) {
+                Long v = parseCoinNumber(m.group(1));
+                if (v != null && v > 0) {
                     return v;
                 }
             }
             // Bazaar line: "Buy: 37.49K (585.8 each)Sell: 33.38K (521.6 each)".
+            String lower = plain.toLowerCase(Locale.ROOT);
             if (bazaar == null && (lower.contains("buy:") && lower.contains("each"))) {
                 bazaar = parseBazaarEach(plain, basis == WorthBasis.LBIN ? "buy" : "sell");
             }
@@ -827,19 +848,6 @@ public class CoflModClient implements ClientModInitializer {
                 .matcher(plain);
         if (m.find()) {
             return parseCoinNumber(m.group(1));
-        }
-        return null;
-    }
-
-    /** First comma-grouped integer in a string (e.g. "lbin: ~901,098,980 ..." -> 901098980). */
-    private static Long extractFirstNumber(String s) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d[\\d,]*)").matcher(s);
-        if (m.find()) {
-            try {
-                return Long.parseLong(m.group(1).replace(",", ""));
-            } catch (NumberFormatException e) {
-                return null;
-            }
         }
         return null;
     }
@@ -1910,6 +1918,38 @@ public class CoflModClient implements ClientModInitializer {
         );
     }
 
+    /**
+     * The contents of a storage container are uploaded once when it opens, but the player can still
+     * move items in or out afterwards (e.g. putting a weapon into a backpack). Those slot changes are
+     * not re-uploaded for storage menus, so the stored view would be stale. When such a container is
+     * closed, re-read its final contents and dispatch again. {@link #loadDescriptionsForItems} dedups
+     * via {@code lastNbtRequest}, so this is a no-op when nothing changed since the last upload.
+     * Must run before {@code posToUpload} is cleared so island-chest positions are still included.
+     */
+    public static void resendStorageOnClose(Object screen) {
+        if (!(screen instanceof AbstractContainerScreen<?> hs))
+            return;
+        String title = hs.getTitle().getString();
+        if (!isStorageChest(title))
+            return;
+        loadDescriptionsForItems(title, hs.getMenu().getItems());
+    }
+
+    /**
+     * Containers whose full contents the backend persists as storage. Mirrors the server-side
+     * allow-list in SkyUserState's {@code StorageListener.IsNotStorage} so we only resend real
+     * storage (backpacks, ender chests, island chests, furniture, hunting menus) on close.
+     */
+    public static boolean isStorageChest(String title) {
+        if (title == null)
+            return false;
+        return title.startsWith("Ender Chest")
+                || title.contains("Backpack (Slot")
+                || title.equals("Chest") || title.equals("Large Chest") // island chests
+                || title.equals("Chest Storage") || title.equals("Medium Shelves") || title.contains("Chest+") // furniture
+                || title.contains("Huntaxe") || title.startsWith("Hunting Toolkit"); // hunting menus
+    }
+
     private static List<String> getScoreboard() {
         ObjectArrayList<String> scoreboardAsText = new ObjectArrayList<>();
         if (Minecraft.getInstance() == null || Minecraft.getInstance().level == null) {
@@ -2153,6 +2193,98 @@ public class CoflModClient implements ClientModInitializer {
         );
     }
 
+    /**
+     * Arms a click-triggered sign fill and, when the open container has exactly one "Custom Amount"
+     * button, clicks it to open the sign immediately (which then auto-fills + submits via
+     * {@link com.coflnet.mixin.ClientPlayerEntityMixin} {@code handleSignFill}). With zero or several
+     * candidates it only arms the fill and lets the player open the sign themselves, so we never
+     * auto-open the wrong slot.
+     *
+     * @param payload the JSON sign-fill payload (see {@link #pendingSignFill})
+     */
+    public static void armSignFillAndOpen(String payload) {
+        pendingSignFill = payload;
+        suppressSignRender = false;
+
+        Minecraft client = Minecraft.getInstance();
+        if (!(client.gui.screen() instanceof ContainerScreen gcs)) {
+            return; // no container open; the fill stays armed for the next sign the player opens
+        }
+
+        String name = null;
+        int slot = -1;
+        try {
+            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
+            if (obj.has("name") && !obj.get("name").isJsonNull()) name = obj.get("name").getAsString();
+            if (obj.has("slot") && !obj.get("slot").isJsonNull()) slot = obj.get("slot").getAsInt();
+        } catch (Exception e) {
+            // malformed payload: fall back to the single-button heuristic below
+        }
+
+        int target = findCustomAmountSlot(gcs, name, slot);
+        if (target != -1) {
+            // We know exactly which sign is about to open, so suppress its render to avoid the flash.
+            suppressSignRender = true;
+            clickSlotInContainer(gcs, target);
+        }
+    }
+
+    /**
+     * Picks the "Custom Amount" button to open for a click-armed fill. Prefers the explicit gui
+     * {@code slot} sent by the server (validated to match {@code name} when a name is given), then a
+     * button whose item name contains {@code name}, and finally falls back to the single-unambiguous
+     * heuristic. Returns -1 when nothing safe can be chosen, so a click never opens the wrong sign.
+     */
+    private static int findCustomAmountSlot(ContainerScreen gcs, String name, int slot) {
+        int size = gcs.getMenu().getContainer().getContainerSize();
+        String wanted = name == null ? null : name.toLowerCase();
+
+        // 1. explicit slot, if in range and (no name given or the slot's item matches the name)
+        if (slot >= 0 && slot < size) {
+            ItemStack stack = gcs.getMenu().getContainer().getItem(slot);
+            if (!stack.isEmpty() && stack.getCustomName() != null
+                    && (wanted == null || wanted.isEmpty()
+                        || stack.getCustomName().getString().toLowerCase().contains(wanted))) {
+                return slot;
+            }
+        }
+
+        // 2. first button whose name contains the wanted name
+        if (wanted != null && !wanted.isEmpty()) {
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = gcs.getMenu().getContainer().getItem(i);
+                if (stack.isEmpty() || stack.getCustomName() == null) continue;
+                if (stack.getCustomName().getString().toLowerCase().contains(wanted)) return i;
+            }
+        }
+
+        // 3. fall back to the single unambiguous "Custom Amount" button
+        return findSingleCustomAmountSlot(gcs);
+    }
+
+    /**
+     * Finds the single "Custom Amount" button slot, or -1 if there is not exactly one (zero or
+     * ambiguous), so a click never opens the wrong sign.
+     */
+    private static int findSingleCustomAmountSlot(ContainerScreen gcs) {
+        int found = -1;
+        int size = gcs.getMenu().getContainer().getContainerSize();
+        for (int i = 0; i < size; i++) {
+            ItemStack stack = gcs.getMenu().getContainer().getItem(i);
+            if (stack.isEmpty() || stack.getCustomName() == null) {
+                continue;
+            }
+            String name = stack.getCustomName().getString().toLowerCase();
+            if (name.contains("custom") && name.contains("amount")) {
+                if (found != -1) {
+                    return -1; // more than one -> ambiguous, don't auto-open
+                }
+                found = i;
+            }
+        }
+        return found;
+    }
+
     private boolean checkVersionCompability() {
         try {
             String v = net.minecraft.SharedConstants.getCurrentVersion().id();
@@ -2170,7 +2302,10 @@ public class CoflModClient implements ClientModInitializer {
 
         for (String score : scores) {
             if (score.startsWith("Purse: ") || score.startsWith("Piggy: ")) leftVal = score;
-            if (score.startsWith(" ⏣ ")) rightVal = score;
+            // Hypixel renders the area marker either as the benzene ring ⏣ (U+23E3) or,
+            // on newer clients, a private-use font glyph (U+E067). Match both or location
+            // changes stop triggering scoreboard uploads.
+            if (score.startsWith(" ⏣ ") || score.startsWith("  ")) rightVal = score;
         }
 
         return new Pair<>(leftVal, rightVal);
