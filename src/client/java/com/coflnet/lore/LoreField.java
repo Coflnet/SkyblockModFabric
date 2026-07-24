@@ -7,7 +7,7 @@ import java.util.List;
  * exposed by the {@code /cofl lore} chat menu. Each entry pairs the backend
  * field KEY (the exact token the {@code /cofl lore add|rm|up|down} commands
  * expect with a human display name and a short description for the gui.
- *  
+ *
  * the backend owns which fields are appended and on which line this catalog is
  * only the menu of choices the gui offers. adding a field here that the backend
  * does not recognise simply means the backend ignores the add command so the

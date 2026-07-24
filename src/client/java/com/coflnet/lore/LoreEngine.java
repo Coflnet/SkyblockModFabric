@@ -7,11 +7,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 
 /**
  * top level facade for the client side lore restyler.
- *  
+ *
  * the coflnet backend decides which fields appear and on which line and packs
  * several fields into one appended line e.g. med vol or
  * clean craft full craft cost . this engine never adds or removes backend
@@ -20,16 +21,17 @@ import java.util.regex.Matcher;
  * pattern matches a segment of the line and whose template is non blank replaces
  * just that segment leaving the rest of the line other fields freeform
  * suffixes unknown text exactly as the backend sent it.
- *  
+ *
  * this is the fix for editing one field on a shared line hides the others the
  * old engine replaced the whole line from a single template so the unedited
  * fields on that line vanished. segment substitution edits each field
  * independently and is inherently passthrough safe.
- *  
+ *
  * the engine is skipped when the item id is blacklisted and any segment whose
  * template renders nothing is left untouched so it can never blank an item.
  */
 public class LoreEngine {
+    private static final AtomicBoolean FAILURE_LOGGED = new AtomicBoolean();
 
     /**
      * returns the lore lines to show for one item or null to keep the stock
@@ -45,10 +47,10 @@ public class LoreEngine {
     public static List<String> render(List<String> backendValues, String itemId, String displayName) {
         try {
             return renderInner(backendValues, itemId, displayName);
-        } catch (Throwable t) {
-            // this runs on the client render thread for every tooltip. a throw here
-            // would break tooltip rendering so on any error keep the stock lore.
-            System.out.println("[Lore] render failed, keeping stock lore: " + t);
+        } catch (RuntimeException exception) {
+            if (FAILURE_LOGGED.compareAndSet(false, true)) {
+                System.out.println("[Lore] render failed, keeping stock lore: " + exception);
+            }
             return null;
         }
     }
@@ -61,8 +63,7 @@ public class LoreEngine {
             backendValues = new ArrayList<>();
         }
 
-        // map of segment key module template non blank only . a module
-        // applies when its template is non blank clearing it disables that field.
+        // map of segment key module template non blank only.
         Map<String, String> templates = new HashMap<>();
         for (LoreModule m : LoreManager.getModules()) {
             if (m == null || m.match == null || m.match.isBlank()
@@ -85,7 +86,7 @@ public class LoreEngine {
         // parse the whole item once so any token resolves with full context.
         List<String> stripped = new ArrayList<>(backendValues.size());
         for (String v : backendValues) {
-            stripped.add(ChatFormatting.stripFormatting(v));
+            stripped.add(v == null ? null : ChatFormatting.stripFormatting(v));
         }
         LoreData data = LoreParser.parse(stripped);
         // fall back to what you paid recorded from the ah purchase chat when the
@@ -105,32 +106,51 @@ public class LoreEngine {
                 out.add(null);   // defensive the caller filters nulls but never NPE here.
                 continue;
             }
-            String line = backendLine;
-            // try every segment against this line substitute the ones that match.
-            for (LoreSegment seg : LoreSegment.ALL) {
-                String template = templates.get(seg.key.toUpperCase(java.util.Locale.ROOT));
-                if (template == null) {
-                    continue;
-                }
-                Matcher matcher = seg.pattern.matcher(line);
-                if (!matcher.find()) {
-                    continue;
-                }
-                String fragment = LoreTemplate.render(template, data);
-                if (fragment == null || fragment.isBlank()) {
-                    continue;   // no data or renders empty leave the segment alone.
-                }
-                String matched = matcher.group();
-                if (fragment.equals(matched)) {
-                    continue;   // template reproduces the stock text no change needed.
-                }
-                // replace only this segment keep everything else on the line.
-                line = matcher.replaceFirst(Matcher.quoteReplacement(fragment));
+            String rendered = renderLine(backendLine, templates, data);
+            if (!rendered.equals(backendLine)) {
                 changedAny = true;
             }
-            out.add(line);
+            out.add(rendered);
         }
 
         return changedAny ? out : null;   // no change let caller keep stock
+    }
+
+    public static String renderLine(String backendLine, Map<String, String> templates, LoreData data) {
+        List<Replacement> replacements = new ArrayList<>();
+        if (backendLine == null || templates == null || templates.isEmpty()) {
+            return backendLine;
+        }
+        for (LoreSegment seg : LoreSegment.ALL) {
+            String template = templates.get(seg.key.toUpperCase(java.util.Locale.ROOT));
+            if (template == null) {
+                continue;
+            }
+            Matcher matcher = seg.pattern.matcher(backendLine);
+            if (!matcher.find()) {
+                continue;
+            }
+            String fragment = LoreTemplate.render(template, data);
+            if (fragment == null || fragment.isBlank()) {
+                continue;
+            }
+            String matched = matcher.group();
+            if (fragment.equals(matched)) {
+                continue;
+            }
+            replacements.add(new Replacement(matcher.start(), matcher.end(), fragment));
+        }
+        if (replacements.isEmpty()) {
+            return backendLine;
+        }
+        replacements.sort((left, right) -> Integer.compare(right.start, left.start));
+        StringBuilder line = new StringBuilder(backendLine);
+        for (Replacement replacement : replacements) {
+            line.replace(replacement.start, replacement.end, replacement.text);
+        }
+        return line.toString();
+    }
+
+    private record Replacement(int start, int end, String text) {
     }
 }

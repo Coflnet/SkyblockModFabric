@@ -6,14 +6,14 @@ import java.util.regex.Pattern;
 
 /**
  * renders a user lore template into a finished minecraft component string.
- *  
- * a template mixes literal text ampersand colour codes and token 
- * placeholders for example 
- *  
- *  l clowest ebin r lbin 
- *  
+ *
+ * a template mixes literal text ampersand colour codes and token
+ * placeholders for example
+ *
+ *  l clowest ebin r lbin
+ *
  * Tokens resolve against a parsed {@link LoreData}. Each numeric token has two
- * forms the bare name renders full with comma grouping lbin 690 000 
+ * forms the bare name renders full with comma grouping lbin 690 000
  * and a short suffix renders abbreviated lbin short 690k . ampersand
  * codes are converted to the section sign the game expects. if a token has no
  * value for the item {@link #render} returns null so the caller leaves that

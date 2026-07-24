@@ -13,13 +13,13 @@ import java.util.Locale;
  * encodes the users per field styling templates into the single opaque
  * {@code customFormat} string the backend stores and hands back untouched, and
  * decodes it on the way in.
- *  
- * this is the one string styling sync approach agreed with the skycofl dev 
+ *
+ * this is the one string styling sync approach agreed with the skycofl dev
  * the backend never parses this blob (it keeps treating {@code fields} as the
  * authoritative field list for its per item selection it only stores and
  * returns it so the field detection path stays clean while a users styling
  * follows them across instances through the normal settings sync.
- *  
+ *
  * The blob is a compact JSON object mapping a segment KEY (e.g. {@code "LBIN"})
  * to that field's template string with its {@code {tokens}} intact
  * (e.g. {@code "&l&cLowest &eBin: &r{lbin}"}). Only non-default, non-blank
@@ -91,7 +91,7 @@ public final class LoreStyleCodec {
                     return;   // not our blob some other client wrote a plain string
                 }
                 obj = el.getAsJsonObject();
-            } catch (Exception e) {
+            } catch (RuntimeException exception) {
                 return;   // opaque non json customformat from another client ignore
             }
             // only reset absent keys to default when this looks like our blob at least

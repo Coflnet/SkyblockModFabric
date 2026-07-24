@@ -5,28 +5,28 @@ import java.util.regex.Pattern;
 
 /**
  * one restylable field segment within a backend lore line.
- *  
+ *
  * the coflnet backend packs several fields into a single appended line for
  * example {@code "§7Med: §b46,894,511 §7Vol: §e0.2"} carries MEDIAN and VOLUME
  * together and the craft line carries both clean craft and full craft cost .
- * the old engine classified each line as one class and replaced the whole line 
+ * the old engine classified each line as one class and replaced the whole line
  * so editing one field on a shared line dropped the others.
- *  
+ *
  * A segment instead matches just its own {@link #pattern} (the label plus its
  * value inside a line so the engine can substitute each field independently and
  * leave everything else other fields freeform suffixes like
  *  estimate no match found and any unknown text exactly as the backend
  * sent it. this is inherently passthrough safe a segment that does not match or
  * whose template renders nothing leaves the line untouched.
- *  
+ *
  * The patterns were verified against real {@code /cofl} dumps:
- *  
+ *
  *   <li>the value is an "atomic" number — {@code (?![\d,.])} stops it matching a
- *  truncated prefix of a longer number 
+ *  truncated prefix of a longer number
  *  trailing whitespace is only consumed when a k m b suffix follows so the
- *  space between adjacent fields is preserved 
- *  volume excludes the bazaar vol x y pair via a negative lookahead. 
- *  
+ *  space between adjacent fields is preserved
+ *  volume excludes the bazaar vol x y pair via a negative lookahead.
+ *
  */
 public final class LoreSegment {
 
@@ -34,7 +34,7 @@ public final class LoreSegment {
     // k m b. the trailing s kmbkmb only eats the space when a suffix is
     // actually present so 46 894 511 keeps its trailing space.
     private static final String VAL =
-            "(?:\u00A7.)?\\s*~?\\s*[\\d,]+(?:\\.\\d+)?(?![\\d,.])(?:\\s*[kmbKMB])?";
+            "(?:\u00A7.)?\\s*~?\\s*[\\d,]+(?:\\.\\d+)?(?![\\d,.])(?:\\s*[kmbKMB]\\b)?";
     // volume must not match the bazaar volume pair vol 2 940 1 670.
     private static final String VAL_VOL = VAL + "(?!\\s*(?:\u00A7.)?\\s*/)";
 

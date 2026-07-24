@@ -10,10 +10,10 @@ import java.util.Map;
 
 /**
  * loads and saves the lore engine settings.
- *  
+ *
  * the engine is always on there is no enable toggle an enabled restyle rule
  * is what changes an items look so a master switch only confused things.
- *  
+ *
  * the backend layout and the styling blob is synced as one whole
  * {@code DescriptionSetting} object through {@link com.coflnet.lore.LoreSync}:
  * a single atomic {@code /cofl lore} JSON write, and a {@code /cofl lore json}
@@ -21,31 +21,10 @@ import java.util.Map;
  * driver entirely.
  */
 public class LoreManager {
-    // volatile so the reference swap in reload config is visible everywhere. all
-    // config mutations run on the client thread the render tooltip path plus the
-    // gui and purchase chat and the backend sync now marshals its work onto the
-    // client thread via minecraft.execute so the shared lists are never mutated
-    // while the render thread iterates them.
-    private static volatile CoflModConfig config = null;
+    private static final int MAX_PURCHASES = 256;
 
-    private static void ensureConfig() {
-        if (config == null) {
-            config = CoflModConfig.load();
-        }
-    }
-
-    public static void reloadConfig() {
-        config = CoflModConfig.load();
-    }
-
-    public static CoflModConfig getConfig() {
-        ensureConfig();
-        return config;
-    }
-
-    /** the engine is always active an enabled rule is what changes an item. */
-    public static boolean isEnabled() {
-        return true;
+    private static CoflModConfig getConfig() {
+        return CoflModConfig.get();
     }
 
     /** the ordered module list filled with defaults on first access. */
@@ -64,7 +43,7 @@ public class LoreManager {
         // a concurrent edit lost update .
     }
 
-    //  item blacklist by skyblock item id tag 
+    //  item blacklist by skyblock item id tag
 
     /** item ids the engine must not inject any cofl lore onto. */
     public static List<String> getItemBlacklist() {
@@ -98,7 +77,7 @@ public class LoreManager {
         return false;
     }
 
-    //  purchase history what you paid 
+    //  purchase history what you paid
 
     public static Map<String, Long> getPurchases() {
         CoflModConfig cfg = getConfig();
@@ -117,6 +96,17 @@ public class LoreManager {
         if (cfg.lorePurchases == null) {
             cfg.lorePurchases = new LinkedHashMap<>();
         }
+        Long existing = cfg.lorePurchases.get(itemId);
+        if (existing != null && existing >= coins) {
+            return;
+        }
+        if (existing == null && cfg.lorePurchases.size() >= MAX_PURCHASES) {
+            java.util.Iterator<String> oldest = cfg.lorePurchases.keySet().iterator();
+            if (oldest.hasNext()) {
+                oldest.next();
+                oldest.remove();
+            }
+        }
         cfg.lorePurchases.put(itemId, coins);
         cfg.save();
         // no reload after save the in memory config stays authoritative a reload
@@ -132,10 +122,10 @@ public class LoreManager {
         return getPurchases().get(itemId);
     }
 
-    //  backend layout whole object json sync 
+    //  backend layout whole object json sync
     //
     // the lore layout and now the styling blob lives on the coflnet server as a
-    // single descriptionsetting object. the backend exposes it directly as json 
+    // single descriptionsetting object. the backend exposes it directly as json
     //  read cofl lore json replies with a loresettings socket message
     //  carrying the whole object the reply is fed to loresync.
     //  write running cofl lore with the json as its argument saves the
@@ -147,23 +137,6 @@ public class LoreManager {
     // backwards compatible via the backends version header. loresync owns the
     // full object and only ever mutates fields customformat so a partial
     // write can never wipe unrelated settings. see com.coflnet.lore.loresync.
-
-    public static boolean isLayoutCaptured() {
-        return com.coflnet.lore.LoreSync.hasReceived();
-    }
-
-    /** true when a layout carries at least one actual field on any line. */
-    public static boolean layoutHasField(List<List<String>> layout) {
-        if (layout == null) {
-            return false;
-        }
-        for (List<String> line : layout) {
-            if (line != null && !line.isEmpty()) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /**
      * the persisted mirror of the backend layout seeded from the last synced
@@ -189,12 +162,6 @@ public class LoreManager {
             return;
         }
         CoflModConfig cfg = getConfig();
-        // never wipe a saved layout that has fields with a content empty one every
-        // line empty . a partial or degenerate backend reply e.g. fields x y or
-        // fields must not erase the users layout content empty not just list empty .
-        if (!layoutHasField(layout) && layoutHasField(cfg.loreLayout)) {
-            return;
-        }
         cfg.loreLayout = layout;
         cfg.save();
         // no reload after save the in memory config stays authoritative a reload
@@ -230,13 +197,13 @@ public class LoreManager {
             cfg.loreModules = LoreModule.defaults();
             return;
         }
-        // the engine now keys modules by segment key e.g. lbin fullcraftcost 
-        // for per field substitution. older configs used line class keys lbin 
+        // the engine now keys modules by segment key e.g. lbin fullcraftcost
+        // for per field substitution. older configs used line class keys lbin
         // median craft ... and a null match purchased for module which
         // the new engine cant use. detect a pre segment config and rebuild it
         // from defaults so the user gets working per field modules. templates
         // were the stock look anyway so nothing custom is meaningfully lost a
-        // user who hand edited can re edit per field in the new gui. 
+        // user who hand edited can re edit per field in the new gui.
         boolean segmentScheme = true;
         for (LoreModule m : cfg.loreModules) {
             if (m == null || m.match == null || com.coflnet.lore.LoreSegment.byKey(m.match) == null) {
@@ -249,7 +216,7 @@ public class LoreManager {
             cfg.save();
             return;
         }
-        // same scheme merge in any segment modules the saved config predates 
+        // same scheme merge in any segment modules the saved config predates
         // without disturbing the users customised templates.
         java.util.Set<String> have = new java.util.HashSet<>();
         for (LoreModule m : cfg.loreModules) {
@@ -258,12 +225,12 @@ public class LoreManager {
         boolean changed = false;
         for (LoreModule def : LoreModule.defaults()) {
             if (!have.contains(def.match.toUpperCase(Locale.ROOT))) {
-                cfg.loreModules.add(new LoreModule(def.name, def.match, def.template, def.enabled));
+                cfg.loreModules.add(new LoreModule(def.name, def.match, def.template));
                 changed = true;
             }
         }
         // self heal a historical bad default early builds shipped the craft cost
-        //  clean craft module with the full craft template ...full craft cost 
+        //  clean craft module with the full craft template ...full craft cost
         //  craftcost . that makes the clean craft row emit full craft text so
         // editing it appears to do nothing. if a saved craft cost template still
         // carries that stale text restore the correct clean craft default. genuine

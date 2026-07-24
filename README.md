@@ -43,6 +43,8 @@ Requirements:
 
 Run `/cofl` in-game to open settings. See [sky.coflnet.com](https://sky.coflnet.com/wiki) for documentation.
 
+Use `/cofl lore` to open the lore editor. It changes the field layout, per-field display templates, and item blacklist. Layout and template changes synchronize through the existing Coflnet account connection.
+
 ## Links
 
 - [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)

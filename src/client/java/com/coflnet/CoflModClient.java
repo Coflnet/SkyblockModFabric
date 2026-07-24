@@ -323,6 +323,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            com.coflnet.lore.LoreSync.resetSession();
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             ServerContext detectedServerContext = detectServerContext(null);
             applyServerContext(detectedServerContext);
@@ -347,6 +348,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            com.coflnet.lore.LoreSync.resetSession();
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             applyServerContext(ServerContext.UNKNOWN);
             WSClientWrapper wrapper = CoflCore.Wrapper;
@@ -513,37 +515,30 @@ public class CoflModClient implements ClientModInitializer {
             //  blacklisted item or nothing changed so it can never blank an item.
             List<String> appendValues = new ArrayList<>();
             for (DescriptionHandler.DescModification t : tooltips) {
-                if ("APPEND".equals(t.type) && t.value != null) {
+                if ("APPEND".equals(t.type)) {
                     appendValues.add(t.value);
                 }
             }
-            // this callback runs on the render thread for every tooltip a throw here
-            // would break tooltip rendering so keep the stock lore on any error.
-            List<String> templated;
-            try {
-                templated = com.coflnet.lore.LoreEngine.render(appendValues, getItemTagFromStack(stack),
-                        net.minecraft.ChatFormatting.stripFormatting(stack.getHoverName().getString()));
-            } catch (Throwable loreError) {
-                System.out.println("[Lore] tooltip render failed, keeping stock lore: " + loreError);
-                templated = null;
-            }
+            List<String> templated = com.coflnet.lore.LoreEngine.render(
+                    appendValues,
+                    getItemTagFromStack(stack),
+                    net.minecraft.ChatFormatting.stripFormatting(stack.getHoverName().getString()));
+            int appendIndex = 0;
 
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type) {
-                    case "APPEND":
-                        // when the engine produced templated lines emit them once
-                        //  on the first append and skip the raw backend appends.
-                        if (templated != null) {
-                            if (!templated.isEmpty()) {
-                                for (String line : templated) {
-                                    lines.add(Component.literal(line));
-                                }
-                                templated = java.util.Collections.emptyList();
-                            }
-                            break;
+                    case "APPEND": {
+                        String rendered = templated != null && appendIndex < templated.size()
+                                ? templated.get(appendIndex)
+                                : null;
+                        appendIndex++;
+                        if (rendered != null) {
+                            lines.add(Component.literal(rendered));
+                        } else if (tooltip.value != null) {
+                            lines.add(Component.literal(tooltip.value + " "));
                         }
-                        lines.add(Component.literal(tooltip.value + " "));
                         break;
+                    }
                     case "REPLACE":
                         if (tooltip.line < 0 || tooltip.line >= lines.size() || tooltip.line >= ogLoreLines.size()) {
                             System.out.println("Invalid line index: " + tooltip.line + " for tooltip: " + tooltip.value);
@@ -610,9 +605,6 @@ public class CoflModClient implements ClientModInitializer {
             capturePurchase(messageText);
             // capture the full trade partner name from trade request chat lines.
             captureTradePartner(messageText);
-            if (captureLoreMenu(message)) {
-                return false;
-            }
             // Skip backend processing for our own display messages to avoid a feedback loop.
             if (!messageText.startsWith(TEXT_TUNNELS_MESSAGE_PREFIX)) {
                 EventRegistry.onChatMessage(messageText);
@@ -905,30 +897,14 @@ public class CoflModClient implements ClientModInitializer {
         }
     }
 
-    private static final java.util.regex.Pattern PURCHASE_MESSAGE = java.util.regex.Pattern.compile(
-            "^You (?:purchased|bought|claimed) (?:\\d+x\\s+)?(.{1,128}?)(?: from .{1,64}?)? for ([0-9][0-9,]{0,20}) coins[.!]?$");
-
     public static void capturePurchase(String message) {
         if (message == null) {
             return;
         }
         String plain = ChatFormatting.stripFormatting(message).trim();
-        if (plain.length() > 256) {
-            return;
-        }
-        java.util.regex.Matcher match = PURCHASE_MESSAGE.matcher(plain);
-        if (!match.matches()) {
-            return;
-        }
-        long coins;
-        try {
-            coins = Long.parseLong(match.group(2).replace(",", ""));
-        } catch (NumberFormatException ignored) {
-            return;
-        }
-        String name = match.group(1).trim();
-        if (coins > 0 && !name.isBlank()) {
-            com.coflnet.config.LoreManager.recordPurchase(name, coins);
+        com.coflnet.lore.PurchaseMessage purchase = com.coflnet.lore.PurchaseMessage.parse(plain);
+        if (purchase != null) {
+            com.coflnet.config.LoreManager.recordPurchase(purchase.itemName(), purchase.coins());
         }
     }
 
@@ -2109,11 +2085,15 @@ public class CoflModClient implements ClientModInitializer {
             return;
         }
         client.execute(() -> {
-            DescriptionHandler.emptyTooltipData();
-            lastNbtRequest = "";
-            lastRefreshTimePerInventory.clear();
-            if (instance != null && client.gui.screen() instanceof AbstractContainerScreen<?> screen) {
-                instance.loadDescriptionsForInv(screen);
+            try {
+                DescriptionHandler.emptyTooltipData();
+                lastNbtRequest = "";
+                lastRefreshTimePerInventory.clear();
+                if (instance != null && client.gui.screen() instanceof AbstractContainerScreen<?> screen) {
+                    instance.loadDescriptionsForInv(screen);
+                }
+            } catch (RuntimeException exception) {
+                System.out.println("[Lore] could not refresh inventory descriptions: " + exception);
             }
         });
     }
@@ -2712,7 +2692,7 @@ public class CoflModClient implements ClientModInitializer {
      * known Hypixel server IPs (mc.hypixel.net, hypixel.net, alpha.hypixel.net).
      * Runs synchronously so the config is written before text_Tunnels loads its
      * server-specific configuration on join.
-     *  
+     * <p>
      * Silently skips if text_Tunnels is not installed or the entry already exists.
      * On completion it triggers a live config-reload via reflection so the change
      * takes effect without restarting.

@@ -26,16 +26,7 @@ public class CoflModConfig {
     // populated from loremodule.defaults so the look matches the stock lore.
     public java.util.List<com.coflnet.lore.LoreModule> loreModules = null;
 
-    // menus where the lore engine should not inject by container title
-    // substring case insensitive . lets the user blacklist specific guis.
-    public java.util.List<String> loreBlacklist = null;
-
-    // client side mirror of the backend lore field layout the thing the
-    //  cofl lore chat menu edits . each inner list is one 0 indexed line and
-    // holds the backend field keys on that line in order. the gui edits this
-    // mirror and drives cofl lore add rm up down to keep the backend in sync 
-    // since the backend layout is not readable from the client. null until the
-    // layout gui is first opened then seeded from the observed default.
+    // client side mirror of the backend lore field layout.
     public java.util.List<java.util.List<String>> loreLayout = null;
 
     // items the lore engine must not inject any cofl lore onto by skyblock item
@@ -92,8 +83,8 @@ public class CoflModConfig {
                     return config;
                 }
             }
-        } catch (IOException e) {
-            // Use default values if loading fails
+        } catch (IOException | RuntimeException exception) {
+            System.out.println("Could not load CoflMod config: " + exception);
         }
         
         // Return default config if loading fails or file doesn't exist

@@ -6,39 +6,36 @@ import CoflCore.commands.RawCommand;
 import CoflCore.network.WSClientWrapper;
 import com.coflnet.config.LoreManager;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
 
 /**
- * reads and writes the whole lore settings through the backend json path 
+ * reads and writes the whole lore settings through the backend json path
  * replacing the old chat menu scraping and the one command at a time driver.
- *  
+ *
  * The Coflnet backend exposes its {@code DescriptionSetting} object directly:
- *  
+ *
  *   <li>READ — sending {@code lore json} makes the server reply with a
  *       {@code loreSettings} socket message carrying the object as JSON. The
  *       reply lands in {@link #onBackendJson(String)}.</li>
  *   <li>WRITE — running {@code lore} with the JSON object as its argument saves
- *  the whole object at once. one atomic update no re indexing no throttle. 
- *  
+ *  the whole object at once. one atomic update no re indexing no throttle.
+ *
  * the write replaces the entire stored object so we always start from the last
  * object the backend sent us ({@link #current}) and only mutate the two members
  * we own — {@code fields} (layout) and {@code customFormat} (our styling blob) —
  * carrying every other setting through untouched. See {@link DescriptionSettings}.
- *  
+ *
  *  every save is verified against the server. after the write the backend
  * echoes {@code Imported settings (check above)} once it has accepted and applied
  * the object that echo is the confirmation. if instead the server rejects the
  * json or nothing is heard within a timeout the user is told exactly why in a
  * chat message. a save is never reported as done on faith.
- *  
+ *
  * NOTE: the backend's {@code /cofl lore json} READ returns a value cached for up
  * to a minute and the write does not refresh that cache so a read back
  * immediately after a write returns stale data. verification therefore keys on
- * the write echo not a re read. reported to the dev to fix the cache. 
+ * the write echo not a re read. reported to the dev to fix the cache.
  */
 public final class LoreSync {
 
@@ -51,7 +48,7 @@ public final class LoreSync {
     /** true once at least one backend object has been received this session. */
     private static volatile boolean received = false;
 
-    //  verification state a save in flight 
+    //  verification state a save in flight
 
     /** how long to wait for the backends write echo before warning ms . */
     private static final long VERIFY_TIMEOUT_MS = 6000;
@@ -85,17 +82,19 @@ public final class LoreSync {
         return received;
     }
 
-    /** the layout from the last backend object or an empty layout before any read. */
-    public static List<List<String>> getLayout() {
-        DescriptionSettings s = current;
-        return s == null ? new ArrayList<>() : s.getFields();
+    public static void resetSession() {
+        current = null;
+        received = false;
+        pendingPayload = null;
+        lastSaveMs = 0L;
+        activeSave.set(0);
     }
 
-    //  read 
+    //  read
 
     /**
      * Asks the backend for the current settings object via {@code /cofl lore json}.
-     *  
+     *
      * the backend gates the json reply on the argument being the bare string
      * {@code json}. The normal command helper gson-quotes its argument (yielding
      * {@code "json"}), which misses that check, so we send the raw command
@@ -107,14 +106,11 @@ public final class LoreSync {
             RawCommand rc = new RawCommand("lore", "json");
             if (wrapper != null && wrapper.isRunning) {
                 wrapper.SendMessage(rc);
-            } else if (wrapper != null) {
-                net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-                String user = (mc != null && mc.getUser() != null) ? mc.getUser().getName() : "";
-                wrapper.startConnection(user);
-                wrapper.SendMessage(rc);
+            } else {
+                msg("§cNot connected to Coflnet. Run §e/cofl start§c, then reopen the lore editor.");
             }
-        } catch (Throwable t) {
-            System.out.println("[Lore] requestFromBackend failed: " + t);
+        } catch (RuntimeException exception) {
+            System.out.println("[Lore] requestFromBackend failed: " + exception);
         }
     }
 
@@ -122,7 +118,7 @@ public final class LoreSync {
      * Handles a {@code loreSettings} JSON payload from the backend. Stores the
      * full object mirrors its layout and adopts synced styling. runs on the
      * websocket reading thread.
-     *  
+     *
      * this is not used to verify a save the backend caches the json read for up to a
      * minute and the write does not refresh it so a post write read returns stale
      * data. a read within that window of our own write is ignored entirely so it
@@ -134,7 +130,6 @@ public final class LoreSync {
             System.out.println("[Lore] ignoring unparseable loreSettings payload");
             return;
         }
-        received = true;
         // this lands on the websocket reading thread. marshal everything incl the guard
         // checks onto the client thread so it never races the tooltip render iterating
         // modules and so stale verifying are re evaluated at execution time a save that
@@ -148,11 +143,11 @@ public final class LoreSync {
             if (stale) {
                 return;
             }
+            received = true;
             current = parsed;
-            // only mirror a real fields array a partial or malformed reply that omitted
-            // fields must never wipe or revert the layout.
-            if (parsed.hasFields()) {
-                LoreManager.setSyncedLayout(parsed.getFields());
+            List<List<String>> fields = parsed.hasFields() ? parsed.getFields() : null;
+            if (fields != null) {
+                LoreManager.setSyncedLayout(fields);
             }
             // adopt synced styling only on a genuine non verify read. applytomodules is
             // authoritative for every restylable field present key sets it incl empty to
@@ -161,10 +156,9 @@ public final class LoreSync {
             if (!verifying) {
                 LoreStyleCodec.applyToModules(parsed.getCustomFormat(), LoreManager.getModules());
                 LoreManager.saveModules(LoreManager.getModules());
-                // hand the open gui the fresh layout and styling always even an empty
-                // layout so it can drop its loading header and re copy the synced
-                // templates . onLayoutCaptured guards against clobbering live edits.
-                com.coflnet.gui.cofl.LoreConfigScreen.onLayoutCaptured(parsed.getFields());
+                if (fields != null) {
+                    com.coflnet.gui.cofl.LoreConfigScreen.onLayoutCaptured(fields);
+                }
             }
         };
         net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
@@ -175,7 +169,7 @@ public final class LoreSync {
         }
     }
 
-    //  write verify 
+    //  write verify
 
     /**
      * saves the given layout and module styling to the backend as one whole
@@ -239,10 +233,11 @@ public final class LoreSync {
             // deserialises the whole descriptionsetting in one atomic update then
             // echoes imported settings check above .
             CoflSkyCommand.processCommand(new String[]{"lore", json}, user);
-        } catch (Throwable t) {
-            System.out.println("[Lore] save send failed: " + t);
+        } catch (RuntimeException exception) {
+            System.out.println("[Lore] save send failed: " + exception);
             if (activeSave.compareAndSet(gen, 0)) {
-                failVerify("I could not send your lore to the server (" + t + "). It was not saved.");
+                clearFailedSave();
+                failVerify("I could not send your lore to the server (" + exception + "). It was not saved.");
             }
             return;
         }
@@ -258,6 +253,7 @@ public final class LoreSync {
                 return;
             }
             if (activeSave.compareAndSet(gen, 0)) {
+                clearFailedSave();
                 failVerify("the server never confirmed your lore save. If your lore did not "
                         + "change in game, tell the dev. Your other settings were not touched.");
             }
@@ -281,16 +277,15 @@ public final class LoreSync {
             return;
         }
         String lower = plain.toLowerCase(Locale.ROOT);
-        // the backend echoes exactly imported settings check above on success.
-        // require both phrases so a stray player chat line saying imported settings
-        // cannot fake a confirmation during the verify window.
-        if (lower.contains("imported settings") && lower.contains("check above")) {
+        if (lower.equals("imported settings (check above)")
+                || lower.equals("imported settings (check above).")) {
             int g = activeSave.get();
             if (g != 0 && activeSave.compareAndSet(g, 0)) {
                 DescriptionSettings p = pendingPayload;
                 if (p != null) {
                     current = p;   // promote to confirmed only now the server accepted.
                 }
+                pendingPayload = null;
                 msg("\u00A7aLore settings saved and confirmed on the server.");
             }
             return;
@@ -301,8 +296,9 @@ public final class LoreSync {
                 || lower.contains("invalid_arguments")) {
             int g = activeSave.get();
             if (g != 0 && activeSave.compareAndSet(g, 0)) {
+                clearFailedSave();
                 failVerify("the server rejected your lore save: \u00A7f" + stripCodes(plain)
-                        + "\u00A7c. Nothing was changed.");
+                        + "\u00A7c. The server settings were not changed.");
             }
         }
     }
@@ -312,7 +308,12 @@ public final class LoreSync {
         msg("\u00A7c" + reason);
     }
 
-    //  helpers 
+    private static void clearFailedSave() {
+        pendingPayload = null;
+        lastSaveMs = 0L;
+    }
+
+    //  helpers
 
     /** posts a chat message to the local player on the client thread. */
     private static void msg(String text) {
@@ -323,8 +324,8 @@ public final class LoreSync {
         mc.execute(() -> {
             try {
                 com.coflnet.CoflModClient.sendChatMessage(text);
-            } catch (Throwable t) {
-                System.out.println("[Lore] could not post chat message: " + t);
+            } catch (RuntimeException exception) {
+                System.out.println("[Lore] could not post chat message: " + exception);
             }
         });
     }

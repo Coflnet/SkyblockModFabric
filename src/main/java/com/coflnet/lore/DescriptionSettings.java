@@ -13,14 +13,14 @@ import java.util.List;
 /**
  * A non-destructive wrapper around the backend {@code DescriptionSetting} object,
  * the whole lore settings model the coflnet server syncs.
- *  
+ *
  * The backend now exposes this object as JSON: {@code /cofl lore json} sends it
  * back (as a {@code loreSettings} socket message) and running {@code /cofl lore}
  * with the json as its argument saves the whole object at once. that single
  * atomic write replaces the entire stored object so anything we omit is reset to
  * its default lowball config colour replacements highlight settings the
  * disabled flag everything.
- *  
+ *
  * to edit safely we therefore keep the full parsed json around and only mutate
  * the two members we own: {@code fields} (the line/field layout) and
  * {@code customFormat} (our opaque styling blob). Every other member is carried
@@ -59,17 +59,10 @@ public final class DescriptionSettings {
                 return null;
             }
             return new DescriptionSettings(el.getAsJsonObject());
-        } catch (Exception e) {
-            System.out.println("[Lore] could not parse DescriptionSetting json: " + e);
+        } catch (RuntimeException exception) {
+            System.out.println("[Lore] could not parse DescriptionSetting json: " + exception);
             return null;
         }
-    }
-
-    /** an empty settings object used only before the first backend read lands . */
-    public static DescriptionSettings empty() {
-        JsonObject o = new JsonObject();
-        o.add("Fields", new JsonArray());
-        return new DescriptionSettings(o);
     }
 
     /**
@@ -89,7 +82,22 @@ public final class DescriptionSettings {
     public boolean hasFields() {
         String key = actualKey("Fields");
         JsonElement el = key == null ? null : root.get(key);
-        return el != null && el.isJsonArray();
+        if (el == null || !el.isJsonArray()) {
+            return false;
+        }
+        for (JsonElement line : el.getAsJsonArray()) {
+            if (line == null || !line.isJsonArray()) {
+                return false;
+            }
+            for (JsonElement field : line.getAsJsonArray()) {
+                if (field == null || !field.isJsonPrimitive()
+                        || !field.getAsJsonPrimitive().isString()
+                        || field.getAsString().isBlank()) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**
@@ -145,7 +153,7 @@ public final class DescriptionSettings {
 
     /**
      * replaces the field layout drops empty tail lines . writes to the existing
-     * member key if the object already has one preserving the backends casing 
+     * member key if the object already has one preserving the backends casing
      * otherwise creates {@code "Fields"} to match the backend's PascalCase socket
      * form. Never leaves a duplicate {@code fields}/{@code Fields} pair.
      */
@@ -173,7 +181,7 @@ public final class DescriptionSettings {
             }
         }
         String key = actualKey("Fields");
-        root.add(key != null ? key : "Fields", fields);
+        replaceMember(key != null ? key : "Fields", "Fields", fields);
     }
 
     /** the opaque styling blob the mod stores its per field templates or null. */
@@ -196,10 +204,23 @@ public final class DescriptionSettings {
         String key = actualKey("CustomFormat");
         String target = key != null ? key : "CustomFormat";
         if (customFormat == null || customFormat.isBlank()) {
-            root.add(target, com.google.gson.JsonNull.INSTANCE);
+            replaceMember(target, "CustomFormat", com.google.gson.JsonNull.INSTANCE);
         } else {
-            root.addProperty(target, customFormat);
+            replaceMember(target, "CustomFormat", GSON.toJsonTree(customFormat));
         }
+    }
+
+    private void replaceMember(String target, String logicalName, JsonElement value) {
+        List<String> duplicates = new ArrayList<>();
+        for (String key : root.keySet()) {
+            if (key.equalsIgnoreCase(logicalName) && !key.equals(target)) {
+                duplicates.add(key);
+            }
+        }
+        for (String duplicate : duplicates) {
+            root.remove(duplicate);
+        }
+        root.add(target, value);
     }
 
     /**

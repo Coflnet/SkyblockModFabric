@@ -90,6 +90,9 @@ public class EventSubscribers {
                 combinedMessage.append(styledPart);
             }
         }
+        if (CoflModClient.captureLoreMenu(combinedMessage)) {
+            return;
+        }
         // let a pending lore save see the backends imported settings rejection echo.
         com.coflnet.lore.LoreSync.observeChat(
                 net.minecraft.ChatFormatting.stripFormatting(combinedMessage.getString()));
@@ -148,16 +151,6 @@ public class EventSubscribers {
         } catch (RuntimeException ignored) {
             com.coflnet.config.TradeGuiManager.clearAccountTier();
         }
-    }
-
-    /**
-     * The backend replied to {@code /cofl lore json} with the whole
-     * descriptionsetting object. hand it to loresync which stores it mirrors the
-     * layout into the config gui and adopts any synced styling.
-     */
-    @Subscribe
-    public void onLoreSettingsReceive(OnLoreSettingsReceive event){
-        com.coflnet.lore.LoreSync.onBackendJson(event.Json);
     }
 
     @Subscribe
@@ -264,6 +257,7 @@ public class EventSubscribers {
 
     @Subscribe
     public void onLoggedIn(OnLoggedIn event){
+        com.coflnet.lore.LoreSync.resetSession();
         System.out.println("Backend logged in event received, uploading scoreboard and tab list...");
         CoflModClient.uploadScoreboardAndTabList();
     }

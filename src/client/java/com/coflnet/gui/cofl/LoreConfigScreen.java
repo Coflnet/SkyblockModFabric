@@ -30,23 +30,22 @@ import java.util.Map;
  * (flat panels via {@link RenderUtils}, the shared {@link CoflColConfig} palette,
  * manual hit-testing, {@link EditBox} widgets, deferred {@code setComponentTooltip}
  * hovers). Replaces the {@code /cofl lore} chat menu.
- *  
+ *
  * the lore engine is always on and there is no enable toggle a restyle applies
- * whenever its template box is non blank clearing the box disables that line .
- *  
- * tabs 
- *  
+ * whenever its template box is non blank clearing the box restores the stock line.
+ *
+ * tabs
+ *
  *  layout which backend fields show on which line. field chips per
  *  line click to remove a searchable field palette click to add to the
- *       selected line). Saving drives the {@code /cofl lore add|rm} commands via
- *  the closed loop applier. 
+ *  selected line. saving writes the complete settings object once.
  *  templates shows the real current layout as chips click an
  *  editable field chip to edit how that line looks with a full live preview
  *  of the entire rendered lore below using your held items data when
  *  available otherwise sample values . freeform fields that have no
- *  parseable value pass through unchanged and are marked as such. 
- *  blacklist items by id the engine leaves untouched. 
- *  
+ *  parseable value pass through unchanged and are marked as such.
+ *  blacklist items by id the engine leaves untouched.
+ *
  */
 public class LoreConfigScreen extends Screen {
     private static final int PAD = 10;
@@ -160,11 +159,6 @@ public class LoreConfigScreen extends Screen {
             if (layout == null || current.userEditedLayout) {
                 return;
             }
-            // do not blank a non empty working layout with a content empty reply a
-            // partial or malformed backend read must not clear the editor.
-            if (!LoreManager.layoutHasField(layout) && LoreManager.layoutHasField(current.workingLayout)) {
-                return;
-            }
             current.workingLayout = deepCopyLayout(layout);
             if (current.selectedLine >= current.workingLayout.size()) {
                 current.selectedLine = Math.max(0, current.workingLayout.size() - 1);
@@ -174,15 +168,12 @@ public class LoreConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        // clamp to a sane minimum so the derived widths e.g. lines width equals content
-        // width minus 178 never go negative on a tiny window or a high gui scale which
-        // would render garbage negative width rects .
-        panelW = Math.max(240, Math.min(this.width - 24, 560));
-        panelH = Math.max(180, Math.min(this.height - 24, 320));
+        panelW = Math.min(560, Math.max(1, this.width - 8));
+        panelH = Math.min(320, Math.max(1, this.height - 8));
         panelX = this.width / 2 - panelW / 2;
         panelY = this.height / 2 - panelH / 2;
 
-        tabW = (panelW - PAD * 2 - 8) / 3;
+        tabW = Math.max(1, (panelW - PAD * 2 - 8) / 3);
         tabH = 16;
         tabY = panelY + 26;
         tabLayoutX = panelX + PAD;
@@ -191,24 +182,25 @@ public class LoreConfigScreen extends Screen {
 
         contentX = panelX + PAD;
         contentY = tabY + tabH + 10;
-        contentW = panelW - PAD * 2;
+        contentW = Math.max(1, panelW - PAD * 2);
 
-        saveW = 110;
+        saveW = Math.min(110, Math.max(1, (contentW - 4) / 2));
         saveH = 18;
         saveX = panelX + panelW - PAD - saveW;
         saveY = panelY + panelH - PAD - saveH;
-        contentH = saveY - 8 - contentY;
+        contentH = Math.max(1, saveY - 8 - contentY);
 
-        addHeldW = 150;
+        addHeldW = Math.min(150, Math.max(1, contentW - saveW - 4));
         addHeldH = 18;
         addHeldX = panelX + PAD;
         addHeldY = saveY;
 
         linesX = contentX;
-        linesW = contentW - 170 - 8;
-        paletteX = contentX + contentW - 170;
+        paletteW = Math.min(Math.max(1, contentW - 1),
+                Math.min(170, Math.max(60, (contentW - 8) / 2)));
+        linesW = Math.max(1, contentW - paletteW - 8);
+        paletteX = contentX + contentW - paletteW;
         paletteY = contentY;
-        paletteW = 170;
         paletteH = contentH;
 
         rebuildTabWidgets();
@@ -231,8 +223,8 @@ public class LoreConfigScreen extends Screen {
             // editor lives in the right column at a fixed position independent of
             // how many chips are on the left so the editbox never jumps.
             LoreModule m = workingModules.get(editingModule);
-            int editorX = contentX + 138;
-            int editorW = contentW - 138;
+            int editorX = templateEditorX();
+            int editorW = templateEditorWidth();
             templateBox = new EditBox(font, editorX, contentY + 16, editorW, 14,
                     Component.literal("template"));
             templateBox.setMaxLength(200);
@@ -267,7 +259,7 @@ public class LoreConfigScreen extends Screen {
         rebuildTabWidgets();
     }
 
-    //  rendering 
+    //  rendering
 
     @Override
     protected void extractBlurredBackground(GuiGraphicsExtractor context) {
@@ -286,7 +278,7 @@ public class LoreConfigScreen extends Screen {
 
         drawTab(context, tabLayoutX, "Layout", tab == Tab.LAYOUT, mouseX, mouseY,
                 "Choose which Coflnet fields appear on item lore and on which line.",
-                "Saving sends the matching /cofl lore commands to the server.");
+                "Saving writes the complete layout to the server once.");
         drawTab(context, tabTemplatesX, "Templates", tab == Tab.TEMPLATES, mouseX, mouseY,
                 "Restyle how each line looks. Click a field to edit it;",
                 "see the whole lore preview update live below.");
@@ -300,9 +292,13 @@ public class LoreConfigScreen extends Screen {
             case BLACKLIST -> drawBlacklistTab(context, font, mouseX, mouseY);
         }
 
-        boolean saveHover = inRect(mouseX, mouseY, saveX, saveY, saveW, saveH);
-        box(context, saveX, saveY, saveW, saveH, saveHover ? CoflColConfig.CONFIRM_HOVER : CoflColConfig.CONFIRM);
-        RenderUtils.drawCenteredString(context, "Save & Close", saveX + saveW / 2, saveY + 5, 0xFF222831);
+        boolean saveHover = capturedFromBackend && inRect(mouseX, mouseY, saveX, saveY, saveW, saveH);
+        int saveColor = capturedFromBackend
+                ? (saveHover ? CoflColConfig.CONFIRM_HOVER : CoflColConfig.CONFIRM)
+                : 0xFF555B63;
+        box(context, saveX, saveY, saveW, saveH, saveColor);
+        RenderUtils.drawCenteredString(context, capturedFromBackend ? "Save & Close" : "Waiting for server",
+                saveX + saveW / 2, saveY + 5, 0xFF222831);
         if (saveHover) {
             queueTip(mouseX, mouseY, "Apply all changes and close.",
                     "§7Layout edits are sent to the server.");
@@ -328,7 +324,7 @@ public class LoreConfigScreen extends Screen {
         }
     }
 
-    //  layout tab 
+    //  layout tab
 
     private void drawLayoutTab(GuiGraphicsExtractor context, Font font, int mouseX, int mouseY) {
         String header = capturedFromBackend
@@ -378,7 +374,7 @@ public class LoreConfigScreen extends Screen {
         // palette with search.
         box(context, paletteX, paletteY, paletteW, paletteH, CoflColConfig.BACKGROUND_SECONDARY);
         RenderUtils.drawString(context, "§fAdd to line " + (selectedLine + 1), paletteX + 5, paletteY + 4, CoflColConfig.TEXT_PRIMARY);
-        //  search editbox widget sits at palettey 16 
+        //  search editbox widget sits at palettey 16
         int listTop = paletteY + 32;
         context.enableScissor(paletteX, listTop, paletteX + paletteW, paletteY + paletteH);
         String query = searchBox == null ? "" : searchBox.getValue().trim().toLowerCase(java.util.Locale.ROOT);
@@ -402,14 +398,14 @@ public class LoreConfigScreen extends Screen {
         context.disableScissor();
     }
 
-    //  templates tab 
+    //  templates tab
 
     private void drawTemplatesTab(GuiGraphicsExtractor context, Font font, int mouseX, int mouseY) {
         RenderUtils.drawString(context, "§7Pick a field on the left, edit it on the right. §8Only fields this item shows are listed.",
                 contentX, contentY - 9, CoflColConfig.TEXT_PRIMARY);
 
         // left column one row per segment actually detected in this items output.
-        int colW = 130;
+        int colW = templateListWidth();
         List<com.coflnet.lore.LoreSegment> detected = detectedSegments();
         int rowH = 14;
         int listTop = contentY + 4;
@@ -444,23 +440,26 @@ public class LoreConfigScreen extends Screen {
         RenderUtils.drawRect(context, contentX + colW + 4, contentY, 1, contentH, CHIP_HOVER);
 
         // right column editor for the selected field.
-        int editorX = contentX + 138;
-        int editorW = contentW - 138;
+        int editorX = templateEditorX();
+        int editorW = templateEditorWidth();
         if (editingModule >= 0 && editingModule < workingModules.size()) {
             LoreModule m = workingModules.get(editingModule);
             RenderUtils.drawString(context, "§fEditing §e" + m.name + "  §8" + tokensFor(m),
                     editorX, contentY + 2, CoflColConfig.TEXT_PRIMARY);
-            //  template editbox widget sits at contenty 16 
+            //  template editbox widget sits at contenty 16
             String tmpl = templateBox != null ? templateBox.getValue() : m.template;
             RenderUtils.drawString(context, "§8this field: §r" + onePreview(tmpl),
                     editorX, contentY + 34, CoflColConfig.TEXT_PRIMARY);
             // reset clear buttons.
-            boolean rHover = inRect(mouseX, mouseY, editorX, contentY + 46, 60, 14);
-            box(context, editorX, contentY + 46, 60, 14, rHover ? CoflColConfig.CONFIRM_HOVER : CHIP_TINT);
-            RenderUtils.drawCenteredString(context, "Reset", editorX + 30, contentY + 49, CoflColConfig.TEXT_PRIMARY);
-            boolean cHover = inRect(mouseX, mouseY, editorX + 66, contentY + 46, 80, 14);
-            box(context, editorX + 66, contentY + 46, 80, 14, cHover ? CoflColConfig.CANCEL_HOVER : CHIP_TINT);
-            RenderUtils.drawCenteredString(context, "Show stock", editorX + 66 + 40, contentY + 49, CoflColConfig.TEXT_PRIMARY);
+            int resetW = resetButtonWidth();
+            int stockX = stockButtonX();
+            int stockW = stockButtonWidth();
+            boolean rHover = inRect(mouseX, mouseY, editorX, contentY + 46, resetW, 14);
+            box(context, editorX, contentY + 46, resetW, 14, rHover ? CoflColConfig.CONFIRM_HOVER : CHIP_TINT);
+            RenderUtils.drawCenteredString(context, "Reset", editorX + resetW / 2, contentY + 49, CoflColConfig.TEXT_PRIMARY);
+            boolean cHover = inRect(mouseX, mouseY, stockX, contentY + 46, stockW, 14);
+            box(context, stockX, contentY + 46, stockW, 14, cHover ? CoflColConfig.CANCEL_HOVER : CHIP_TINT);
+            RenderUtils.drawCenteredString(context, "Show stock", stockX + stockW / 2, contentY + 49, CoflColConfig.TEXT_PRIMARY);
             if (rHover) {
                 queueTip(mouseX, mouseY, "§a[reset] §7Restore this field's default style.");
             }
@@ -493,7 +492,7 @@ public class LoreConfigScreen extends Screen {
         }
     }
 
-    //  blacklist tab 
+    //  blacklist tab
 
     private void drawBlacklistTab(GuiGraphicsExtractor context, Font font, int mouseX, int mouseY) {
         RenderUtils.drawString(context, "§7Items the engine never touches. Hold an item and click the button below.",
@@ -532,7 +531,7 @@ public class LoreConfigScreen extends Screen {
         }
     }
 
-    //  input 
+    //  input
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
@@ -542,6 +541,9 @@ public class LoreConfigScreen extends Screen {
         if (inRect(mx, my, tabLayoutX, tabY, tabW, tabH)) { switchTab(Tab.LAYOUT); return true; }
         if (inRect(mx, my, tabTemplatesX, tabY, tabW, tabH)) { switchTab(Tab.TEMPLATES); return true; }
         if (inRect(mx, my, tabBlacklistX, tabY, tabW, tabH)) { switchTab(Tab.BLACKLIST); return true; }
+        if (!capturedFromBackend) {
+            return true;
+        }
         if (inRect(mx, my, saveX, saveY, saveW, saveH)) {
             if (dirty) {
                 saveAll();
@@ -572,9 +574,11 @@ public class LoreConfigScreen extends Screen {
                     continue;
                 }
                 if (inRect(mx, my, paletteX + 3, py, paletteW - 6, 13)) {
-                    ensureLine(selectedLine).add(f.key);
-                    userEditedLayout = true;
-                    dirty = true;
+                    if (!containsField(f.key)) {
+                        ensureLine(selectedLine).add(f.key);
+                        userEditedLayout = true;
+                        dirty = true;
+                    }
                     return true;
                 }
                 py += 15;
@@ -615,10 +619,10 @@ public class LoreConfigScreen extends Screen {
     }
 
     private boolean clickTemplates(double mx, double my) {
-        int editorX = contentX + 138;
+        int editorX = templateEditorX();
         // reset clear buttons only when editing positions match the draw.
         if (editingModule >= 0 && editingModule < workingModules.size()) {
-            if (inRect(mx, my, editorX, contentY + 46, 60, 14)) {
+            if (inRect(mx, my, editorX, contentY + 46, resetButtonWidth(), 14)) {
                 String def = defaultTemplateFor(workingModules.get(editingModule));
                 workingModules.get(editingModule).template = def;
                 dirty = true;
@@ -628,7 +632,7 @@ public class LoreConfigScreen extends Screen {
                 }
                 return true;
             }
-            if (inRect(mx, my, editorX + 66, contentY + 46, 80, 14)) {
+            if (inRect(mx, my, stockButtonX(), contentY + 46, stockButtonWidth(), 14)) {
                 workingModules.get(editingModule).template = "";
                 dirty = true;
                 userEditedTemplates = true;
@@ -639,7 +643,7 @@ public class LoreConfigScreen extends Screen {
             }
         }
         // left column list hit testing one unambiguous row per detected segment.
-        int colW = 130;
+        int colW = templateListWidth();
         int rowH = 14;
         int listTop = contentY + 4;
         List<com.coflnet.lore.LoreSegment> detected = detectedSegments();
@@ -706,7 +710,7 @@ public class LoreConfigScreen extends Screen {
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
-    //  save 
+    //  save
 
     private void saveAll() {
         captureWidgets();
@@ -729,7 +733,7 @@ public class LoreConfigScreen extends Screen {
         // read reverts it.
         LoreManager.saveModules(workingModules);
         LoreManager.saveItemBlacklist(workingBlacklist);
-        LoreManager.applyLayout(cleaned);            // closed loop cofl lore commands
+        LoreManager.applyLayout(cleaned);
     }
 
     private List<String> ensureLine(int line) {
@@ -739,7 +743,21 @@ public class LoreConfigScreen extends Screen {
         return workingLayout.get(line);
     }
 
-    //  preview engine mirrors loreengine over the unsaved working modules 
+    private boolean containsField(String key) {
+        for (List<String> line : workingLayout) {
+            if (line == null) {
+                continue;
+            }
+            for (String field : line) {
+                if (field != null && field.equalsIgnoreCase(key)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    //  preview engine mirrors loreengine over the unsaved working modules
 
     /**
      * builds the full lore preview lines using the same per segment substitution
@@ -773,27 +791,7 @@ public class LoreConfigScreen extends Screen {
 
         List<String> out = new ArrayList<>();
         for (String backendLine : appends) {
-            String line = backendLine;
-            for (com.coflnet.lore.LoreSegment seg : com.coflnet.lore.LoreSegment.ALL) {
-                String template = templates.get(seg.key.toUpperCase(java.util.Locale.ROOT));
-                if (template == null) {
-                    continue;
-                }
-                java.util.regex.Matcher matcher = seg.pattern.matcher(line);
-                if (!matcher.find()) {
-                    continue;
-                }
-                String fragment = LoreTemplate.render(template, data);
-                if (fragment == null || fragment.isBlank()) {
-                    continue;   // mirror the real engine never blank a segment.
-                }
-                String matched = matcher.group();
-                if (fragment.equals(matched)) {
-                    continue;   // mirror the real engine no op when it reproduces stock.
-                }
-                line = matcher.replaceFirst(java.util.regex.Matcher.quoteReplacement(fragment));
-            }
-            out.add(line);
+            out.add(com.coflnet.lore.LoreEngine.renderLine(backendLine, templates, data));
         }
         if (out.isEmpty()) {
             out.add("§8(nothing to show \u2014 add fields in the Layout tab)");
@@ -812,7 +810,7 @@ public class LoreConfigScreen extends Screen {
         return rendered == null ? "§8(no data for this item)" : rendered;
     }
 
-    //  held item data 
+    //  held item data
 
     private boolean hasHeldData() {
         return heldAppendValues() != null;
@@ -820,29 +818,25 @@ public class LoreConfigScreen extends Screen {
 
     /** the held items backend append strings or null when none are cached. */
     private List<String> heldAppendValues() {
-        try {
-            ItemStack held = heldItem();
-            if (held == null || held.isEmpty()) {
-                return null;
-            }
-            String id = com.coflnet.CoflModClient.getIdFromStack(held);
-            if (id == null) {
-                return null;
-            }
-            DescriptionHandler.DescModification[] tips = DescriptionHandler.getTooltipData(id);
-            if (tips == null) {
-                return null;
-            }
-            List<String> appends = new ArrayList<>();
-            for (DescriptionHandler.DescModification t : tips) {
-                if ("APPEND".equals(t.type) && t.value != null) {
-                    appends.add(t.value);
-                }
-            }
-            return appends.isEmpty() ? null : appends;
-        } catch (Throwable t) {
+        ItemStack held = heldItem();
+        if (held == null || held.isEmpty()) {
             return null;
         }
+        String id = com.coflnet.CoflModClient.getIdFromStack(held);
+        if (id == null) {
+            return null;
+        }
+        DescriptionHandler.DescModification[] tips = DescriptionHandler.getTooltipData(id);
+        if (tips == null) {
+            return null;
+        }
+        List<String> appends = new ArrayList<>();
+        for (DescriptionHandler.DescModification tip : tips) {
+            if ("APPEND".equals(tip.type) && tip.value != null) {
+                appends.add(tip.value);
+            }
+        }
+        return appends.isEmpty() ? null : appends;
     }
 
     private static LoreData parseHeld(List<String> appends) {
@@ -853,7 +847,7 @@ public class LoreConfigScreen extends Screen {
         return LoreParser.parse(stripped);
     }
 
-    //  helpers 
+    //  helpers
 
     private static boolean matchesQuery(LoreField f, String query) {
         if (query == null || query.isEmpty()) {
@@ -868,7 +862,7 @@ public class LoreConfigScreen extends Screen {
      * active in the current layout. this is the users rule only fields actually
      * in the layout appear and every one of them is editable each maps to a
      * module via {@link #moduleIndexForKey}).
-     *  
+     *
      * we walk the layout lines in order and for each field key include its
      * {@link com.coflnet.lore.LoreSegment} when one exists (a restylable field).
      * packed sub fields that share a line but are not separate layout keys e.g.
@@ -958,6 +952,30 @@ public class LoreConfigScreen extends Screen {
         return m.template;
     }
 
+    private int templateListWidth() {
+        return Math.min(130, Math.max(1, (contentW - 8) / 2));
+    }
+
+    private int templateEditorX() {
+        return Math.min(contentX + contentW - 1, contentX + templateListWidth() + 8);
+    }
+
+    private int templateEditorWidth() {
+        return Math.max(1, contentX + contentW - templateEditorX());
+    }
+
+    private int resetButtonWidth() {
+        return Math.min(60, Math.max(1, (templateEditorWidth() - 6) / 2));
+    }
+
+    private int stockButtonX() {
+        return templateEditorX() + resetButtonWidth() + Math.min(6, Math.max(0, templateEditorWidth() - 2));
+    }
+
+    private int stockButtonWidth() {
+        return Math.max(1, contentX + contentW - stockButtonX());
+    }
+
     private void queueTip(int mouseX, int mouseY, String... lines) {
         List<Component> tip = new ArrayList<>();
         for (String s : lines) {
@@ -1005,7 +1023,7 @@ public class LoreConfigScreen extends Screen {
     private static List<LoreModule> copyModules(List<LoreModule> src) {
         List<LoreModule> out = new ArrayList<>();
         for (LoreModule m : src) {
-            out.add(new LoreModule(m.name, m.match, m.template, m.enabled));
+            out.add(new LoreModule(m.name, m.match, m.template));
         }
         return out;
     }
