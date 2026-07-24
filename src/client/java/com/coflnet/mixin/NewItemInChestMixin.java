@@ -59,9 +59,19 @@ public class NewItemInChestMixin {
     private void onPacketReceive(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         try {
             String itemTitle = packet.getItem().getCustomName() != null ? packet.getItem().getCustomName().getString() : "";
-            if (!itemTitle.isEmpty() && (
-                    itemTitle.contains("Pending their confirm") || itemTitle.contains("Deal timer!") // trade window
-                    || itemTitle.contains("Combine Items") // anvil result
+            boolean tradeUpdate = itemTitle.contains("Pending their confirm") || itemTitle.contains("Deal timer!");
+            if (tradeUpdate) {
+                var screen = Minecraft.getInstance().gui.screen();
+                if (screen instanceof com.coflnet.gui.trade.TradeGUI trade) {
+                    com.coflnet.gui.trade.TradePriceCache.request(trade.getBacking());
+                } else if (screen instanceof com.coflnet.gui.trade.CoinInputGUI coins) {
+                    com.coflnet.gui.trade.TradePriceCache.request(coins.getBacking());
+                } else if (screen instanceof net.minecraft.client.gui.screens.inventory.ContainerScreen container
+                        && CoflModClient.isTradeScreenByTitle(container)) {
+                    com.coflnet.gui.trade.TradePriceCache.request(container);
+                }
+            } else if (!itemTitle.isEmpty() && (
+                    itemTitle.contains("Combine Items") // anvil result
                     || itemTitle.equals("§aFlip Order") // bazaar order flip prices loaded
             || itemTitle.contains("AUCTION FOR") // putting item in auction create
             )) {

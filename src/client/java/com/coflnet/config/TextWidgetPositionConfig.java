@@ -17,7 +17,7 @@ public class TextWidgetPositionConfig {
     
     public static TextWidgetPositionConfig load() {
         // Try to load from combined config first
-        CoflModConfig combinedConfig = CoflModConfig.load();
+        CoflModConfig combinedConfig = CoflModConfig.get();
         TextWidgetPositionConfig config = new TextWidgetPositionConfig();
         config.offsetX = combinedConfig.textWidgetOffsetX;
         config.offsetY = combinedConfig.textWidgetOffsetY;
@@ -50,7 +50,7 @@ public class TextWidgetPositionConfig {
     
     public void save() {
         // Save to combined config instead
-        CoflModConfig combinedConfig = CoflModConfig.load();
+        CoflModConfig combinedConfig = CoflModConfig.get();
         combinedConfig.textWidgetOffsetX = this.offsetX;
         combinedConfig.textWidgetOffsetY = this.offsetY;
         combinedConfig.save();

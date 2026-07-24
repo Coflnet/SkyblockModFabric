@@ -12,6 +12,7 @@
     "ScreenMixin",
     "ScoreboardMixin",
     "ScrollableWidgetMixin",
+    "SignEditScreenMixin",
     "AuctionProtectionMixin",
     "SellProtectionMixin",
     "WorldRendererMixin"

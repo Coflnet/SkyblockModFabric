@@ -147,7 +147,27 @@ public class CoflModClient implements ClientModInitializer {
     public static Position posToUpload = null;
     public static CoflModClient instance;
     public static SignBlockEntity sign = null;
-    public static String pendingBazaarSearch = null;
+    // Written from the render/client thread and consumed by ClientPlayerEntityMixin
+    // on the network thread, so it must be volatile for the write to be visible.
+    public static volatile String pendingBazaarSearch = null;
+    // Trade coins input: when set, the next sign editor that opens (from clicking
+    // the trade Coins-transaction slot) is auto-filled with this value, mirroring
+    // the bazaar-search auto-fill flow. Format is a plain digit string.
+    public static volatile String pendingCoinAmount = null;
+    // Sign suggestion armed by clicking an InfoDisplay line (onClick "fillsign:<json>"). Unlike
+    // findPriceSuggestion() (which auto-fills the next matching sign unprompted), this only fills
+    // after the user clicks the info line - used by the Instant Buy "buy max" suggestion. Payload is
+    // a JSON object: {"line":"<4th sign line to match>","value":"<text>","name":"<button item name>",
+    // "slot":<gui index>}. line+value are required; name/slot pick the right button when several exist.
+    public static volatile String pendingSignFill = null;
+    // Set while a click-armed sign fill auto-opens a sign, so SignEditScreenMixin can suppress the
+    // sign editor's rendering and avoid it flashing on screen for the brief moment before it closes.
+    // Cleared once the sign editor is closed (scheduleSignClose) or the fill is consumed/aborted.
+    public static volatile boolean suppressSignRender = false;
+    // Trade partner full name captured from chat. Hypixel truncates the name in
+    // the trade window title (e.g. "VerticleFr"), but the trade-request chat line
+    // carries the FULL name. TradeGUI prefers this over the truncated title.
+    public static volatile String lastTradePartner = null;
     public static boolean flipperChatOnlyMode = false;
     
     // Scoreboard dirty flag - set by ScoreboardMixin when packets arrive
@@ -303,6 +323,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
             ServerContext detectedServerContext = detectServerContext(null);
             applyServerContext(detectedServerContext);
             lastScoreboardProcessMs = 0L;
@@ -326,6 +347,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
             applyServerContext(ServerContext.UNKNOWN);
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
@@ -387,6 +409,45 @@ public class CoflModClient implements ClientModInitializer {
                     })
                 )
             );
+        });
+
+        // Dev mode: inject a "Copy Dump" button into any container screen so the
+        // open container's signature can be copied to the clipboard (you cannot
+        // type chat commands while a container GUI has focus). Only added when
+        // dev mode is enabled via /cofl dev on.
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            if (!com.coflnet.config.DevManager.isEnabled()) {
+                return;
+            }
+            if (!(screen instanceof ContainerScreen)) {
+                return;
+            }
+            net.minecraft.client.gui.components.Button dumpButton =
+                    net.minecraft.client.gui.components.Button.builder(
+                            Component.literal("Copy Dump"),
+                            btn -> copyOpenContainerDumpToClipboard()
+                    ).bounds(2, 2, 80, 16).build();
+            net.fabricmc.fabric.api.client.screen.v1.Screens.getWidgets(screen).add(dumpButton);
+        });
+
+        // Trade pricing: when a Hypixel trade window opens, trigger the existing
+        // description/price pipeline for its items so worth data is available.
+        // The trade title is not in the SKYBLOCK_MENU allowlist that
+        // loadDescriptionsForInv gates on, so we trigger the price load directly.
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            if (screen instanceof ContainerScreen cs && isTradeScreenByTitle(cs)) {
+                com.coflnet.gui.trade.TradePriceCache.clear();
+                com.coflnet.gui.trade.TradePriceCache.request(cs);
+
+                // Replace the trade window with the SkyCofl TradeGUI overlay ONLY
+                // when the trade overlay is enabled (/cofl tradegui on). Dev mode
+                // deliberately does NOT trigger the swap, so /cofl dev on leaves the
+                // normal Hypixel trade window up WITH the Copy Dump button for testing.
+                if (com.coflnet.config.TradeGuiManager.isEnabled()
+                        && !(client.gui.screen() instanceof com.coflnet.gui.trade.TradeGUI)) {
+                    client.gui.setScreen(new com.coflnet.gui.trade.TradeGUI(cs));
+                }
+            }
         });
 
         // General screen event to check for account switches in menus
@@ -547,13 +608,8 @@ public class CoflModClient implements ClientModInitializer {
             String messageText = message.getString();
             // capture ah purchases so the purchased for lore can show what you paid.
             capturePurchase(messageText);
-            // while a lore save is being verified watch backend chat for a
-            // rejection so the failure is reported with its real reason.
-            com.coflnet.lore.LoreSync.observeChat(net.minecraft.ChatFormatting.stripFormatting(messageText));
-            // intercept the cofl lore menu parse the real field layout from its
-            // clickable rm commands and store it as the source of
-            // truth then suppress the noisy menu from chat. this replaces the old
-            // guessed mirror that drifted and caused duplicate adds failed removes.
+            // capture the full trade partner name from trade request chat lines.
+            captureTradePartner(messageText);
             if (captureLoreMenu(message)) {
                 return false;
             }
@@ -714,85 +770,371 @@ public class CoflModClient implements ClientModInitializer {
         return render + "s";
     }
 
+    // ===== Hypixel trade window (confirmed via dev Copy Dump) =====
+    // 45-slot ContainerScreen, title starts with "You", divider column (index 4)
+    // is gray_stained_glass_pane named "⇦ Your stuff".
+    public static final int[] TRADE_YOUR_SLOTS  = {0,1,2,3, 9,10,11,12, 18,19,20,21, 27,28,29,30};
+    public static final int[] TRADE_THEIR_SLOTS = {5,6,7,8, 14,15,16,17, 23,24,25,26, 32,33,34,35};
+    private static final int[] TRADE_DIVIDER_SLOTS = {4,13,22,31,40};
+
     /**
-     * captures auction house purchases so the purchased for lore can show what
-     * you paid for an item the backend has no field for your own buy price .
-     * hypixel prints on a successful bin buy 
-     *  you purchased hyperion for 1 234 567 890 coins 
-     * and for auctions you won 
-     *  you claimed hyperion from ... for 900 000 000 coins 
-     * we key the price by the clean item display name matched the same way in
-     * the lore engine. stores the highest price seen for a name so a later cheap
-     * relisting of a same named item does not overwrite an expensive purchase.
+     * Detects the Hypixel trade window. Multi-signal gate: 45-slot container,
+     * title starts with "You", and the center divider column is glass panes.
      */
+    public static boolean isTradeScreen(ContainerScreen cs) {
+        net.minecraft.world.Container container = cs.getMenu().getContainer();
+        if (container.getContainerSize() != 45) {
+            return false;
+        }
+        if (!cs.getTitle().getString().startsWith("You")) {
+            return false;
+        }
+        for (int slot : TRADE_DIVIDER_SLOTS) {
+            ItemStack pane = container.getItem(slot);
+            if (pane.isEmpty()) {
+                return false;
+            }
+            String key = net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(pane.getItem()).getPath();
+            if (!key.contains("glass_pane")) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Lightweight trade gate for the overlay swap: 45-slot container whose title
+     * starts with "You". Unlike {@link #isTradeScreen}, this does NOT require the
+     * divider glass panes (Hypixel sends those a few ticks after the screen opens),
+     * so the swap can fire on the very first init instead of lagging.
+     */
+    public static boolean isTradeScreenByTitle(ContainerScreen cs) {
+        return cs.getMenu().getContainer().getContainerSize() == 45
+                && cs.getTitle().getString().startsWith("You");
+    }
+    /** Worth basis selectable by the user (median vs lowest BIN). */
+    public enum WorthBasis { LBIN, MEDIAN }
+
+    // these values are parsed after the existing description request completes.
+    private static final java.util.regex.Pattern LBIN_VALUE = java.util.regex.Pattern.compile(
+            "\\b(?:lbin|lowest\\s*bin)\\s*:?\\s*~?\\s*([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+    private static final java.util.regex.Pattern MED_VALUE = java.util.regex.Pattern.compile(
+            "\\bmed(?:ian)?\\s*:?\\s*~?\\s*([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Extracts a PER-ITEM coin worth from the backend tooltip lines.
+     * <p>
+     * AH items: LBIN reads the "lbin:" line, MEDIAN the "Med:" line (both
+     * per-item). Bazaar items use a "Buy: X (N each)Sell: Y (M each)" line —
+     * LBIN maps to Buy's per-unit "each" value, MEDIAN to Sell's. The per-item
+     * value is what callers multiply by stack count. Returns null if neither a
+     * matching AH nor bazaar line is present (truly unpriced).
+     */
+    public static Long parseWorthFromTips(DescriptionHandler.DescModification[] tips, WorthBasis basis) {
+        if (tips == null) {
+            return null;
+        }
+        java.util.regex.Pattern label = (basis == WorthBasis.LBIN) ? LBIN_VALUE : MED_VALUE;
+        Long bazaar = null;
+        for (DescriptionHandler.DescModification t : tips) {
+            if (t == null || t.value == null) {
+                continue;
+            }
+            String plain = ChatFormatting.stripFormatting(t.value);
+            if (plain == null) {
+                continue;
+            }
+            plain = plain.trim();
+            // prefer the auction value when it is present.
+            java.util.regex.Matcher m = label.matcher(plain);
+            if (m.find()) {
+                Long v = parseCoinNumber(m.group(1));
+                if (v != null && v > 0) {
+                    return v;
+                }
+            }
+            // Bazaar line: "Buy: 37.49K (585.8 each)Sell: 33.38K (521.6 each)".
+            String lower = plain.toLowerCase(Locale.ROOT);
+            if (bazaar == null && (lower.contains("buy:") && lower.contains("each"))) {
+                bazaar = parseBazaarEach(plain, basis == WorthBasis.LBIN ? "buy" : "sell");
+            }
+        }
+        return bazaar; // null if no AH line matched and no bazaar line present
+    }
+
+    /**
+     * From a bazaar tip line, returns the per-unit "(N each)" value following
+     * the given side ("buy" or "sell"). Handles k/m/b suffixes and decimals.
+     */
+    private static Long parseBazaarEach(String plain, String side) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile(side + ":.*?\\(([\\d,.]+\\s*[kmb]?)\\s*each\\)", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(plain);
+        if (m.find()) {
+            return parseCoinNumber(m.group(1));
+        }
+        return null;
+    }
+
+    /**
+     * Captures the full trade-partner IGN from Hypixel trade-request chat lines,
+     * which carry the un-truncated name (the trade window title shortens it):
+     *   "You have sent a trade request to NAME."
+     *   "NAME has sent you a trade request. Click here to accept!"
+     */
+    public static void captureTradePartner(String message) {
+        if (message == null) {
+            return;
+        }
+        String plain = ChatFormatting.stripFormatting(message).trim();
+        java.util.regex.Matcher sent = java.util.regex.Pattern
+                .compile("You have sent a trade request to ([A-Za-z0-9_]{1,16})")
+                .matcher(plain);
+        if (sent.find()) {
+            lastTradePartner = sent.group(1);
+            return;
+        }
+        java.util.regex.Matcher recv = java.util.regex.Pattern
+                .compile("([A-Za-z0-9_]{1,16}) has sent you a trade request")
+                .matcher(plain);
+        if (recv.find()) {
+            lastTradePartner = recv.group(1);
+        }
+    }
+
+    private static final java.util.regex.Pattern PURCHASE_MESSAGE = java.util.regex.Pattern.compile(
+            "^You (?:purchased|bought|claimed) (?:\\d+x\\s+)?(.{1,128}?)(?: from .{1,64}?)? for ([0-9][0-9,]{0,20}) coins[.!]?$");
+
     public static void capturePurchase(String message) {
         if (message == null) {
             return;
         }
         String plain = ChatFormatting.stripFormatting(message).trim();
-        java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("You (?:purchased|bought|claimed) (.+?) (?:from .+? )?for ([0-9,]+) coins")
-                .matcher(plain);
-        if (!m.find()) {
+        if (plain.length() > 256) {
             return;
         }
-        String name = m.group(1).trim();
-        // strip a leading count like 64x or 2x that hypixel adds for stacks.
-        name = name.replaceFirst("^\\d+x\\s+", "");
+        java.util.regex.Matcher match = PURCHASE_MESSAGE.matcher(plain);
+        if (!match.matches()) {
+            return;
+        }
         long coins;
         try {
-            coins = Long.parseLong(m.group(2).replace(",", ""));
-        } catch (NumberFormatException e) {
+            coins = Long.parseLong(match.group(2).replace(",", ""));
+        } catch (NumberFormatException ignored) {
             return;
         }
-        if (coins <= 0 || name.isBlank()) {
-            return;
-        }
-        Long existing = com.coflnet.config.LoreManager.purchasePrice(name);
-        if (existing == null || coins > existing) {
+        String name = match.group(1).trim();
+        if (coins > 0 && !name.isBlank()) {
             com.coflnet.config.LoreManager.recordPurchase(name, coins);
         }
     }
 
     /**
-     * suppresses the clickable {@code /cofl lore add rm up down left ...} menu from
-     * chat by matching those run commands on the messages siblings the gui replaces
-     * that menu entirely so a save doesnt spam chat with it. we no longer parse the
-     * menu the layout is read as a whole object via {@code /cofl lore json} (see
-     * {@link com.coflnet.lore.LoreSync}). returns true when the message carried those
-     * run commands so the caller drops it. the imported settings echo is handled
-     * separately by loresyncs verifier not here.
+     * If the stack is an offered-coins player head, returns the amount, else null.
+     * Hypixel renders the offered amount either in full ("67 coins", "1,234 coins")
+     * OR abbreviated with a k/m/b suffix ("200k coins", "1.5m coins") — both must
+     * be parsed or coin offers show as 0 value.
      */
+    public static Long parseCoinStack(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return null;
+        }
+        String plain = ChatFormatting.stripFormatting(stack.getHoverName().getString());
+        if (plain == null) {
+            return null;
+        }
+        plain = plain.trim();
+        // Capture the leading number (with optional commas, decimal, and k/m/b suffix)
+        // followed by the word "coins".
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("^([\\d,]*\\.?\\d+\\s*[kmb]?)\\s+coins$", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(plain);
+        if (m.matches()) {
+            return parseCoinNumber(m.group(1));
+        }
+        return null;
+    }
+
+    /** Parses a coin amount token like "200k", "1.5m", "1,234", "67". */
+    private static Long parseCoinNumber(String token) {
+        if (token == null) {
+            return null;
+        }
+        String in = token.toLowerCase(Locale.ROOT).replace(",", "").replace(" ", "").trim();
+        if (in.isEmpty()) {
+            return null;
+        }
+        try {
+            char last = in.charAt(in.length() - 1);
+            double mult = 1.0;
+            if (last == 'k') {
+                mult = 1_000.0;
+                in = in.substring(0, in.length() - 1);
+            } else if (last == 'm') {
+                mult = 1_000_000.0;
+                in = in.substring(0, in.length() - 1);
+            } else if (last == 'b') {
+                mult = 1_000_000_000.0;
+                in = in.substring(0, in.length() - 1);
+            }
+            return (long) (Double.parseDouble(in) * mult);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Sums the worth of one trade side. Offered coins count at face value;
+     * other items are priced via their backend worth line (× stack count).
+     * @return [totalWorth, unpricedItemCount]
+     */
+    public static long[] valuateTradeSide(net.minecraft.world.Container container, int[] slots, WorthBasis basis) {
+        long total = 0;
+        long unpriced = 0;
+        for (int slot : slots) {
+            ItemStack stack = container.getItem(slot);
+            if (stack.isEmpty() || stack.getItem() == Items.AIR) {
+                continue;
+            }
+            Long coins = parseCoinStack(stack);
+            if (coins != null) {
+                total += coins;
+                continue;
+            }
+            String id = getIdFromStack(stack);
+            Long worth = parseWorthFromTips(DescriptionHandler.getTooltipData(id), basis);
+            if (worth != null) {
+                total += worth * stack.getCount();
+            } else {
+                unpriced++;
+            }
+        }
+        return new long[]{total, unpriced};
+    }
+
+    /**
+     * Step C diagnostic: computes and logs each side's total worth (both bases)
+     * plus the net difference. Triggered from the Copy Dump button on a trade
+     * screen, so prices have had time to load. No overlay yet.
+     */
+    private static void logTradeValuation(ContainerScreen cs) {
+        net.minecraft.world.Container container = cs.getMenu().getContainer();
+        sendChatMessage("§6§l=== Trade Valuation ===");
+        for (WorthBasis basis : WorthBasis.values()) {
+            long[] you = valuateTradeSide(container, TRADE_YOUR_SLOTS, basis);
+            long[] them = valuateTradeSide(container, TRADE_THEIR_SLOTS, basis);
+            long net = them[0] - you[0]; // positive => you come out ahead
+            String netStr = (net >= 0)
+                    ? "§a+" + formatCoins(net) + " (you gain)"
+                    : "§c-" + formatCoins(-net) + " (you lose)";
+            String label = (basis == WorthBasis.LBIN) ? "LBIN " : "Med  ";
+            sendChatMessage("§e" + label + "§7YOU §f" + formatCoins(you[0])
+                    + " §7| THEY §f" + formatCoins(them[0])
+                    + " §7| NET " + netStr
+                    + ((you[1] + them[1] > 0) ? " §8(" + (you[1] + them[1]) + " unpriced)" : ""));
+        }
+    }
+
+    /**
+     * Dev-mode diagnostic: builds a text dump of the currently open container
+     * screen (title, container size, and every non-empty slot with index,
+     * display name, count, and whether it is a glass pane) and copies it to the
+     * system clipboard. Triggered by the "Copy Dump" button shown in container
+     * screens while dev mode is on. Reads only; sends no packets.
+     */
+    private static void copyOpenContainerDumpToClipboard() {
+        Minecraft client = Minecraft.getInstance();
+        Screen screen = client.gui.screen();
+        if (!(screen instanceof ContainerScreen acs)) {
+            sendChatMessage("§c[dump] No container screen is open.");
+            return;
+        }
+
+        net.minecraft.world.Container container = acs.getMenu().getContainer();
+        int size = container.getContainerSize();
+        boolean trade = isTradeScreen(acs);
+        StringBuilder sb = new StringBuilder();
+        sb.append("title=\"").append(acs.getTitle().getString()).append("\"\n");
+        sb.append("containerSize=").append(size).append("\n");
+        sb.append("screenClass=").append(screen.getClass().getName()).append("\n");
+        sb.append("isTradeScreen=").append(trade).append("\n");
+
+        int shown = 0;
+        for (int i = 0; i < size; i++) {
+            ItemStack stack = container.getItem(i);
+            if (stack.isEmpty() || stack.getItem() == Items.AIR) {
+                continue;
+            }
+            String itemKey = net.minecraft.core.registries.BuiltInRegistries.ITEM
+                    .getKey(stack.getItem()).getPath();
+            boolean isPane = itemKey.contains("glass_pane");
+            sb.append("slot ").append(i)
+                    .append(" x").append(stack.getCount())
+                    .append(isPane ? " [PANE]" : "")
+                    .append(" \"").append(stack.getHoverName().getString()).append("\"")
+                    .append(" (").append(itemKey).append(")")
+                    .append("\n");
+            // Dev diagnostic: include the computed item id and any backend
+            // tooltip (DescModification) lines so we can see the exact worth
+            // line wording (median / lowest BIN) the parser must read.
+            if (!isPane) {
+                String id = getIdFromStack(stack);
+                sb.append("    id=").append(id).append("\n");
+                DescriptionHandler.DescModification[] tips = DescriptionHandler.getTooltipData(id);
+                if (tips == null) {
+                    sb.append("    tips=<none>\n");
+                } else {
+                    for (DescriptionHandler.DescModification t : tips) {
+                        sb.append("    tip ").append(t.type)
+                                .append("|line=").append(t.line)
+                                .append("|value=\"").append(t.value).append("\"\n");
+                    }
+                }
+            }
+            shown++;
+        }
+        sb.append("non-empty slots: ").append(shown).append("\n");
+
+        String dump = sb.toString();
+        client.keyboardHandler.setClipboard(dump);
+        sendChatMessage("§a[dump] Copied container dump to clipboard §7(" + shown
+                + " items, size " + size + (trade ? ", TRADE" : "") + ")");
+        System.out.println("[CoflModClient] container dump:\n" + dump);
+
+        // Step C diagnostic: if this is a trade, also log the per-side valuation.
+        if (trade) {
+            logTradeValuation(acs);
+        }
+    }
+
     public static boolean captureLoreMenu(Component message) {
         if (message == null) {
             return false;
         }
         List<String> commands = new ArrayList<>();
         collectRunCommands(message, commands);
-        for (String cmd : commands) {
-            if (cmd == null) {
-                continue;
-            }
-            String lower = cmd.toLowerCase(java.util.Locale.ROOT);
-            // the menus clickable entries are all cofl lore add rm up down left ....
-            if (lower.matches("/cofl\\s+lore\\s+(add|rm|up|down|left)\\s+.*")) {
+        for (String command : commands) {
+            if (command != null && command.toLowerCase(Locale.ROOT)
+                    .matches("/cofl\\s+lore\\s+(add|rm|up|down|left)\\s+.*")) {
                 return true;
             }
         }
         return false;
     }
 
-    /** Recursively gathers every RunCommand string from a component tree. */
-    private static void collectRunCommands(Component component, List<String> out) {
+    private static void collectRunCommands(Component component, List<String> commands) {
         if (component == null) {
             return;
         }
         var click = component.getStyle() == null ? null : component.getStyle().getClickEvent();
-        if (click instanceof net.minecraft.network.chat.ClickEvent.RunCommand rc) {
-            out.add(rc.command());
+        if (click instanceof net.minecraft.network.chat.ClickEvent.RunCommand runCommand) {
+            commands.add(runCommand.command());
         }
         for (Component sibling : component.getSiblings()) {
-            collectRunCommands(sibling, out);
+            collectRunCommands(sibling, commands);
         }
     }
 
@@ -896,27 +1238,47 @@ public class CoflModClient implements ClientModInitializer {
                 })
                 .executes(context -> {
                     String[] args = context.getArgument("args", String.class).split(" ");
-                    
 
-                    // lore engine on off toggles the renderer bare lore or
-                    // loregui opens the lore configuration gui replaces the
-                    // clickable cofl lore chat menu . the engine is always on now 
-                    // so there is no on off toggle.
                     if (args.length >= 1 && (args[0].equalsIgnoreCase("lore") || args[0].equalsIgnoreCase("loregui"))) {
-                        // open the lore gui on the next tick so the chat screen closes first.
                         Minecraft loreClient = Minecraft.getInstance();
                         loreClient.execute(() -> {
                             try {
                                 com.coflnet.gui.cofl.LoreConfigScreen.open(loreClient.gui.screen());
-                            } catch (Throwable t) {
-                                // the lore gui is a custom screen and uses no yacl so a
-                                // failure here is a real bug in the screen surface it
-                                // instead of the misleading install yacl message.
-                                System.out.println("[Lore] failed to open LoreConfigScreen: " + t);
-                                t.printStackTrace();
+                            } catch (RuntimeException exception) {
+                                System.out.println("[Lore] failed to open LoreConfigScreen: " + exception);
                                 sendChatMessage("§cFailed to open the lore GUI (see log).");
                             }
                         });
+                        return 1;
+                    }
+
+                    // Toggle developer mode (shows the Copy Dump button in containers)
+                    if (args.length >= 1 && args[0].equalsIgnoreCase("dev")) {
+                        if (args.length >= 2 && (args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off"))) {
+                            boolean enabled = args[1].equalsIgnoreCase("on");
+                            com.coflnet.config.DevManager.setEnabled(enabled);
+                            sendChatMessage("§aDeveloper mode " + (enabled ? "§aenabled" : "§cdisabled")
+                                    + "§7. Open any container to " + (enabled ? "see" : "hide") + " the §eCopy Dump §7button.");
+                        } else {
+                            boolean current = com.coflnet.config.DevManager.isEnabled();
+                            sendChatMessage("§7Developer mode is currently " + (current ? "§aon" : "§coff"));
+                            sendChatMessage("§7Usage: §e/cofl dev <on/off>");
+                        }
+                        return 1;
+                    }
+
+                    // Toggle the trade overlay (replaces the Hypixel trade window)
+                    if (args.length >= 1 && args[0].equalsIgnoreCase("tradegui")) {
+                        if (args.length >= 2 && (args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off"))) {
+                            boolean enabled = args[1].equalsIgnoreCase("on");
+                            com.coflnet.config.TradeGuiManager.setEnabled(enabled);
+                            sendChatMessage("§aTrade overlay " + (enabled ? "§aenabled" : "§cdisabled")
+                                    + "§7. Open a trade to " + (enabled ? "use the SkyCofl trade GUI." : "use the normal Hypixel window."));
+                        } else {
+                            boolean current = com.coflnet.config.TradeGuiManager.isEnabled();
+                            sendChatMessage("§7Trade overlay is currently " + (current ? "§aon" : "§coff"));
+                            sendChatMessage("§7Usage: §e/cofl tradegui <on/off>");
+                        }
                         return 1;
                     }
 
@@ -1710,33 +2072,48 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     /**
-     * forces the open containers coflnet descriptions to be re fetched right now 
-     * so a lore layout edit becomes visible without relogging or changing lobby.
-     *  
-     * Item descriptions are cached in {@link DescriptionHandler#tooltipItemIdMap}
-     * and a re fetch is normally suppressed when the inventory nbt is unchanged
-     * ({@link #lastNbtRequest}) and throttled per inventory title. A lore edit
-     * changes neither the nbt nor opens a new screen so without this the stale
-     * cached lore lingers until an island change clears it. here we drop the
-     * cache clear the nbt throttle guards and re trigger a load on the screen
-     * that is currently open. runs on the client thread.
+     * The contents of a storage container are uploaded once when it opens, but the player can still
+     * move items in or out afterwards (e.g. putting a weapon into a backpack). Those slot changes are
+     * not re-uploaded for storage menus, so the stored view would be stale. When such a container is
+     * closed, re-read its final contents and dispatch again. {@link #loadDescriptionsForItems} dedups
+     * via {@code lastNbtRequest}, so this is a no-op when nothing changed since the last upload.
+     * Must run before {@code posToUpload} is cleared so island-chest positions are still included.
      */
+    public static void resendStorageOnClose(Object screen) {
+        if (!(screen instanceof AbstractContainerScreen<?> hs))
+            return;
+        String title = hs.getTitle().getString();
+        if (!isStorageChest(title))
+            return;
+        loadDescriptionsForItems(title, hs.getMenu().getItems());
+    }
+
+    /**
+     * Containers whose full contents the backend persists as storage. Mirrors the server-side
+     * allow-list in SkyUserState's {@code StorageListener.IsNotStorage} so we only resend real
+     * storage (backpacks, ender chests, island chests, furniture, hunting menus) on close.
+     */
+    public static boolean isStorageChest(String title) {
+        if (title == null)
+            return false;
+        return title.startsWith("Ender Chest")
+                || title.contains("Backpack (Slot")
+                || title.equals("Chest") || title.equals("Large Chest") // island chests
+                || title.equals("Chest Storage") || title.equals("Medium Shelves") || title.contains("Chest+") // furniture
+                || title.contains("Huntaxe") || title.startsWith("Hunting Toolkit"); // hunting menus
+    }
+
     public static void refreshOpenInventoryDescriptions() {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null) {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null) {
             return;
         }
-        mc.execute(() -> {
-            try {
-                DescriptionHandler.emptyTooltipData();
-                lastNbtRequest = "";
-                lastRefreshTimePerInventory.clear();
-                if (instance != null
-                        && mc.gui.screen() instanceof AbstractContainerScreen<?> cs) {
-                    instance.loadDescriptionsForInv(cs);
-                }
-            } catch (Throwable t) {
-                System.out.println("[Lore] refreshOpenInventoryDescriptions failed: " + t);
+        client.execute(() -> {
+            DescriptionHandler.emptyTooltipData();
+            lastNbtRequest = "";
+            lastRefreshTimePerInventory.clear();
+            if (instance != null && client.gui.screen() instanceof AbstractContainerScreen<?> screen) {
+                instance.loadDescriptionsForInv(screen);
             }
         });
     }
@@ -1984,6 +2361,98 @@ public class CoflModClient implements ClientModInitializer {
         );
     }
 
+    /**
+     * Arms a click-triggered sign fill and, when the open container has exactly one "Custom Amount"
+     * button, clicks it to open the sign immediately (which then auto-fills + submits via
+     * {@link com.coflnet.mixin.ClientPlayerEntityMixin} {@code handleSignFill}). With zero or several
+     * candidates it only arms the fill and lets the player open the sign themselves, so we never
+     * auto-open the wrong slot.
+     *
+     * @param payload the JSON sign-fill payload (see {@link #pendingSignFill})
+     */
+    public static void armSignFillAndOpen(String payload) {
+        pendingSignFill = payload;
+        suppressSignRender = false;
+
+        Minecraft client = Minecraft.getInstance();
+        if (!(client.gui.screen() instanceof ContainerScreen gcs)) {
+            return; // no container open; the fill stays armed for the next sign the player opens
+        }
+
+        String name = null;
+        int slot = -1;
+        try {
+            JsonObject obj = JsonParser.parseString(payload).getAsJsonObject();
+            if (obj.has("name") && !obj.get("name").isJsonNull()) name = obj.get("name").getAsString();
+            if (obj.has("slot") && !obj.get("slot").isJsonNull()) slot = obj.get("slot").getAsInt();
+        } catch (Exception e) {
+            // malformed payload: fall back to the single-button heuristic below
+        }
+
+        int target = findCustomAmountSlot(gcs, name, slot);
+        if (target != -1) {
+            // We know exactly which sign is about to open, so suppress its render to avoid the flash.
+            suppressSignRender = true;
+            clickSlotInContainer(gcs, target);
+        }
+    }
+
+    /**
+     * Picks the "Custom Amount" button to open for a click-armed fill. Prefers the explicit gui
+     * {@code slot} sent by the server (validated to match {@code name} when a name is given), then a
+     * button whose item name contains {@code name}, and finally falls back to the single-unambiguous
+     * heuristic. Returns -1 when nothing safe can be chosen, so a click never opens the wrong sign.
+     */
+    private static int findCustomAmountSlot(ContainerScreen gcs, String name, int slot) {
+        int size = gcs.getMenu().getContainer().getContainerSize();
+        String wanted = name == null ? null : name.toLowerCase();
+
+        // 1. explicit slot, if in range and (no name given or the slot's item matches the name)
+        if (slot >= 0 && slot < size) {
+            ItemStack stack = gcs.getMenu().getContainer().getItem(slot);
+            if (!stack.isEmpty() && stack.getCustomName() != null
+                    && (wanted == null || wanted.isEmpty()
+                        || stack.getCustomName().getString().toLowerCase().contains(wanted))) {
+                return slot;
+            }
+        }
+
+        // 2. first button whose name contains the wanted name
+        if (wanted != null && !wanted.isEmpty()) {
+            for (int i = 0; i < size; i++) {
+                ItemStack stack = gcs.getMenu().getContainer().getItem(i);
+                if (stack.isEmpty() || stack.getCustomName() == null) continue;
+                if (stack.getCustomName().getString().toLowerCase().contains(wanted)) return i;
+            }
+        }
+
+        // 3. fall back to the single unambiguous "Custom Amount" button
+        return findSingleCustomAmountSlot(gcs);
+    }
+
+    /**
+     * Finds the single "Custom Amount" button slot, or -1 if there is not exactly one (zero or
+     * ambiguous), so a click never opens the wrong sign.
+     */
+    private static int findSingleCustomAmountSlot(ContainerScreen gcs) {
+        int found = -1;
+        int size = gcs.getMenu().getContainer().getContainerSize();
+        for (int i = 0; i < size; i++) {
+            ItemStack stack = gcs.getMenu().getContainer().getItem(i);
+            if (stack.isEmpty() || stack.getCustomName() == null) {
+                continue;
+            }
+            String name = stack.getCustomName().getString().toLowerCase();
+            if (name.contains("custom") && name.contains("amount")) {
+                if (found != -1) {
+                    return -1; // more than one -> ambiguous, don't auto-open
+                }
+                found = i;
+            }
+        }
+        return found;
+    }
+
     private boolean checkVersionCompability() {
         try {
             String v = net.minecraft.SharedConstants.getCurrentVersion().id();
@@ -2001,7 +2470,10 @@ public class CoflModClient implements ClientModInitializer {
 
         for (String score : scores) {
             if (score.startsWith("Purse: ") || score.startsWith("Piggy: ")) leftVal = score;
-            if (score.startsWith(" ⏣ ")) rightVal = score;
+            // Hypixel renders the area marker either as the benzene ring ⏣ (U+23E3) or,
+            // on newer clients, a private-use font glyph (U+E067). Match both or location
+            // changes stop triggering scoreboard uploads.
+            if (score.startsWith(" ⏣ ") || score.startsWith("  ")) rightVal = score;
         }
 
         return new Pair<>(leftVal, rightVal);

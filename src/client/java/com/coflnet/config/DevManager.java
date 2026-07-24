@@ -1,9 +1,11 @@
 package com.coflnet.config;
 
 /**
- * Utility class for managing the Angry Co-op protection configuration.
+ * Utility class for managing developer mode configuration.
+ * When dev mode is on, container screens render a "Copy Dump" button that
+ * copies the open container's signature (title, size, slots) to the clipboard.
  */
-public class AngryCoopProtectionManager {
+public class DevManager {
     public static void reloadConfig() {
         CoflModConfig.reload();
     }
@@ -13,12 +15,12 @@ public class AngryCoopProtectionManager {
     }
 
     public static boolean isEnabled() {
-        return getConfig().angryCoopProtectionEnabled;
+        return getConfig().devMode;
     }
 
     public static void setEnabled(boolean enabled) {
         CoflModConfig cfg = getConfig();
-        cfg.angryCoopProtectionEnabled = enabled;
+        cfg.devMode = enabled;
         cfg.save();
     }
 }

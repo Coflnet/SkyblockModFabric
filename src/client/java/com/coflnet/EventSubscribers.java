@@ -4,7 +4,11 @@ import java.util.*;
 
 import CoflCore.classes.*;
 import CoflCore.commands.models.HotkeyRegister;
+import CoflCore.commands.CommandType;
 import CoflCore.events.*;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.NonNullList;
@@ -128,7 +132,22 @@ public class EventSubscribers {
 
     @Subscribe
     public void onReceiveCommand(ReceiveCommand event){
-        
+        if (event == null || event.command == null || event.command.getType() == null) {
+            return;
+        }
+        if (event.command.getType() != CommandType.LoggedIn) {
+            return;
+        }
+        try {
+            JsonElement parsed = JsonParser.parseString(event.command.getData());
+            JsonObject data = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+            String tier = data != null && data.has("tier") && !data.get("tier").isJsonNull()
+                    ? data.get("tier").getAsString()
+                    : null;
+            com.coflnet.config.TradeGuiManager.setAccountTier(tier);
+        } catch (RuntimeException ignored) {
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
+        }
     }
 
     /**
