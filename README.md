@@ -34,6 +34,8 @@ Compatibility may change with future updates of any of these mods.
 
 Alternatively find it on CurseForge or Modrinth directly or in Prism Launcher.
 
+The recent flip HUD shows the latest flip, price, target, finder, status, and age. Use `/cofl fliphud move` to place it. Use `/cofl fliphud on`, `/cofl fliphud off`, or `/cofl fliphud reset` to manage it.
+
 Requirements:
 - Minecraft 1.21.5+ - 26.2
 - Fabric Loader 0.19.3+
@@ -42,8 +44,6 @@ Requirements:
 ## Usage
 
 Run `/cofl` in-game to open settings. See [sky.coflnet.com](https://sky.coflnet.com/wiki) for documentation.
-
-The recent flip HUD shows the latest flip, price, target, finder, status, and age. Use `/cofl fliphud move` to place it. Use `/cofl fliphud on`, `/cofl fliphud off`, or `/cofl fliphud reset` to manage it.
 
 ## Links
 

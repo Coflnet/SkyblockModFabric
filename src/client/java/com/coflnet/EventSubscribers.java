@@ -137,6 +137,7 @@ public class EventSubscribers {
         if (event.command.getType() != CommandType.LoggedIn) {
             return;
         }
+        com.coflnet.gui.flip.FlipHud.clear();
         try {
             JsonElement parsed = JsonParser.parseString(event.command.getData());
             JsonObject data = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
@@ -181,6 +182,11 @@ public class EventSubscribers {
                 Minecraft.getInstance().getConnection().sendChat(event.openAuctionCommand);
             }
         });
+    }
+
+    @Subscribe
+    public void onFlipHudSocketClose(SocketClose event) {
+        com.coflnet.gui.flip.FlipHud.clear();
     }
 
     @Subscribe

@@ -22,6 +22,7 @@ import java.util.Base64;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class FlipHud {
     public static final int WIDTH = 214;
@@ -29,31 +30,42 @@ public final class FlipHud {
 
     private static final Gson GSON = new Gson();
     private static final AtomicBoolean PARSE_FAILURE_LOGGED = new AtomicBoolean();
+    private static final AtomicInteger SESSION = new AtomicInteger();
     private static volatile State state;
 
     private FlipHud() {
     }
 
     public static void capture(String json) {
-        final FlipHudData data;
-        try {
-            data = FlipHudData.parse(json);
-        } catch (RuntimeException exception) {
-            if (PARSE_FAILURE_LOGGED.compareAndSet(false, true)) {
-                System.out.println("Could not parse flip HUD payload: " + exception);
-            }
+        if (json == null || json.length() > FlipHudData.MAX_PAYLOAD_LENGTH) {
+            logParseFailure(new IllegalArgumentException("flip payload exceeded the size limit"));
             return;
         }
         Minecraft client = Minecraft.getInstance();
         if (client != null) {
-            client.execute(() -> state = new State(data, createIcon(data.render()), "received"));
+            int session = SESSION.get();
+            client.execute(() -> {
+                if (session != SESSION.get()) {
+                    return;
+                }
+                try {
+                    FlipHudData data = FlipHudData.parse(json);
+                    state = new State(data, createIcon(data.render()), "received");
+                } catch (RuntimeException exception) {
+                    logParseFailure(exception);
+                }
+            });
         }
     }
 
     public static void markOpening(String id) {
         Minecraft client = Minecraft.getInstance();
         if (client != null) {
+            int session = SESSION.get();
             client.execute(() -> {
+                if (session != SESSION.get()) {
+                    return;
+                }
                 State current = state;
                 if (current != null && id != null && id.equals(current.data.id())) {
                     state = new State(current.data, current.icon, "opening");
@@ -62,7 +74,23 @@ public final class FlipHud {
         }
     }
 
+    public static void markOpeningCommand(String command) {
+        String id = FlipHudData.auctionIdFromCommand(command);
+        if (!id.isBlank()) {
+            markOpening(id);
+        }
+    }
+
+    public static void observeCommand(String command) {
+        if (FlipHudData.changesBackendSession(command)) {
+            clear();
+            return;
+        }
+        markOpeningCommand(command);
+    }
+
     public static void clear() {
+        SESSION.incrementAndGet();
         state = null;
     }
 
@@ -83,7 +111,7 @@ public final class FlipHud {
         Font font = Minecraft.getInstance().font;
         FlipHudData data = current.data;
 
-        RenderUtils.drawRoundedRect(context, x, y, WIDTH, HEIGHT, 4, CoflColConfig.BACKGROUND_PRIMARY);
+        RenderUtils.drawRect(context, x, y, WIDTH, HEIGHT, CoflColConfig.BACKGROUND_PRIMARY);
         RenderUtils.drawRect(context, x, y, 3, HEIGHT, CoflColConfig.CONFIRM);
         RenderUtils.drawItemStack(context, current.icon, x + 9, y + 20, 1);
 
@@ -92,7 +120,7 @@ public final class FlipHud {
         RenderUtils.drawString(context, trim(font, name, 174), x + 31, y + 19, CoflColConfig.TEXT_PRIMARY);
 
         String price = data.cost() > 0L ? "buy " + format(data.cost()) : "price unknown";
-        long target = data.target() > 0L ? data.target() : data.worth();
+        long target = data.target();
         if (target > 0L) {
             price += ", target " + format(target);
         }
@@ -107,7 +135,7 @@ public final class FlipHud {
 
     private static State previewState() {
         FlipHudData data = new FlipHudData("", "preview item", 1, 12_500_000L,
-                16_000_000L, 16_000_000L, "sniper", "emerald", System.currentTimeMillis());
+                16_000_000L, "sniper", "emerald", System.currentTimeMillis());
         return new State(data, new ItemStack(Items.EMERALD), "received");
     }
 
@@ -121,7 +149,7 @@ public final class FlipHud {
                     return new ItemStack(item);
                 }
             }
-            if (value.matches("[0-9a-f]{32,64}")) {
+            if (value.matches("[0-9a-f]{64}")) {
                 return texturedHead(value);
             }
         }
@@ -162,6 +190,12 @@ public final class FlipHud {
     private static String age(long receivedAt) {
         long seconds = Math.max(0L, (System.currentTimeMillis() - receivedAt) / 1000L);
         return seconds + "s ago";
+    }
+
+    private static void logParseFailure(RuntimeException exception) {
+        if (PARSE_FAILURE_LOGGED.compareAndSet(false, true)) {
+            System.out.println("Could not parse flip HUD payload: " + exception);
+        }
     }
 
     private record State(FlipHudData data, ItemStack icon, String status) {

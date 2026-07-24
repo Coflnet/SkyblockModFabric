@@ -73,6 +73,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -323,7 +324,6 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            com.coflnet.gui.flip.FlipHud.clear();
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             ServerContext detectedServerContext = detectServerContext(null);
             applyServerContext(detectedServerContext);
@@ -348,7 +348,6 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            com.coflnet.gui.flip.FlipHud.clear();
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             applyServerContext(ServerContext.UNKNOWN);
             WSClientWrapper wrapper = CoflCore.Wrapper;
@@ -580,6 +579,12 @@ public class CoflModClient implements ClientModInitializer {
                 com.coflnet.gui.flip.FlipHud.render(drawContext);
             }
         });
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+                com.coflnet.gui.flip.FlipHud.clear());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                com.coflnet.gui.flip.FlipHud.clear());
+        ClientSendMessageEvents.COMMAND.register(
+                com.coflnet.gui.flip.FlipHud::observeCommand);
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();
@@ -2681,6 +2686,7 @@ public class CoflModClient implements ClientModInitializer {
         String confirmedDestination = decodeConnectDestination(confirmedArgs[1]);
         String confirmedHost = extractConnectHost(confirmedDestination);
         clearPendingUntrustedConnect();
+        com.coflnet.gui.flip.FlipHud.clear();
         sendChatMessage("§eConfirmed untrusted connection to §c" + getDisplayedConnectTarget(confirmedDestination, confirmedHost) + "§e.");
         CoflSkyCommand.processCommand(confirmedArgs, username);
         return true;
@@ -2695,6 +2701,7 @@ public class CoflModClient implements ClientModInitializer {
         String host = extractConnectHost(destination);
         if (isTrustedConnectHost(host)) {
             clearPendingUntrustedConnect();
+            com.coflnet.gui.flip.FlipHud.clear();
             return false;
         }
 
