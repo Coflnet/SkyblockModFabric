@@ -5,6 +5,7 @@ import com.coflnet.lore.LoreData;
 import com.coflnet.lore.LoreField;
 import com.coflnet.lore.LoreModule;
 import com.coflnet.lore.LoreParser;
+import com.coflnet.lore.LoreStyleCodec;
 import com.coflnet.lore.LoreTemplate;
 import com.coflnet.gui.RenderUtils;
 
@@ -229,7 +230,7 @@ public class LoreConfigScreen extends Screen {
             int editorW = templateEditorWidth();
             templateBox = new EditBox(font, editorX, contentY + 16, editorW, 14,
                     Component.literal("template"));
-            templateBox.setMaxLength(200);
+            templateBox.setMaxLength(LoreStyleCodec.MAX_TEMPLATE_LENGTH);
             templateBox.setValue(m.template == null ? "" : m.template);
             // mirror keystrokes into the working module so the live preview drawn
             // every frame updates as the user types.

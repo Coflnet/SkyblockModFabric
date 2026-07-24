@@ -226,13 +226,21 @@ public final class LoreSync {
         // wipe an unrelated setting and because we never touch current itself a
         // rejected or timed out write leaves the last confirmed state intact. this is
         // pure local work so an exception here claims no slot and leaks no state.
-        DescriptionSettings payload = base.copy();
-        payload.setFields(layout);
-        if (templatesChanged) {
-            payload.setCustomFormat(
-                    LoreStyleCodec.mergeInto(base.getCustomFormat(), modules));
+        DescriptionSettings payload;
+        String json;
+        try {
+            payload = base.copy();
+            payload.setFields(layout);
+            if (templatesChanged) {
+                payload.setCustomFormat(
+                        LoreStyleCodec.mergeInto(base.getCustomFormat(), modules));
+            }
+            json = payload.toJson();
+        } catch (RuntimeException exception) {
+            System.out.println("[Lore] refusing to save an unsafe settings payload: " + exception);
+            msg("§cYour lore settings contain unsupported or oversized styling, so nothing was saved.");
+            return;
         }
-        String json = payload.toJson();
 
         // claim the single in flight save slot with a fresh never reused generation
         // before publishing pendingpayload. refuse to start a second save while one is

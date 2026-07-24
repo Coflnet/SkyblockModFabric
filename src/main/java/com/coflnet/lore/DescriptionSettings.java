@@ -6,8 +6,10 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A non-destructive wrapper around the backend {@code DescriptionSetting} object,
@@ -32,6 +34,63 @@ public final class DescriptionSettings {
     private static final int MAX_FIELDS_PER_ROW = 64;
     private static final int MAX_TOTAL_FIELDS = 2048;
     private static final int MAX_FIELD_LENGTH = 128;
+    private static final Set<String> DESCRIPTION_FIELDS = Set.of(
+            "none",
+            "lbin",
+            "lbin_key",
+            "median",
+            "median_key",
+            "volume",
+            "tag",
+            "craft_cost",
+            "bazaarbuy",
+            "bazaarsell",
+            "price_paid",
+            "item_key",
+            "enchantcost",
+            "gemvalue",
+            "spentonahfees",
+            "katupgradecost",
+            "instasellprice",
+            "modifiercost",
+            "fullcraftcost",
+            "modifiercostlist",
+            "finderestimates",
+            "volatility",
+            "lastsoldfor",
+            "timetosell",
+            "npcsellprice",
+            "colorcode",
+            "defaultlore",
+            "aiestimate",
+            "bazaar_cost");
+    private static final List<String> BOOLEAN_MEMBERS = List.of(
+            "HighlightFilterMatch",
+            "DisableHighlighting",
+            "DisableSuggestions",
+            "Disabled",
+            "PreferLbinInSuggestions",
+            "SuggestQuicksell",
+            "NoCookie",
+            "BuyOrderPrices",
+            "DisableAuctionStartedTime",
+            "LowballHideBreakdown",
+            "LowballHideWorstCase");
+    private static final List<String> BYTE_MEMBERS = List.of(
+            "LowballMedUndercut",
+            "LowballLbinUndercut",
+            "LowballNonExactExtraPct",
+            "LowballWorstCaseExtraPct");
+    private static final List<String> NULLABLE_STRING_MEMBERS = List.of(
+            "ReplaceGrayWith",
+            "ReplaceAquaWith",
+            "ReplaceYellowWith",
+            "ReplaceGoldWith",
+            "ReplaceWhiteWith",
+            "CustomFormat");
+    private static final List<String> NULLABLE_STRING_ARRAY_MEMBERS = List.of(
+            "DisableInfoIn",
+            "BazaarBookmarks");
     private static final List<String> REQUIRED_MEMBERS = List.of(
             "Fields",
             "HighlightFilterMatch",
@@ -119,7 +178,9 @@ public final class DescriptionSettings {
                 if (field == null || !field.isJsonPrimitive()
                         || !field.getAsJsonPrimitive().isString()
                         || field.getAsString().isBlank()
-                        || field.getAsString().length() > MAX_FIELD_LENGTH) {
+                        || field.getAsString().length() > MAX_FIELD_LENGTH
+                        || !DESCRIPTION_FIELDS.contains(
+                                field.getAsString().toLowerCase(java.util.Locale.ROOT))) {
                     return false;
                 }
                 totalFields++;
@@ -145,34 +206,143 @@ public final class DescriptionSettings {
         if (!hasFields()) {
             return false;
         }
-        JsonElement disabled = member("Disabled");
-        if (disabled == null || !disabled.isJsonPrimitive()
-                || !disabled.getAsJsonPrimitive().isBoolean()) {
+        for (String name : BOOLEAN_MEMBERS) {
+            if (!isBoolean(name)) {
+                return false;
+            }
+        }
+        if (!isIntegralWithin(
+                member("MinProfitForHighlight"),
+                BigDecimal.valueOf(Long.MIN_VALUE),
+                BigDecimal.valueOf(Long.MAX_VALUE))) {
             return false;
         }
-        JsonElement undercut = member("LowballLbinUndercut");
-        if (undercut == null || !undercut.isJsonPrimitive()
-                || !undercut.getAsJsonPrimitive().isNumber()) {
+        for (String name : BYTE_MEMBERS) {
+            if (!isIntegralWithin(
+                    member(name),
+                    BigDecimal.ZERO,
+                    BigDecimal.valueOf(255))) {
+                return false;
+            }
+        }
+        for (String name : NULLABLE_STRING_MEMBERS) {
+            if (!isNullableString(member(name))) {
+                return false;
+            }
+        }
+        for (String name : NULLABLE_STRING_ARRAY_MEMBERS) {
+            if (!isNullableStringArray(member(name))) {
+                return false;
+            }
+        }
+        return isValidHighlightInfo(member("HighlightInfo"));
+    }
+
+    private boolean isBoolean(String name) {
+        JsonElement value = member(name);
+        return value != null
+                && value.isJsonPrimitive()
+                && value.getAsJsonPrimitive().isBoolean();
+    }
+
+    private static boolean isIntegralWithin(
+            JsonElement element,
+            BigDecimal minimum,
+            BigDecimal maximum) {
+        if (element == null
+                || !element.isJsonPrimitive()
+                || !element.getAsJsonPrimitive().isNumber()) {
             return false;
         }
         try {
-            java.math.BigDecimal value = undercut.getAsBigDecimal();
-            if (value.stripTrailingZeros().scale() > 0
-                    || value.compareTo(java.math.BigDecimal.ZERO) < 0
-                    || value.compareTo(java.math.BigDecimal.valueOf(255)) > 0) {
-                return false;
-            }
+            BigDecimal value = element.getAsBigDecimal();
+            return value.stripTrailingZeros().scale() <= 0
+                    && value.compareTo(minimum) >= 0
+                    && value.compareTo(maximum) <= 0;
         } catch (RuntimeException exception) {
             return false;
         }
-        String customFormatKey = actualKey("CustomFormat");
-        if (customFormatKey == null) {
+    }
+
+    private static boolean isNullableString(JsonElement element) {
+        return element != null
+                && (element.isJsonNull()
+                || element.isJsonPrimitive()
+                && element.getAsJsonPrimitive().isString());
+    }
+
+    private static boolean isNullableStringArray(JsonElement element) {
+        if (element == null) {
             return false;
         }
-        JsonElement customFormat = root.get(customFormatKey);
-        return customFormat == null || customFormat.isJsonNull()
-                || customFormat.isJsonPrimitive()
-                && customFormat.getAsJsonPrimitive().isString();
+        if (element.isJsonNull()) {
+            return true;
+        }
+        if (!element.isJsonArray()) {
+            return false;
+        }
+        for (JsonElement value : element.getAsJsonArray()) {
+            if (value == null
+                    || !value.isJsonPrimitive()
+                    || !value.getAsJsonPrimitive().isString()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isValidHighlightInfo(JsonElement element) {
+        if (element == null) {
+            return false;
+        }
+        if (element.isJsonNull()) {
+            return true;
+        }
+        if (!element.isJsonObject()) {
+            return false;
+        }
+        JsonObject info = element.getAsJsonObject();
+        for (String member : List.of("Position", "HexColor", "SlotId", "Chestname")) {
+            if (!hasSingleMember(info, member)) {
+                return false;
+            }
+        }
+        JsonElement position = member(info, "Position");
+        return position != null
+                && (position.isJsonNull() || isValidBlockPosition(position))
+                && isNullableString(member(info, "HexColor"))
+                && isIntegralWithin(
+                        member(info, "SlotId"),
+                        BigDecimal.valueOf(Integer.MIN_VALUE),
+                        BigDecimal.valueOf(Integer.MAX_VALUE))
+                && isNullableString(member(info, "Chestname"));
+    }
+
+    private static boolean isValidBlockPosition(JsonElement element) {
+        if (!element.isJsonObject()) {
+            return false;
+        }
+        JsonObject position = element.getAsJsonObject();
+        for (String coordinate : List.of("X", "Y", "Z")) {
+            if (!hasSingleMember(position, coordinate)
+                    || !isFiniteNumber(member(position, coordinate))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isFiniteNumber(JsonElement element) {
+        if (element == null
+                || !element.isJsonPrimitive()
+                || !element.getAsJsonPrimitive().isNumber()) {
+            return false;
+        }
+        try {
+            return Double.isFinite(element.getAsDouble());
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 
     /**
@@ -184,11 +354,15 @@ public final class DescriptionSettings {
      * adding a duplicate differently cased one.
      */
     private String actualKey(String name) {
-        if (root.has(name)) {
+        return actualKey(root, name);
+    }
+
+    private static String actualKey(JsonObject object, String name) {
+        if (object.has(name)) {
             return name;
         }
         String lower = name.toLowerCase(java.util.Locale.ROOT);
-        for (String k : root.keySet()) {
+        for (String k : object.keySet()) {
             if (k.toLowerCase(java.util.Locale.ROOT).equals(lower)) {
                 return k;
             }
@@ -202,8 +376,17 @@ public final class DescriptionSettings {
     }
 
     private boolean hasSingleMember(String name) {
+        return hasSingleMember(root, name);
+    }
+
+    private static JsonElement member(JsonObject object, String name) {
+        String key = actualKey(object, name);
+        return key == null ? null : object.get(key);
+    }
+
+    private static boolean hasSingleMember(JsonObject object, String name) {
         int count = 0;
-        for (String key : root.keySet()) {
+        for (String key : object.keySet()) {
             if (key.equalsIgnoreCase(name) && ++count > 1) {
                 return false;
             }

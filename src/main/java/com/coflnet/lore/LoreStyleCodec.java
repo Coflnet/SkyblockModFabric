@@ -31,6 +31,7 @@ import java.util.Set;
  */
 public final class LoreStyleCodec {
 
+    public static final int MAX_TEMPLATE_LENGTH = 200;
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
     private LoreStyleCodec() {
@@ -59,6 +60,9 @@ public final class LoreStyleCodec {
             }
             String key = seg.key;
             String template = m.template;
+            if (template.length() > MAX_TEMPLATE_LENGTH) {
+                throw new IllegalArgumentException("lore template exceeded the size limit");
+            }
             // only sync a genuine customisation blank or stock default is skipped .
             String stock = seg != null ? seg.defaultTemplate : null;
             if (template.isBlank()) {
@@ -82,7 +86,7 @@ public final class LoreStyleCodec {
                     existing,
                     LoreSettingsPayload.MAX_PAYLOAD_LENGTH);
             if (parsed == null) {
-                return fromModules(modules);
+                throw new IllegalArgumentException("existing custom format is not a compatible json object");
             }
             merged = parsed;
         }
@@ -170,7 +174,8 @@ public final class LoreStyleCodec {
             }
             if (!seen.add(segment.key)
                     || !obj.get(key).isJsonPrimitive()
-                    || !obj.get(key).getAsJsonPrimitive().isString()) {
+                    || !obj.get(key).getAsJsonPrimitive().isString()
+                    || obj.get(key).getAsString().length() > MAX_TEMPLATE_LENGTH) {
                 return false;
             }
         }

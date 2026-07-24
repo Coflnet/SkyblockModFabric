@@ -2,6 +2,7 @@ package com.coflnet.lore;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -78,6 +79,128 @@ class DescriptionSettingsTest {
     }
 
     @Test
+    void rejectsInvalidBackendMemberTypes() {
+        for (String member : List.of(
+                "HighlightFilterMatch",
+                "DisableHighlighting",
+                "DisableSuggestions",
+                "Disabled",
+                "PreferLbinInSuggestions",
+                "SuggestQuicksell",
+                "NoCookie",
+                "BuyOrderPrices",
+                "DisableAuctionStartedTime",
+                "LowballHideBreakdown",
+                "LowballHideWorstCase")) {
+            assertInvalidMember(member, new JsonObject());
+        }
+        assertInvalidMember("MinProfitForHighlight", new JsonObject());
+        assertInvalidMember("MinProfitForHighlight", new JsonPrimitive(1.5));
+        for (String member : List.of(
+                "LowballMedUndercut",
+                "LowballLbinUndercut",
+                "LowballNonExactExtraPct",
+                "LowballWorstCaseExtraPct")) {
+            assertInvalidMember(member, new JsonObject());
+            assertInvalidMember(member, new JsonPrimitive(-1));
+            assertInvalidMember(member, new JsonPrimitive(256));
+        }
+        for (String member : List.of(
+                "ReplaceGrayWith",
+                "ReplaceAquaWith",
+                "ReplaceYellowWith",
+                "ReplaceGoldWith",
+                "ReplaceWhiteWith",
+                "CustomFormat")) {
+            assertInvalidMember(member, new JsonObject());
+        }
+        for (String member : List.of("DisableInfoIn", "BazaarBookmarks")) {
+            assertInvalidMember(member, new JsonObject());
+            assertInvalidMember(member, JsonParser.parseString("[1]"));
+        }
+        assertInvalidMember("HighlightInfo", new JsonPrimitive("invalid"));
+        assertInvalidMember("HighlightInfo", new JsonObject());
+    }
+
+    @Test
+    void acceptsAValidPopulatedHighlightInfo() {
+        JsonObject snapshot = completeSnapshot();
+        snapshot.add("HighlightInfo", JsonParser.parseString("""
+                {
+                  "Position": {"X": 1, "Y": 2, "Z": 3},
+                  "HexColor": "#00FF00",
+                  "SlotId": -1,
+                  "Chestname": "Highlight"
+                }
+                """));
+
+        DescriptionSettings settings = DescriptionSettings.parse(snapshot.toString());
+
+        assertNotNull(settings);
+        assertTrue(settings.isCompleteSnapshot());
+    }
+
+    @Test
+    void rejectsInvalidHighlightPositionsAndSlotIds() {
+        for (String position : List.of(
+                "{}",
+                "{\"X\":1,\"Y\":2}",
+                "{\"X\":1,\"x\":2,\"Y\":2,\"Z\":3}",
+                "{\"X\":{},\"Y\":2,\"Z\":3}",
+                "{\"X\":1,\"Y\":false,\"Z\":3}",
+                "{\"X\":1,\"Y\":2,\"Z\":\"bad\"}",
+                "{\"X\":1e309,\"Y\":2,\"Z\":3}")) {
+            assertInvalidMember(
+                    "HighlightInfo",
+                    highlightInfo(JsonParser.parseString(position), new JsonPrimitive(-1)));
+        }
+        for (com.google.gson.JsonElement slot : List.of(
+                new JsonPrimitive(1.5),
+                new JsonPrimitive((long) Integer.MIN_VALUE - 1),
+                new JsonPrimitive((long) Integer.MAX_VALUE + 1))) {
+            assertInvalidMember(
+                    "HighlightInfo",
+                    highlightInfo(JsonParser.parseString("{\"X\":1,\"Y\":2,\"Z\":3}"), slot));
+        }
+    }
+
+    @Test
+    void acceptsFiniteFractionalAndBoundaryHighlightPositions() {
+        for (String position : List.of(
+                "{\"X\":1.5,\"Y\":-2.25,\"Z\":0}",
+                "{\"X\":1.7976931348623157e308,\"Y\":-1.7976931348623157e308,\"Z\":0}")) {
+            JsonObject snapshot = completeSnapshot();
+            snapshot.add(
+                    "HighlightInfo",
+                    highlightInfo(JsonParser.parseString(position), new JsonPrimitive(-1)));
+            DescriptionSettings settings = DescriptionSettings.parse(snapshot.toString());
+
+            assertNotNull(settings);
+            assertTrue(settings.isCompleteSnapshot());
+        }
+        for (int slot : List.of(Integer.MIN_VALUE, Integer.MAX_VALUE)) {
+            JsonObject snapshot = completeSnapshot();
+            snapshot.add(
+                    "HighlightInfo",
+                    highlightInfo(
+                            JsonParser.parseString("{\"X\":1,\"Y\":2,\"Z\":3}"),
+                            new JsonPrimitive(slot)));
+            DescriptionSettings settings = DescriptionSettings.parse(snapshot.toString());
+
+            assertNotNull(settings);
+            assertTrue(settings.isCompleteSnapshot());
+        }
+        JsonObject nullablePosition = completeSnapshot();
+        nullablePosition.add(
+                "HighlightInfo",
+                highlightInfo(com.google.gson.JsonNull.INSTANCE, new JsonPrimitive(-1)));
+        DescriptionSettings nullable = DescriptionSettings.parse(nullablePosition.toString());
+
+        assertNotNull(nullable);
+        assertTrue(nullable.isCompleteSnapshot());
+    }
+
+    @Test
     void rejectsDeepOrOversizedJsonBeforeItCanBeCopied() {
         String deep = "{\"value\":".repeat(80) + "0" + "}".repeat(80);
         assertNull(DescriptionSettings.parse("{\"future\":" + deep + "}"));
@@ -95,6 +218,32 @@ class DescriptionSettingsTest {
 
         assertNotNull(settings);
         assertFalse(settings.hasFields());
+    }
+
+    @Test
+    void acceptsEveryCurrentDescriptionFieldAndRejectsUnknownOnes() {
+        JsonObject validSnapshot = completeSnapshot();
+        validSnapshot.add("Fields", JsonParser.parseString("""
+                [[
+                  "NONE", "LBIN", "LBIN_KEY", "MEDIAN", "MEDIAN_KEY", "VOLUME",
+                  "TAG", "CRAFT_COST", "BazaarBuy", "BazaarSell", "PRICE_PAID",
+                  "ITEM_KEY", "EnchantCost", "GemValue", "SpentOnAhFees",
+                  "KatUpgradeCost", "InstaSellPrice", "ModifierCost",
+                  "FullCraftCost", "ModifierCostList", "FinderEstimates",
+                  "Volatility", "LastSoldFor", "TimeToSell", "NpcSellPrice",
+                  "ColorCode", "DefaultLore", "AiEstimate", "BAZAAR_COST"
+                ]]
+                """));
+        DescriptionSettings valid = DescriptionSettings.parse(validSnapshot.toString());
+
+        JsonObject unknownSnapshot = completeSnapshot();
+        unknownSnapshot.add("Fields", JsonParser.parseString("[[\"NOT_A_DESCRIPTION_FIELD\"]]"));
+        DescriptionSettings unknown = DescriptionSettings.parse(unknownSnapshot.toString());
+
+        assertNotNull(valid);
+        assertTrue(valid.isCompleteSnapshot());
+        assertNotNull(unknown);
+        assertFalse(unknown.isCompleteSnapshot());
     }
 
     @Test
@@ -182,5 +331,25 @@ class DescriptionSettingsTest {
                   "HighlightInfo": null
                 }
                 """).getAsJsonObject();
+    }
+
+    private static void assertInvalidMember(String name, com.google.gson.JsonElement value) {
+        JsonObject snapshot = completeSnapshot();
+        snapshot.add(name, value);
+        DescriptionSettings settings = DescriptionSettings.parse(snapshot.toString());
+
+        assertNotNull(settings);
+        assertFalse(settings.isCompleteSnapshot(), name);
+    }
+
+    private static JsonObject highlightInfo(
+            com.google.gson.JsonElement position,
+            com.google.gson.JsonElement slot) {
+        JsonObject info = new JsonObject();
+        info.add("Position", position);
+        info.addProperty("HexColor", "#00FF00");
+        info.add("SlotId", slot);
+        info.addProperty("Chestname", "Highlight");
+        return info;
     }
 }

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LoreStyleCodecTest {
@@ -82,6 +83,47 @@ class LoreStyleCodecTest {
                 modules);
 
         assertEquals("&a{lbin}", lbin.template);
+    }
+
+    @Test
+    void refusesToOverwriteIncompatibleExistingFormats() {
+        List<LoreModule> modules = LoreModule.defaults();
+        module(modules, "LBIN").template = "&a{lbin}";
+        String deep = "{\"next\":".repeat(80) + "0" + "}".repeat(80);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> LoreStyleCodec.mergeInto("legacy opaque format", modules));
+        assertThrows(IllegalArgumentException.class,
+                () -> LoreStyleCodec.mergeInto("{\"future\":", modules));
+        assertThrows(IllegalArgumentException.class,
+                () -> LoreStyleCodec.mergeInto("[]", modules));
+        assertThrows(IllegalArgumentException.class,
+                () -> LoreStyleCodec.mergeInto("{\"future\":" + deep + "}", modules));
+        assertThrows(IllegalArgumentException.class,
+                () -> LoreStyleCodec.mergeInto(
+                        "{\"future\":\""
+                                + "x".repeat(LoreSettingsPayload.MAX_PAYLOAD_LENGTH)
+                                + "\"}",
+                        modules));
+    }
+
+    @Test
+    void rejectsOversizedOwnedTemplatesInBothDirections() {
+        List<LoreModule> local = LoreModule.defaults();
+        LoreModule localLbin = module(local, "LBIN");
+        localLbin.template = "x".repeat(LoreStyleCodec.MAX_TEMPLATE_LENGTH + 1);
+        assertThrows(IllegalArgumentException.class, () -> LoreStyleCodec.fromModules(local));
+
+        List<LoreModule> synced = LoreModule.defaults();
+        LoreModule syncedLbin = module(synced, "LBIN");
+        syncedLbin.template = "&a{lbin}";
+        LoreStyleCodec.applyToModules(
+                "{\"LBIN\":\""
+                        + "x".repeat(LoreStyleCodec.MAX_TEMPLATE_LENGTH + 1)
+                        + "\"}",
+                synced);
+
+        assertEquals("&a{lbin}", syncedLbin.template);
     }
 
     private static LoreModule module(List<LoreModule> modules, String key) {
