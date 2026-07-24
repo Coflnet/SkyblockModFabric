@@ -942,9 +942,10 @@ public class LoreConfigScreen extends Screen {
      *
      * we walk the layout lines in order and for each field key include its
      * {@link com.coflnet.lore.LoreSegment} when one exists (a restylable field).
-     * packed sub fields that share a line but are not separate layout keys e.g.
-     * {@code clean craft} riding on the {@code FullCraftCost} line) are added
-     * alongside their parent so they stay editable too. freeform layout fields
+     * packed sub fields that share an output with a layout key but are not
+     * separate layout keys, for example {@code ObtainCost}, which the backend
+     * emits instead of {@code FullCraftCost} when an item is not craftable, are
+     * added alongside their parent so they stay editable too. freeform layout fields
      * with no segment (e.g. {@code ITEM_KEY}) are skipped — they pass through
      * unstyled and have nothing to edit.
      */
@@ -964,9 +965,9 @@ public class LoreConfigScreen extends Screen {
                 if (direct != null && seen.add(direct.key.toUpperCase(java.util.Locale.ROOT))) {
                     out.add(direct);
                 }
-                // packed sub fields that live on this layout fields line but are not
-                // their own layout key e.g. craft cost clean craft rides on the
-                // fullcraftcost line . include them so they stay editable.
+                // packed sub fields that share this layout fields output but are not
+                // their own layout key. obtain cost replaces full craft cost for
+                // items that are not craftable. include it so it stays editable.
                 for (String subKey : packedSubFields(key)) {
                     com.coflnet.lore.LoreSegment sub = com.coflnet.lore.LoreSegment.byKey(subKey);
                     if (sub != null && seen.add(sub.key.toUpperCase(java.util.Locale.ROOT))) {
