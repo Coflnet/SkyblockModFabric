@@ -31,6 +31,7 @@ public final class FlipHud {
     private static final Gson GSON = new Gson();
     private static final AtomicBoolean PARSE_FAILURE_LOGGED = new AtomicBoolean();
     private static final AtomicInteger SESSION = new AtomicInteger();
+    private static final Object STATE_LOCK = new Object();
     private static volatile State state;
 
     private FlipHud() {
@@ -50,7 +51,13 @@ public final class FlipHud {
                 }
                 try {
                     FlipHudData data = FlipHudData.parse(json);
-                    state = new State(data, createIcon(data.render()), "received");
+                    ItemStack icon = createIcon(data.render());
+                    synchronized (STATE_LOCK) {
+                        if (session != SESSION.get()) {
+                            return;
+                        }
+                        state = new State(data, icon, "received");
+                    }
                 } catch (RuntimeException exception) {
                     logParseFailure(exception);
                 }
@@ -66,9 +73,14 @@ public final class FlipHud {
                 if (session != SESSION.get()) {
                     return;
                 }
-                State current = state;
-                if (current != null && id != null && id.equals(current.data.id())) {
-                    state = new State(current.data, current.icon, "opening");
+                synchronized (STATE_LOCK) {
+                    if (session != SESSION.get()) {
+                        return;
+                    }
+                    State current = state;
+                    if (current != null && id != null && id.equals(current.data.id())) {
+                        state = new State(current.data, current.icon, "opening");
+                    }
                 }
             });
         }
@@ -90,8 +102,10 @@ public final class FlipHud {
     }
 
     public static void clear() {
-        SESSION.incrementAndGet();
-        state = null;
+        synchronized (STATE_LOCK) {
+            SESSION.incrementAndGet();
+            state = null;
+        }
     }
 
     public static void render(GuiGraphicsExtractor context) {
