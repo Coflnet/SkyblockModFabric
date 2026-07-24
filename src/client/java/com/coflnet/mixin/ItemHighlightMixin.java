@@ -45,10 +45,6 @@ public abstract class ItemHighlightMixin {
     @Inject(method = "extractSlots", at = @At("HEAD"))
     private void yourmodid_onDrawBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, CallbackInfo ci) {
         try {
-            if (hoveredSlot != null && hoveredSlot.hasItem()) {
-                CoflModClient.maybeUploadHoveredMapContent(hoveredSlot.getItem());
-            }
-
             AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>)(Object)this;
             for (Slot slot : screen.getMenu().slots) {
                 if (!slot.hasItem())
