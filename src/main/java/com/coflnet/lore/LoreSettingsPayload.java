@@ -14,6 +14,9 @@ public final class LoreSettingsPayload {
             return null;
         }
         if (!data.isJsonPrimitive() || !data.getAsJsonPrimitive().isString()) {
+            if (!BoundedJson.hasSafeDepth(data)) {
+                return null;
+            }
             return bounded(data.toString());
         }
         String value = bounded(data.getAsString());

@@ -10,6 +10,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DescriptionSettingsTest {
@@ -30,14 +31,7 @@ class DescriptionSettingsTest {
 
     @Test
     void acceptsACompleteBackendSnapshot() {
-        DescriptionSettings settings = DescriptionSettings.parse("""
-                {
-                  "Fields": [],
-                  "CustomFormat": null,
-                  "Disabled": true,
-                  "LowballLbinUndercut": 12
-                }
-                """);
+        DescriptionSettings settings = DescriptionSettings.parse(completeSnapshot().toString());
 
         assertNotNull(settings);
         assertTrue(settings.isCompleteSnapshot());
@@ -45,34 +39,18 @@ class DescriptionSettingsTest {
 
     @Test
     void rejectsPartialOrInvalidBackendSnapshots() {
-        DescriptionSettings missing = DescriptionSettings.parse("""
-                {"Fields": [], "CustomFormat": null, "Disabled": true}
-                """);
-        DescriptionSettings fractional = DescriptionSettings.parse("""
-                {
-                  "Fields": [],
-                  "CustomFormat": null,
-                  "Disabled": true,
-                  "LowballLbinUndercut": 1.5
-                }
-                """);
-        DescriptionSettings outOfRange = DescriptionSettings.parse("""
-                {
-                  "Fields": [],
-                  "CustomFormat": null,
-                  "Disabled": true,
-                  "LowballLbinUndercut": 256
-                }
-                """);
-        DescriptionSettings duplicate = DescriptionSettings.parse("""
-                {
-                  "Fields": [],
-                  "fields": [["LBIN"]],
-                  "CustomFormat": null,
-                  "Disabled": true,
-                  "LowballLbinUndercut": 1
-                }
-                """);
+        JsonObject missingJson = completeSnapshot();
+        missingJson.remove("HighlightInfo");
+        JsonObject fractionalJson = completeSnapshot();
+        fractionalJson.addProperty("LowballLbinUndercut", 1.5);
+        JsonObject outOfRangeJson = completeSnapshot();
+        outOfRangeJson.addProperty("LowballLbinUndercut", 256);
+        JsonObject duplicateJson = completeSnapshot();
+        duplicateJson.add("fields", JsonParser.parseString("[[\"LBIN\"]]"));
+        DescriptionSettings missing = DescriptionSettings.parse(missingJson.toString());
+        DescriptionSettings fractional = DescriptionSettings.parse(fractionalJson.toString());
+        DescriptionSettings outOfRange = DescriptionSettings.parse(outOfRangeJson.toString());
+        DescriptionSettings duplicate = DescriptionSettings.parse(duplicateJson.toString());
 
         assertNotNull(missing);
         assertNotNull(fractional);
@@ -82,6 +60,29 @@ class DescriptionSettingsTest {
         assertFalse(fractional.isCompleteSnapshot());
         assertFalse(outOfRange.isCompleteSnapshot());
         assertFalse(duplicate.isCompleteSnapshot());
+    }
+
+    @Test
+    void rejectsTheOldFourFieldPartialSnapshot() {
+        DescriptionSettings settings = DescriptionSettings.parse("""
+                {
+                  "Fields": [],
+                  "CustomFormat": null,
+                  "Disabled": false,
+                  "LowballLbinUndercut": 10
+                }
+                """);
+
+        assertNotNull(settings);
+        assertFalse(settings.isCompleteSnapshot());
+    }
+
+    @Test
+    void rejectsDeepOrOversizedJsonBeforeItCanBeCopied() {
+        String deep = "{\"value\":".repeat(80) + "0" + "}".repeat(80);
+        assertNull(DescriptionSettings.parse("{\"future\":" + deep + "}"));
+        assertNull(DescriptionSettings.parse(
+                "{\"future\":\"" + "x".repeat(LoreSettingsPayload.MAX_PAYLOAD_LENGTH) + "\"}"));
     }
 
     @Test
@@ -148,5 +149,38 @@ class DescriptionSettingsTest {
 
         assertEquals(1, json.keySet().stream().filter(key -> key.equalsIgnoreCase("fields")).count());
         assertEquals(1, json.keySet().stream().filter(key -> key.equalsIgnoreCase("customFormat")).count());
+    }
+
+    private static JsonObject completeSnapshot() {
+        return JsonParser.parseString("""
+                {
+                  "Fields": [],
+                  "HighlightFilterMatch": false,
+                  "MinProfitForHighlight": 0,
+                  "DisableHighlighting": false,
+                  "DisableSuggestions": false,
+                  "DisableInfoIn": [],
+                  "BazaarBookmarks": [],
+                  "Disabled": false,
+                  "LowballMedUndercut": 0,
+                  "LowballLbinUndercut": 10,
+                  "PreferLbinInSuggestions": false,
+                  "SuggestQuicksell": false,
+                  "ReplaceGrayWith": null,
+                  "ReplaceAquaWith": null,
+                  "ReplaceYellowWith": null,
+                  "ReplaceGoldWith": null,
+                  "ReplaceWhiteWith": null,
+                  "NoCookie": false,
+                  "BuyOrderPrices": false,
+                  "DisableAuctionStartedTime": false,
+                  "LowballNonExactExtraPct": 2,
+                  "LowballWorstCaseExtraPct": 5,
+                  "LowballHideBreakdown": false,
+                  "LowballHideWorstCase": false,
+                  "CustomFormat": null,
+                  "HighlightInfo": null
+                }
+                """).getAsJsonObject();
     }
 }

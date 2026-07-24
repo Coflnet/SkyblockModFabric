@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +32,33 @@ public final class DescriptionSettings {
     private static final int MAX_FIELDS_PER_ROW = 64;
     private static final int MAX_TOTAL_FIELDS = 2048;
     private static final int MAX_FIELD_LENGTH = 128;
+    private static final List<String> REQUIRED_MEMBERS = List.of(
+            "Fields",
+            "HighlightFilterMatch",
+            "MinProfitForHighlight",
+            "DisableHighlighting",
+            "DisableSuggestions",
+            "DisableInfoIn",
+            "BazaarBookmarks",
+            "Disabled",
+            "LowballMedUndercut",
+            "LowballLbinUndercut",
+            "PreferLbinInSuggestions",
+            "SuggestQuicksell",
+            "ReplaceGrayWith",
+            "ReplaceAquaWith",
+            "ReplaceYellowWith",
+            "ReplaceGoldWith",
+            "ReplaceWhiteWith",
+            "NoCookie",
+            "BuyOrderPrices",
+            "DisableAuctionStartedTime",
+            "LowballNonExactExtraPct",
+            "LowballWorstCaseExtraPct",
+            "LowballHideBreakdown",
+            "LowballHideWorstCase",
+            "CustomFormat",
+            "HighlightInfo");
 
     /**
      * Compact, non-HTML-escaping gson that PRESERVES null members ({@code
@@ -54,19 +80,8 @@ public final class DescriptionSettings {
 
     /** parses the backend json. returns null when the text is not a json object. */
     public static DescriptionSettings parse(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            JsonElement el = JsonParser.parseString(json);
-            if (!el.isJsonObject()) {
-                return null;
-            }
-            return new DescriptionSettings(el.getAsJsonObject());
-        } catch (RuntimeException exception) {
-            System.out.println("[Lore] could not parse DescriptionSetting json: " + exception);
-            return null;
-        }
+        JsonObject root = BoundedJson.parseObject(json, LoreSettingsPayload.MAX_PAYLOAD_LENGTH);
+        return root == null ? null : new DescriptionSettings(root);
     }
 
     /**
@@ -122,11 +137,12 @@ public final class DescriptionSettings {
      * complete settings object.
      */
     public boolean isCompleteSnapshot() {
-        if (!hasSingleMember("Fields")
-                || !hasSingleMember("CustomFormat")
-                || !hasSingleMember("Disabled")
-                || !hasSingleMember("LowballLbinUndercut")
-                || !hasFields()) {
+        for (String member : REQUIRED_MEMBERS) {
+            if (!hasSingleMember(member)) {
+                return false;
+            }
+        }
+        if (!hasFields()) {
             return false;
         }
         JsonElement disabled = member("Disabled");

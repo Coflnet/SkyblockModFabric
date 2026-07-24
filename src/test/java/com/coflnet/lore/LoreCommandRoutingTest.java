@@ -20,6 +20,8 @@ class LoreCommandRoutingTest {
     void recognizesBackendSessionCommands() {
         assertTrue(LoreCommandRouting.changesBackendSession("cofl stop"));
         assertTrue(LoreCommandRouting.changesBackendSession("COFL reset"));
+        assertTrue(LoreCommandRouting.changesBackendSession("cl start"));
+        assertTrue(LoreCommandRouting.changesBackendSession("CL reset"));
         assertFalse(LoreCommandRouting.changesBackendSession("cofl connect destination"));
         assertFalse(LoreCommandRouting.changesBackendSession("cofl status"));
         assertFalse(LoreCommandRouting.changesBackendSession("stop"));

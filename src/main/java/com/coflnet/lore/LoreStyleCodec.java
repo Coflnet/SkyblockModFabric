@@ -6,8 +6,11 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * encodes the users per field styling templates into the single opaque
@@ -75,14 +78,13 @@ public final class LoreStyleCodec {
     public static String mergeInto(String existing, List<LoreModule> modules) {
         JsonObject merged = new JsonObject();
         if (existing != null && !existing.isBlank()) {
-            try {
-                JsonElement parsed = JsonParser.parseString(existing);
-                if (parsed.isJsonObject()) {
-                    merged = parsed.getAsJsonObject().deepCopy();
-                }
-            } catch (RuntimeException ignored) {
+            JsonObject parsed = BoundedJson.parseObject(
+                    existing,
+                    LoreSettingsPayload.MAX_PAYLOAD_LENGTH);
+            if (parsed == null) {
                 return fromModules(modules);
             }
+            merged = parsed;
         }
         for (LoreSegment segment : LoreSegment.ALL) {
             removeIgnoreCase(merged, segment.key);
@@ -113,15 +115,13 @@ public final class LoreStyleCodec {
         JsonObject obj = new JsonObject();
         boolean authoritative = true;
         if (customFormat != null && !customFormat.isBlank()) {
-            try {
-                JsonElement el = JsonParser.parseString(customFormat);
-                if (!el.isJsonObject()) {
-                    return;   // not our blob some other client wrote a plain string
-                }
-                obj = el.getAsJsonObject();
-            } catch (RuntimeException exception) {
-                return;   // opaque non json customformat from another client ignore
+            JsonObject parsed = BoundedJson.parseObject(
+                    customFormat,
+                    LoreSettingsPayload.MAX_PAYLOAD_LENGTH);
+            if (parsed == null || !hasValidOwnedValues(parsed)) {
+                return;
             }
+            obj = parsed;
             // only reset absent keys to default when this looks like our blob at least
             // one key maps to a restylable segment . a foreign object we do not
             // recognise is applied for any matching keys but never resets our fields.
@@ -161,6 +161,22 @@ public final class LoreStyleCodec {
         return false;
     }
 
+    private static boolean hasValidOwnedValues(JsonObject obj) {
+        Set<String> seen = new HashSet<>();
+        for (String key : obj.keySet()) {
+            LoreSegment segment = LoreSegment.byKey(key);
+            if (segment == null) {
+                continue;
+            }
+            if (!seen.add(segment.key)
+                    || !obj.get(key).isJsonPrimitive()
+                    || !obj.get(key).getAsJsonPrimitive().isString()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** case insensitive member lookup so key casing differences do not lose styling. */
     private static JsonElement findIgnoreCase(JsonObject obj, String key) {
         if (obj.has(key)) {
@@ -176,14 +192,13 @@ public final class LoreStyleCodec {
     }
 
     private static void removeIgnoreCase(JsonObject obj, String key) {
-        String match = null;
+        List<String> matches = new ArrayList<>();
         for (String member : obj.keySet()) {
             if (member.equalsIgnoreCase(key)) {
-                match = member;
-                break;
+                matches.add(member);
             }
         }
-        if (match != null) {
+        for (String match : matches) {
             obj.remove(match);
         }
     }

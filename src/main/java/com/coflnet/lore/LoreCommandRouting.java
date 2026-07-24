@@ -18,7 +18,11 @@ public final class LoreCommandRouting {
             return false;
         }
         String[] parts = command.trim().split("\\s+");
-        if (parts.length < 2 || !"cofl".equalsIgnoreCase(parts[0])) {
+        if (parts.length < 2) {
+            return false;
+        }
+        String root = parts[0];
+        if (!"cofl".equalsIgnoreCase(root) && !"cl".equalsIgnoreCase(root)) {
             return false;
         }
         return switch (parts[1].toLowerCase(java.util.Locale.ROOT)) {
