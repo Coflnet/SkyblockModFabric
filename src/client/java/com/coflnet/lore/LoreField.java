@@ -12,6 +12,9 @@ import java.util.List;
  * only the menu of choices the gui offers. adding a field here that the backend
  * does not recognise simply means the backend ignores the add command so the
  * list mirrors the 27 fields observed in a real {@code /cofl lore} dump.
+ * the backend field named bazaar cost has numeric value 9001. backend menus
+ * intentionally hide fields at or above 9000. the snapshot parser accepts it
+ * to preserve complete backend state but this menu does not expose it.
  */
 public final class LoreField {
     public final String key;
