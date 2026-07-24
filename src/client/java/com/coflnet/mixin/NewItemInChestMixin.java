@@ -1,10 +1,12 @@
 package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
+import com.coflnet.gui.trade.TradePriceCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
@@ -59,17 +61,12 @@ public class NewItemInChestMixin {
     private void onPacketReceive(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         try {
             String itemTitle = packet.getItem().getCustomName() != null ? packet.getItem().getCustomName().getString() : "";
-            boolean tradeUpdate = itemTitle.contains("Pending their confirm") || itemTitle.contains("Deal timer!");
-            if (tradeUpdate) {
-                var screen = Minecraft.getInstance().gui.screen();
-                if (screen instanceof com.coflnet.gui.trade.TradeGUI trade) {
-                    com.coflnet.gui.trade.TradePriceCache.request(trade.getBacking());
-                } else if (screen instanceof com.coflnet.gui.trade.CoinInputGUI coins) {
-                    com.coflnet.gui.trade.TradePriceCache.request(coins.getBacking());
-                } else if (screen instanceof net.minecraft.client.gui.screens.inventory.ContainerScreen container
-                        && CoflModClient.isTradeScreenByTitle(container)) {
-                    com.coflnet.gui.trade.TradePriceCache.request(container);
-                }
+            int slot = packet.getSlot();
+            // Offer slots are 0-35; slot 40 may be the final divider update
+            // that makes the full trade layout verifiable.
+            if ((slot >= 0 && slot < 36) || slot == 40) {
+                TradePriceCache.requestCurrentTrade(packet.getContainerId());
+                CoflModClient.openTradeOverlayIfReady(packet.getContainerId());
             } else if (!itemTitle.isEmpty() && (
                     itemTitle.contains("Combine Items") // anvil result
                     || itemTitle.equals("§aFlip Order") // bazaar order flip prices loaded
@@ -85,7 +82,6 @@ public class NewItemInChestMixin {
             }
 
             if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu != null) {
-                int slot = packet.getSlot();
                 if (slot < 0 || slot >= Minecraft.getInstance().player.containerMenu.slots.size())
                     return;
                     
@@ -104,5 +100,12 @@ public class NewItemInChestMixin {
             // You can log the exception or handle it as needed.
             System.out.println("[NewItemInChestMixin] Failed to process packet: " + e.getMessage());
         }
+    }
+
+    /** Price the initial offer as soon as Minecraft has applied its complete contents. */
+    @Inject(method = "handleContainerContent", at = @At("TAIL"))
+    private void onContainerContent(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
+        TradePriceCache.requestCurrentTrade(packet.containerId());
+        CoflModClient.openTradeOverlayIfReady(packet.containerId());
     }
 }

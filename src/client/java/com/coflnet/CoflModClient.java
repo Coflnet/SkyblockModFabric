@@ -437,15 +437,12 @@ public class CoflModClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof ContainerScreen cs && isTradeScreenByTitle(cs)) {
                 com.coflnet.gui.trade.TradePriceCache.clear();
-                com.coflnet.gui.trade.TradePriceCache.request(cs);
-
-                // Replace the trade window with the SkyCofl TradeGUI overlay ONLY
-                // when the trade overlay is enabled (/cofl tradegui on). Dev mode
-                // deliberately does NOT trigger the swap, so /cofl dev on leaves the
-                // normal Hypixel trade window up WITH the Copy Dump button for testing.
-                if (com.coflnet.config.TradeGuiManager.isEnabled()
-                        && !(client.gui.screen() instanceof com.coflnet.gui.trade.TradeGUI)) {
-                    client.gui.setScreen(new com.coflnet.gui.trade.TradeGUI(cs));
+                // AFTER_INIT usually runs before the first content packet. Only
+                // price here when the divider layout is already populated; the
+                // packet hook handles the normal delayed-population path.
+                if (isTradeScreen(cs)) {
+                    com.coflnet.gui.trade.TradePriceCache.request(cs);
+                    openTradeOverlayIfReady(cs.getMenu().containerId);
                 }
             }
         });
@@ -497,10 +494,7 @@ public class CoflModClient implements ClientModInitializer {
                 return;
             }
 
-            // Try to get descriptions using the original UUID if mapped
-            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(lookupId);
-            if(tooltips == null && !lookupId.equals(stackId))
-                tooltips = DescriptionHandler.getTooltipData(stackId); // fallback to current UUID
+            DescriptionHandler.DescModification[] tooltips = getMappedTooltipData(stackId);
             if(tooltips == null)
                 return;
 
@@ -777,6 +771,21 @@ public class CoflModClient implements ClientModInitializer {
         return cs.getMenu().getContainer().getContainerSize() == 45
                 && cs.getTitle().getString().startsWith("You");
     }
+
+    /** Replace only a verified, active raw trade container with the custom overlay. */
+    public static void openTradeOverlayIfReady(int packetContainerId) {
+        Minecraft client = Minecraft.getInstance();
+        if (!(client.gui.screen() instanceof ContainerScreen cs)
+                || client.player == null
+                || client.player.containerMenu != cs.getMenu()
+                || cs.getMenu().containerId != packetContainerId
+                || !isTradeScreen(cs)
+                || !com.coflnet.config.TradeGuiManager.isEnabled()) {
+            return;
+        }
+        client.gui.setScreen(new com.coflnet.gui.trade.TradeGUI(cs));
+    }
+
     /** Worth basis selectable by the user (median vs lowest BIN). */
     public enum WorthBasis { LBIN, MEDIAN }
 
@@ -929,27 +938,8 @@ public class CoflModClient implements ClientModInitializer {
      * @return [totalWorth, unpricedItemCount]
      */
     public static long[] valuateTradeSide(net.minecraft.world.Container container, int[] slots, WorthBasis basis) {
-        long total = 0;
-        long unpriced = 0;
-        for (int slot : slots) {
-            ItemStack stack = container.getItem(slot);
-            if (stack.isEmpty() || stack.getItem() == Items.AIR) {
-                continue;
-            }
-            Long coins = parseCoinStack(stack);
-            if (coins != null) {
-                total += coins;
-                continue;
-            }
-            String id = getIdFromStack(stack);
-            Long worth = parseWorthFromTips(DescriptionHandler.getTooltipData(id), basis);
-            if (worth != null) {
-                total += worth * stack.getCount();
-            } else {
-                unpriced++;
-            }
-        }
-        return new long[]{total, unpriced};
+        var value = com.coflnet.gui.trade.TradePriceCache.valueSlots(container, slots, basis, true);
+        return new long[]{value.total(), value.unpriced()};
     }
 
     /**
@@ -1020,7 +1010,7 @@ public class CoflModClient implements ClientModInitializer {
             if (!isPane) {
                 String id = getIdFromStack(stack);
                 sb.append("    id=").append(id).append("\n");
-                DescriptionHandler.DescModification[] tips = DescriptionHandler.getTooltipData(id);
+                DescriptionHandler.DescModification[] tips = getMappedTooltipData(id);
                 if (tips == null) {
                     sb.append("    tips=<none>\n");
                 } else {
@@ -1639,6 +1629,16 @@ public class CoflModClient implements ClientModInitializer {
         return itemName + ";" + stack.getCount();
     }
 
+    /** Use the same UUID alias fallback everywhere descriptions are consumed. */
+    public static DescriptionHandler.DescModification[] getMappedTooltipData(String stackId) {
+        String lookupId = uuidToOriginalUuid.getOrDefault(stackId, stackId);
+        DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(lookupId);
+        if (tooltips == null && !lookupId.equals(stackId)) {
+            tooltips = DescriptionHandler.getTooltipData(stackId);
+        }
+        return tooltips;
+    }
+
     private static String getDonutItemKeyFromStack(ItemStack stack) {
         CompoundTag itemNbt = extractSingleStackNbt(stack);
         if (itemNbt == null)
@@ -1829,19 +1829,18 @@ public class CoflModClient implements ClientModInitializer {
         return true;
     }
 
-    public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items)
-    {
+    public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items) {
         String userName = Minecraft.getInstance().getUser().getName();
         String nbtString = inventoryToNBT(items);
-        if(nbtString.equals(lastNbtRequest)) {
+        if (nbtString.equals(lastNbtRequest)) {
             return;
         }
         lastNbtRequest = nbtString;
-        
+
         // Check if we should throttle this request
         long currentTime = System.currentTimeMillis();
         Long lastRefreshTime = lastRefreshTimePerInventory.get(title);
-        
+
         if (lastRefreshTime != null && (currentTime - lastRefreshTime) < REFRESH_THROTTLE_MS) {
             // Too soon since last refresh, schedule the request to be made after the throttle period
             long delayMs = REFRESH_THROTTLE_MS - (currentTime - lastRefreshTime);
@@ -1860,25 +1859,38 @@ public class CoflModClient implements ClientModInitializer {
                         // Inventory changed, use the items we have
                         currentItems = items;
                     }
-                        String currentNbt = inventoryToNBT(currentItems);
-                        String[] visibleItems = getItemIdsFromInventory(currentItems);
-                    DescriptionHandler.loadDescriptionForInventory(
-                            visibleItems,
-                            title,
-                            currentNbt,
-                            userName,
-                            posToUpload
-                    );
+                    String currentNbt = inventoryToNBT(currentItems);
+                    fetchDescriptionsForItems(title, currentItems, currentNbt, userName);
                     lastRefreshTimePerInventory.put(title, System.currentTimeMillis());
                 } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    Thread.currentThread().interrupt();
                 }
             });
             return;
         }
-        
+
         // Update last refresh time and make the request
         lastRefreshTimePerInventory.put(title, currentTime);
+        fetchDescriptionsForItems(title, items, nbtString, userName);
+    }
+
+    /**
+     * Loads descriptions synchronously on the calling worker thread.
+     * Trade pricing has its own change gate and debounce, so it must wait for
+     * this response before publishing values instead of using the generic
+     * delayed throttle above.
+     */
+    public static void loadDescriptionsForItemsBlocking(String title, NonNullList<ItemStack> items) {
+        String userName = Minecraft.getInstance().getUser().getName();
+        String nbtString = inventoryToNBT(items);
+        fetchDescriptionsForItems(title, items, nbtString, userName);
+    }
+
+    private static void fetchDescriptionsForItems(
+            String title,
+            NonNullList<ItemStack> items,
+            String nbtString,
+            String userName) {
         String[] visibleItems = getItemIdsFromInventory(items);
         DescriptionHandler.loadDescriptionForInventory(
                 visibleItems,

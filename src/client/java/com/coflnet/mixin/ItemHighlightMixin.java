@@ -53,7 +53,8 @@ public abstract class ItemHighlightMixin {
             for (Slot slot : screen.getMenu().slots) {
                 if (!slot.hasItem())
                     continue;
-                DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(slot.getItem()));
+                DescriptionHandler.DescModification[] tooltips = CoflModClient.getMappedTooltipData(
+                        CoflModClient.getIdFromStack(slot.getItem()));
                 if(tooltips == null)
                     continue;
                 for (DescriptionHandler.DescModification tooltip : tooltips) {
