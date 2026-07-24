@@ -21,12 +21,14 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class FlipHud {
     public static final int WIDTH = 214;
     public static final int HEIGHT = 56;
 
     private static final Gson GSON = new Gson();
+    private static final AtomicBoolean PARSE_FAILURE_LOGGED = new AtomicBoolean();
     private static volatile State state;
 
     private FlipHud() {
@@ -36,7 +38,10 @@ public final class FlipHud {
         final FlipHudData data;
         try {
             data = FlipHudData.parse(json);
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException exception) {
+            if (PARSE_FAILURE_LOGGED.compareAndSet(false, true)) {
+                System.out.println("Could not parse flip HUD payload: " + exception);
+            }
             return;
         }
         Minecraft client = Minecraft.getInstance();
@@ -46,11 +51,15 @@ public final class FlipHud {
     }
 
     public static void markOpening(String id) {
-        State current = state;
-        if (current == null || id == null || !id.equals(current.data.id())) {
-            return;
+        Minecraft client = Minecraft.getInstance();
+        if (client != null) {
+            client.execute(() -> {
+                State current = state;
+                if (current != null && id != null && id.equals(current.data.id())) {
+                    state = new State(current.data, current.icon, "opening");
+                }
+            });
         }
-        state = new State(current.data, current.icon, "opening");
     }
 
     public static void clear() {

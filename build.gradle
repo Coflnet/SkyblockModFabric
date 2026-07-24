@@ -49,6 +49,9 @@ dependencies {
 	implementation include("com.google.code.gson:gson:2.10.1")
 	implementation include("com.neovisionaries:nv-websocket-client:2.14")
 	implementation "maven.modrinth:yacl:3.9.4+26.2-fabric"
+
+	testImplementation "org.junit.jupiter:junit-jupiter:5.12.2"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 processResources {
@@ -63,6 +66,10 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
+}
+
+tasks.named("test") {
+	useJUnitPlatform()
 }
 
 java {

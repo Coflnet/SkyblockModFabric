@@ -43,6 +43,8 @@ Requirements:
 
 Run `/cofl` in-game to open settings. See [sky.coflnet.com](https://sky.coflnet.com/wiki) for documentation.
 
+The recent flip HUD shows the latest flip, price, target, finder, status, and age. Use `/cofl fliphud move` to place it. Use `/cofl fliphud on`, `/cofl fliphud off`, or `/cofl fliphud reset` to manage it.
+
 ## Links
 
 - [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
