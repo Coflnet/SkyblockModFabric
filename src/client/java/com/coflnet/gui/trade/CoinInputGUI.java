@@ -15,8 +15,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ContainerInput;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 /**
  * Coins input dialog for the trade overlay. Lets the user type any amount
@@ -71,55 +69,15 @@ public class CoinInputGUI extends Screen {
     }
 
     private void refreshSuggestions() {
-        lbinSuggestion = sideTotal(CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.LBIN);
-        medianSuggestion = sideTotal(CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.MEDIAN);
-        myItemsLbin = sideItemsOnly(CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.LBIN);
-        myItemsMedian = sideItemsOnly(CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.MEDIAN);
-    }
-
-    /** Full-value total of a side for a basis (offered coins count at face value). */
-    private long sideTotal(int[] slots, WorthBasis basis) {
-        long total = 0;
-        for (int slot : slots) {
-            if (slot >= menu.slots.size()) {
-                continue;
-            }
-            ItemStack stack = menu.slots.get(slot).getItem();
-            if (stack.isEmpty() || stack.getItem() == Items.AIR) {
-                continue;
-            }
-            Long coins = CoflModClient.parseCoinStack(stack);
-            if (coins != null) {
-                total += coins;
-                continue;
-            }
-            total += itemWorth(stack, basis);
-        }
-        return total;
-    }
-
-    /** Worth of a side's ITEMS only (ignores any coins already in those slots). */
-    private long sideItemsOnly(int[] slots, WorthBasis basis) {
-        long total = 0;
-        for (int slot : slots) {
-            if (slot >= menu.slots.size()) {
-                continue;
-            }
-            ItemStack stack = menu.slots.get(slot).getItem();
-            if (stack.isEmpty() || stack.getItem() == Items.AIR) {
-                continue;
-            }
-            if (CoflModClient.parseCoinStack(stack) != null) {
-                continue; // skip coins
-            }
-            total += itemWorth(stack, basis);
-        }
-        return total;
-    }
-
-    private long itemWorth(ItemStack stack, WorthBasis basis) {
-        Long worth = TradePriceCache.worth(stack, basis);
-        return worth == null ? 0L : worth * stack.getCount();
+        var container = menu.getContainer();
+        lbinSuggestion = TradePriceCache.valueSlots(
+                container, CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.LBIN, true).total();
+        medianSuggestion = TradePriceCache.valueSlots(
+                container, CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.MEDIAN, true).total();
+        myItemsLbin = TradePriceCache.valueSlots(
+                container, CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.LBIN, false).total();
+        myItemsMedian = TradePriceCache.valueSlots(
+                container, CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.MEDIAN, false).total();
     }
 
     @Override

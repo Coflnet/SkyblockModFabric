@@ -218,16 +218,8 @@ public class TradeGUI extends Screen {
         if (row.isCoins()) {
             return row.coinAmount();
         }
-        Long w = TradePriceCache.worth(row.stack(), basis);
-        return (w == null ? 0L : w) * row.stack().getCount();
-    }
-
-    private long sideTotal(List<Row> rows) {
-        long total = 0;
-        for (Row r : rows) {
-            total += rowWorth(r);
-        }
-        return total;
+        Long worth = TradePriceCache.stackWorth(row.stack(), basis);
+        return worth == null ? 0L : worth;
     }
 
     @Override
@@ -240,8 +232,10 @@ public class TradeGUI extends Screen {
 
         List<Row> youRows = buildRows(CoflModClient.TRADE_YOUR_SLOTS);
         List<Row> themRows = buildRows(CoflModClient.TRADE_THEIR_SLOTS);
-        long youTotal = sideTotal(youRows);
-        long themTotal = sideTotal(themRows);
+        long youTotal = TradePriceCache.valueSlots(
+                menu.getContainer(), CoflModClient.TRADE_YOUR_SLOTS, basis, true).total();
+        long themTotal = TradePriceCache.valueSlots(
+                menu.getContainer(), CoflModClient.TRADE_THEIR_SLOTS, basis, true).total();
 
         RenderUtils.drawRoundedRect(context, panelX, panelY, panelW, panelH, RADIUS, CoflColConfig.BACKGROUND_PRIMARY);
         RenderUtils.drawString(context, "§lSkyCofl Trade", panelX + PAD, panelY + PAD, CoflColConfig.TEXT_PRIMARY);
