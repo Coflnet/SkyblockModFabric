@@ -86,9 +86,6 @@ public class CoflModConfig {
         return new CoflModConfig();
     }
     
-    // serialises saves and writes atomically. the config is written from several
-    // threads websocket lore sync and gui so a plain truncating
-    // writer could interleave and corrupt the file wiping every setting on next load.
     private static final Object SAVE_LOCK = new Object();
 
     public void save() {
@@ -103,8 +100,6 @@ public class CoflModConfig {
                 try (FileWriter writer = new FileWriter(tmp)) {
                     gson.toJson(this, writer);
                 }
-                // atomic replace so a reader never sees a half written file and two
-                // overlapping writers cannot corrupt the config.
                 try {
                     java.nio.file.Files.move(tmp.toPath(), CONFIG_FILE.toPath(),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING,
