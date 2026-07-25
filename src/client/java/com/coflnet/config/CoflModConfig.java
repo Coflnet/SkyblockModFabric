@@ -85,7 +85,7 @@ public class CoflModConfig {
         // Return default config if loading fails or file doesn't exist
         return new CoflModConfig();
     }
-    
+
     private static final Object SAVE_LOCK = new Object();
 
     public void save() {
