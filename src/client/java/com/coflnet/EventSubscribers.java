@@ -6,6 +6,7 @@ import CoflCore.classes.*;
 import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.commands.CommandType;
 import CoflCore.events.*;
+import com.coflnet.util.JsonNesting;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -138,6 +139,10 @@ public class EventSubscribers {
             return;
         }
         com.coflnet.gui.flip.FlipHud.clear();
+        if (!JsonNesting.isWithinLimit(event.command.getData(), 64)) {
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
+            return;
+        }
         try {
             JsonElement parsed = JsonParser.parseString(event.command.getData());
             JsonObject data = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;

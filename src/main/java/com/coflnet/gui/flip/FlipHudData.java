@@ -1,5 +1,6 @@
 package com.coflnet.gui.flip;
 
+import com.coflnet.util.JsonNesting;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -20,10 +21,12 @@ public record FlipHudData(
     private static final int MAX_FINDER_LENGTH = 32;
     private static final int MAX_RENDER_LENGTH = 128;
     private static final int MAX_MESSAGE_COUNT = 8;
+    private static final int MAX_JSON_DEPTH = 64;
 
     public static FlipHudData parse(String json) {
-        if (json == null || json.length() > MAX_PAYLOAD_LENGTH) {
-            throw new IllegalArgumentException("flip payload exceeded the size limit");
+        if (json == null || json.length() > MAX_PAYLOAD_LENGTH
+                || !JsonNesting.isWithinLimit(json, MAX_JSON_DEPTH)) {
+            throw new IllegalArgumentException("flip payload exceeded its structural limits");
         }
         JsonObject root = JsonParser.parseString(json).getAsJsonObject();
         JsonObject auction = object(root, "auction");

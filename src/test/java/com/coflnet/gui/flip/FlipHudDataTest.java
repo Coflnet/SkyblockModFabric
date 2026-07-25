@@ -104,6 +104,12 @@ class FlipHudDataTest {
         org.junit.jupiter.api.Assertions.assertThrows(
                 IllegalArgumentException.class,
                 () -> FlipHudData.parse("x".repeat(FlipHudData.MAX_PAYLOAD_LENGTH + 1)));
+        String stackOverflowDepth = "[".repeat(20_000)
+                + "0"
+                + "]".repeat(20_000);
+        org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> FlipHudData.parse(stackOverflowDepth));
 
         FlipHudData data = FlipHudData.parse("""
                 {
