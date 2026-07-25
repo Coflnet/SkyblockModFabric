@@ -4,6 +4,7 @@ import CoflCore.network.WSClient;
 import com.coflnet.lore.LoreSaveResponse;
 import com.coflnet.lore.LoreSettingsPayload;
 import com.coflnet.lore.LoreSync;
+import com.coflnet.util.JsonNesting;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -32,6 +33,9 @@ public class LoreSettingsMessageMixin {
                 && (text.contains("Imported settings (check above)")
                 || text.contains("Could not parse the arguments for lore"));
         if (!loreCandidate && !responseCandidate) {
+            return;
+        }
+        if (!JsonNesting.isWithinLimit(text, 64)) {
             return;
         }
         try {

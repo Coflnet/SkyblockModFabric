@@ -1,10 +1,10 @@
 package com.coflnet.config;
 
+import com.coflnet.util.JsonNesting;
 import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
 
 import java.io.File;
-import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 
@@ -70,11 +70,12 @@ public class CoflModConfig {
     public static CoflModConfig load() {
         try {
             if (CONFIG_FILE.exists()) {
-                FileReader reader = new FileReader(CONFIG_FILE);
-                CoflModConfig config = gson.fromJson(reader, CoflModConfig.class);
-                reader.close();
-                if (config != null) {
-                    return config;
+                String json = java.nio.file.Files.readString(CONFIG_FILE.toPath());
+                if (JsonNesting.isWithinLimit(json, 64)) {
+                    CoflModConfig config = gson.fromJson(json, CoflModConfig.class);
+                    if (config != null) {
+                        return config;
+                    }
                 }
             }
         } catch (IOException | RuntimeException exception) {
@@ -91,10 +92,14 @@ public class CoflModConfig {
     private static final Object SAVE_LOCK = new Object();
 
     public void save() {
+        saveAndReport();
+    }
+
+    boolean saveAndReport() {
         synchronized (SAVE_LOCK) {
+            File tmp = new File(CONFIG_FILE.getParentFile(), CONFIG_FILE.getName() + ".tmp");
             try {
                 CONFIG_FILE.getParentFile().mkdirs();
-                File tmp = new File(CONFIG_FILE.getParentFile(), CONFIG_FILE.getName() + ".tmp");
                 try (FileWriter writer = new FileWriter(tmp)) {
                     gson.toJson(this, writer);
                 }
@@ -108,8 +113,15 @@ public class CoflModConfig {
                     java.nio.file.Files.move(tmp.toPath(), CONFIG_FILE.toPath(),
                             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                 }
+                return true;
             } catch (Exception e) {
                 e.printStackTrace();
+                try {
+                    java.nio.file.Files.deleteIfExists(tmp.toPath());
+                } catch (IOException cleanupException) {
+                    System.out.println("Could not clean up temporary CoflMod config: " + cleanupException);
+                }
+                return false;
             }
         }
     }

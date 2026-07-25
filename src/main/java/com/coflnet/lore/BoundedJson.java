@@ -1,5 +1,6 @@
 package com.coflnet.lore;
 
+import com.coflnet.util.JsonNesting;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -14,7 +15,8 @@ final class BoundedJson {
     }
 
     static JsonObject parseObject(String json, int maximumLength) {
-        if (json == null || json.isBlank() || json.length() > maximumLength) {
+        if (json == null || json.isBlank() || json.length() > maximumLength
+                || !JsonNesting.isWithinLimit(json, MAX_DEPTH)) {
             return null;
         }
         try {

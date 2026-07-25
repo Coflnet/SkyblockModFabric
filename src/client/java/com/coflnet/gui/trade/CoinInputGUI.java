@@ -126,12 +126,17 @@ public class CoinInputGUI extends Screen {
      * basis (LBIN total ⇄ LBIN of my items).
      */
     private long scaled(long fullTotal, long myItems) {
-        long target = fullTotal * lowballPercent / 100L;
+        long target = fullTotal / 100L * lowballPercent
+                + fullTotal % 100L * lowballPercent / 100L;
         return Math.max(0L, target - myItems);
     }
 
     @Override
     public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        if (!isTradeActive()) {
+            Minecraft.getInstance().gui.setScreen(null);
+            return;
+        }
         boolean premium = com.coflnet.config.TradeGuiManager.hasPremium();
         if (!premium) {
             draggingSlider = false;
@@ -270,19 +275,32 @@ public class CoinInputGUI extends Screen {
         if (amount == null || amount <= 0) {
             return; // invalid input — leave dialog open
         }
+        if (!isTradeActive()) {
+            returnToTrade();
+            return;
+        }
         CoflModClient.pendingCoinAmount = String.valueOf(amount);
         // Return to trade first so the sign editor (opened by the click) layers
         // over the trade, then click the real coins-transaction slot.
         Minecraft client = Minecraft.getInstance();
         Player player = client.player;
         returnToTrade();
-        if (player != null) {
+        if (player != null && client.gameMode != null && player.containerMenu == menu) {
             client.gameMode.handleContainerInput(menu.containerId, COINS_SLOT, 0, ContainerInput.PICKUP, player);
         }
     }
 
     private void returnToTrade() {
-        Minecraft.getInstance().gui.setScreen(parent);
+        Minecraft client = Minecraft.getInstance();
+        client.gui.setScreen(isTradeActive() ? parent : null);
+    }
+
+    private boolean isTradeActive() {
+        Minecraft client = Minecraft.getInstance();
+        return client.getConnection() != null
+                && client.player != null
+                && client.player.containerMenu == menu
+                && CoflModClient.isTradeScreen(backing);
     }
 
     /** Accepts plain digits and k/m/b suffixes (2m, 1.5b, 80000000). */
@@ -291,27 +309,37 @@ public class CoinInputGUI extends Screen {
             return null;
         }
         String in = s.toLowerCase().replace(",", "").trim();
+        if (in.length() > 32) {
+            return null;
+        }
         try {
             if (in.matches("^[0-9]+$")) {
                 return Long.parseLong(in);
             }
+            java.math.BigDecimal multiplier = java.math.BigDecimal.ONE;
             if (in.matches("^[0-9]*\\.?[0-9]+[kmb]$")) {
                 char suf = in.charAt(in.length() - 1);
-                double val = Double.parseDouble(in.substring(0, in.length() - 1));
-                return switch (suf) {
-                    case 'k' -> (long) (val * 1_000L);
-                    case 'm' -> (long) (val * 1_000_000L);
-                    case 'b' -> (long) (val * 1_000_000_000L);
-                    default -> null;
+                multiplier = switch (suf) {
+                    case 'k' -> java.math.BigDecimal.valueOf(1_000L);
+                    case 'm' -> java.math.BigDecimal.valueOf(1_000_000L);
+                    case 'b' -> java.math.BigDecimal.valueOf(1_000_000_000L);
+                    default -> java.math.BigDecimal.ZERO;
                 };
+                in = in.substring(0, in.length() - 1);
+            } else if (!in.matches("^[0-9]+\\.[0-9]+$")) {
+                return null;
             }
-            if (in.matches("^[0-9]+\\.[0-9]+$")) {
-                return (long) Double.parseDouble(in);
+            java.math.BigDecimal coins = new java.math.BigDecimal(in)
+                    .multiply(multiplier)
+                    .setScale(0, java.math.RoundingMode.DOWN);
+            if (coins.signum() < 0
+                    || coins.compareTo(java.math.BigDecimal.valueOf(Long.MAX_VALUE)) > 0) {
+                return null;
             }
+            return coins.longValueExact();
         } catch (NumberFormatException e) {
             return null;
         }
-        return null;
     }
 
     private static boolean inRect(double px, double py, int x, int y, int w, int h) {

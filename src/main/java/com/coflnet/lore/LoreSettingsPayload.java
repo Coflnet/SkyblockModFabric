@@ -1,5 +1,6 @@
 package com.coflnet.lore;
 
+import com.coflnet.util.JsonNesting;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 
@@ -22,6 +23,9 @@ public final class LoreSettingsPayload {
         String value = bounded(data.getAsString());
         if (value == null) {
             return null;
+        }
+        if (!JsonNesting.isWithinLimit(value, 64)) {
+            return value;
         }
         try {
             JsonElement nested = JsonParser.parseString(value);

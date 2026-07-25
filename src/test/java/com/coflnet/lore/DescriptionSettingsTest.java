@@ -204,6 +204,12 @@ class DescriptionSettingsTest {
     void rejectsDeepOrOversizedJsonBeforeItCanBeCopied() {
         String deep = "{\"value\":".repeat(80) + "0" + "}".repeat(80);
         assertNull(DescriptionSettings.parse("{\"future\":" + deep + "}"));
+        String stackOverflowDepth = "{\"value\":"
+                + "[".repeat(20_000)
+                + "0"
+                + "]".repeat(20_000)
+                + "}";
+        assertNull(DescriptionSettings.parse(stackOverflowDepth));
         assertNull(DescriptionSettings.parse(
                 "{\"future\":\"" + "x".repeat(LoreSettingsPayload.MAX_PAYLOAD_LENGTH) + "\"}"));
     }

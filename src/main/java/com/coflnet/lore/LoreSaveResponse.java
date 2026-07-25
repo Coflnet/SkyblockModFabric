@@ -1,5 +1,6 @@
 package com.coflnet.lore;
 
+import com.coflnet.util.JsonNesting;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -75,6 +76,9 @@ public final class LoreSaveResponse {
             String trimmed = value.trim();
             if (!(trimmed.startsWith("{") || trimmed.startsWith("[")
                     || trimmed.startsWith("\""))) {
+                return false;
+            }
+            if (!JsonNesting.isWithinLimit(trimmed, 64)) {
                 return false;
             }
             try {
