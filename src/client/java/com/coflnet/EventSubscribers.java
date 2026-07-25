@@ -131,14 +131,9 @@ public class EventSubscribers {
         if (event == null || event.command == null || event.command.getType() == null) {
             return;
         }
-        if (event.command.getType() == CommandType.Flip) {
-            com.coflnet.gui.flip.FlipHud.capture(event.command.getData());
-            return;
-        }
         if (event.command.getType() != CommandType.LoggedIn) {
             return;
         }
-        com.coflnet.gui.flip.FlipHud.clear();
         if (!JsonNesting.isWithinLimit(event.command.getData(), 64)) {
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             return;
@@ -152,6 +147,18 @@ public class EventSubscribers {
             com.coflnet.config.TradeGuiManager.setAccountTier(tier);
         } catch (RuntimeException ignored) {
             com.coflnet.config.TradeGuiManager.clearAccountTier();
+        }
+    }
+
+    @Subscribe
+    public void onFlipHudCommand(ReceiveCommand event) {
+        if (event == null || event.command == null || event.command.getType() == null) {
+            return;
+        }
+        if (event.command.getType() == CommandType.Flip) {
+            com.coflnet.gui.flip.FlipHud.capture(event.command.getData());
+        } else if (event.command.getType() == CommandType.LoggedIn) {
+            com.coflnet.gui.flip.FlipHud.clear();
         }
     }
 
