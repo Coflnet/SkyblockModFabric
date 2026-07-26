@@ -8,6 +8,7 @@
     "HandledScreenMixin",
     "InventoryScreenMixin",
     "ItemHighlightMixin",
+    "LoreSettingsMessageMixin",
     "NewItemInChestMixin",
     "ScreenMixin",
     "ScoreboardMixin",

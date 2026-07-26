@@ -44,6 +44,7 @@ import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.cofl.CoflSettingsScreen;
 import com.coflnet.gui.tfm.TfmBinGUI;
+import com.coflnet.lore.PetInfoParser;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -72,6 +73,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -178,6 +180,15 @@ public class CoflModClient implements ClientModInitializer {
     private static volatile String[] pendingUntrustedConnectArgs;
     private static volatile long pendingUntrustedConnectExpiresAtMs;
     private static volatile ServerContext currentServerContext = ServerContext.UNKNOWN;
+    private static LoreRenderCache loreRenderCache;
+
+    private record LoreRenderCache(
+            String stackId,
+            String descriptionId,
+            DescriptionHandler.DescModification[] source,
+            long revision,
+            List<String> rendered) {
+    }
     
     // Maps new UUIDs to original UUID when items update with new UUIDs but same title
     // This allows finding descriptions loaded for the original UUID when hovering an item with updated UUID
@@ -298,6 +309,7 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            com.coflnet.lore.LoreSync.resetSession();
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             ServerContext detectedServerContext = detectServerContext(null);
             applyServerContext(detectedServerContext);
@@ -322,12 +334,18 @@ public class CoflModClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            com.coflnet.lore.LoreSync.resetSession();
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             applyServerContext(ServerContext.UNKNOWN);
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
                 System.out.println("Disconnected from server");
                 stopConnectionAsync();
+            }
+        });
+        ClientSendMessageEvents.COMMAND.register(command -> {
+            if (com.coflnet.lore.LoreCommandRouting.changesBackendSession(command)) {
+                com.coflnet.lore.LoreSync.resetSession();
             }
         });
 
@@ -469,18 +487,37 @@ public class CoflModClient implements ClientModInitializer {
                 return;
             }
 
-            DescriptionHandler.DescModification[] tooltips = getMappedTooltipData(stackId);
+            // Try to get descriptions using the original UUID if mapped
+            String descriptionId = lookupId;
+            DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(lookupId);
+            if(tooltips == null && !lookupId.equals(stackId)) {
+                tooltips = DescriptionHandler.getTooltipData(stackId); // fallback to current UUID
+                descriptionId = stackId;
+            }
             if(tooltips == null)
                 return;
 
             var text = stack.get(DataComponents.LORE);
             List<Component> ogLoreLines = text == null ? new ArrayList<>() : text.lines();
 
+            List<String> templated = renderLoreCached(
+                    stack, stackId, descriptionId, tooltips);
+            int appendIndex = 0;
+
             for (DescriptionHandler.DescModification tooltip : tooltips) {
                 switch (tooltip.type) {
-                    case "APPEND":
-                        lines.add(Component.literal(tooltip.value + " "));
+                    case "APPEND": {
+                        String rendered = templated != null && appendIndex < templated.size()
+                                ? templated.get(appendIndex)
+                                : null;
+                        appendIndex++;
+                        if (rendered != null) {
+                            lines.add(Component.literal(rendered));
+                        } else if (tooltip.value != null) {
+                            lines.add(Component.literal(tooltip.value + " "));
+                        }
                         break;
+                    }
                     case "REPLACE":
                         if (tooltip.line < 0 || tooltip.line >= lines.size() || tooltip.line >= ogLoreLines.size()) {
                             System.out.println("Invalid line index: " + tooltip.line + " for tooltip: " + tooltip.value);
@@ -543,8 +580,7 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();
-            // Capture the full trade-partner name from trade-request chat lines
-            // (Hypixel truncates it in the trade window title).
+            // capture the full trade partner name from hypixel trade request chat lines.
             captureTradePartner(messageText);
             // Skip backend processing for our own display messages to avoid a feedback loop.
             if (!messageText.startsWith(TEXT_TUNNELS_MESSAGE_PREFIX)) {
@@ -853,6 +889,45 @@ public class CoflModClient implements ClientModInitializer {
         }
     }
 
+    private static List<String> renderLoreCached(
+            ItemStack stack,
+            String stackId,
+            String descriptionId,
+            DescriptionHandler.DescModification[] tooltips) {
+        long revision = com.coflnet.config.LoreManager.revision();
+        LoreRenderCache cached = loreRenderCache;
+        if (cached != null
+                && Objects.equals(cached.stackId(), stackId)
+                && Objects.equals(cached.descriptionId(), descriptionId)
+                && cached.source() == tooltips
+                && cached.revision() == revision) {
+            return cached.rendered();
+        }
+
+        List<String> rendered = null;
+        if (com.coflnet.config.LoreManager.hasCustomTemplates()) {
+            List<String> appendValues = new ArrayList<>();
+            for (DescriptionHandler.DescModification tooltip : tooltips) {
+                if ("APPEND".equals(tooltip.type)) {
+                    appendValues.add(tooltip.value);
+                }
+            }
+            rendered = com.coflnet.lore.LoreEngine.render(
+                    appendValues,
+                    getItemTagFromStack(stack));
+            if (rendered != null) {
+                rendered = new ArrayList<>(rendered);
+            }
+        }
+        loreRenderCache = new LoreRenderCache(
+                stackId,
+                descriptionId,
+                tooltips,
+                revision,
+                rendered);
+        return rendered;
+    }
+
     /**
      * If the stack is an offered-coins player head, returns the amount, else null.
      * Hypixel renders the offered amount either in full ("67 coins", "1,234 coins")
@@ -1012,6 +1087,34 @@ public class CoflModClient implements ClientModInitializer {
         }
     }
 
+    public static boolean captureLoreMenu(Component message) {
+        if (message == null) {
+            return false;
+        }
+        List<String> commands = new ArrayList<>();
+        collectRunCommands(message, commands);
+        for (String command : commands) {
+            if (command != null && command.toLowerCase(Locale.ROOT)
+                    .matches("/cofl\\s+lore\\s+(add|rm|up|down|left)\\s+.*")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void collectRunCommands(Component component, List<String> commands) {
+        if (component == null) {
+            return;
+        }
+        var click = component.getStyle() == null ? null : component.getStyle().getClickEvent();
+        if (click instanceof net.minecraft.network.chat.ClickEvent.RunCommand runCommand) {
+            commands.add(runCommand.command());
+        }
+        for (Component sibling : component.getSiblings()) {
+            collectRunCommands(sibling, commands);
+        }
+    }
+
     private void registerDefaultCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
         dispatcher.register(ClientCommands.literal(name)
                 .executes(context -> {
@@ -1111,8 +1214,22 @@ public class CoflModClient implements ClientModInitializer {
                     return builder.buildFuture();
                 })
                 .executes(context -> {
-                    String[] args = context.getArgument("args", String.class).split(" ");
-                    
+                    String rawArguments = context.getArgument("args", String.class);
+                    String[] args = rawArguments.split(" ");
+
+                    if (com.coflnet.lore.LoreCommandRouting.opensGui(rawArguments)) {
+                        Minecraft loreClient = Minecraft.getInstance();
+                        loreClient.execute(() -> {
+                            try {
+                                com.coflnet.gui.cofl.LoreConfigScreen.open(loreClient.gui.screen());
+                            } catch (RuntimeException exception) {
+                                System.out.println("[Lore] failed to open LoreConfigScreen: " + exception);
+                                sendChatMessage("§cFailed to open the lore GUI (see log).");
+                            }
+                        });
+                        return 1;
+                    }
+
                     // Toggle developer mode (shows the Copy Dump button in containers)
                     if (args.length >= 1 && args[0].equalsIgnoreCase("dev")) {
                         if (args.length >= 2 && (args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off"))) {
@@ -1381,6 +1498,65 @@ public class CoflModClient implements ClientModInitializer {
         return res.toArray(String[]::new);
     }
 
+    /**
+     * the stable skyblock item type tag e.g. hyperion read from custom_data id or
+     * the clean display name when there is none. the lore blacklist keys on this so
+     * every copy of an item type is matched not one per instance uuid which would
+     * only ever blacklist the single stack the user clicked.
+     *
+     * some skyblock ids are a shared umbrella over a whole family e.g. every pet is
+     * id pet with the real type in petinfo and every enchanted book rune or potion
+     * shares one id . for those the discriminating sub field or the per variant
+     * display name is folded into the key so blacklisting one does not wipe the lot.
+     */
+    public static String getItemTagFromStack(ItemStack stack) {
+        if (stack == null) return null;
+        var customData = stack.get(DataComponents.CUSTOM_DATA);
+        if (customData != null && !customData.isEmpty()) {
+            CompoundTag tag = customData.copyTag();
+            String id = tag.getString("id").orElse(null);
+            if (id != null && !id.isBlank()) {
+                // every pet is id pet with the type in petinfo so without this
+                // blacklisting one pet would hide the lore on every pet.
+                if ("PET".equalsIgnoreCase(id)) {
+                    String petType = petTypeFromCustomData(tag);
+                    return "PET;" + (petType != null && !petType.isBlank()
+                            ? petType.toUpperCase(Locale.ROOT)
+                            : cleanDisplayName(stack));
+                }
+                // enchanted books runes and potions share an id too. their display
+                // name is a stable per variant label e.g. sharpness vi so key on that
+                // so a single blacklist entry does not wipe the whole family.
+                if (isSharedFamilyId(id)) {
+                    return id + ";" + cleanDisplayName(stack);
+                }
+                return id;
+            }
+        }
+        // fall back to the clean display name so stackables and vanilla items still work.
+        return cleanDisplayName(stack);
+    }
+
+    /** the item name with colour codes stripped custom name preferred. */
+    private static String cleanDisplayName(ItemStack stack) {
+        String name = stack.getCustomName() == null
+                ? stack.getItem().getName(stack).getString()
+                : stack.getCustomName().getString();
+        return ChatFormatting.stripFormatting(name);
+    }
+
+    /** true for skyblock ids that are a shared umbrella over a whole item family. */
+    private static boolean isSharedFamilyId(String id) {
+        return "ENCHANTED_BOOK".equalsIgnoreCase(id)
+                || "RUNE".equalsIgnoreCase(id)
+                || "POTION".equalsIgnoreCase(id);
+    }
+
+    /** the pet type from the petinfo json in custom_data or null if unreadable. */
+    private static String petTypeFromCustomData(CompoundTag tag) {
+        return PetInfoParser.type(tag.getString("petInfo").orElse(null));
+    }
+
     public static String getUuidFromStack(ItemStack stack) {
         // O(1) direct component access instead of O(n) iteration + toString + contains
         var customData = stack.get(DataComponents.CUSTOM_DATA);
@@ -1399,11 +1575,15 @@ public class CoflModClient implements ClientModInitializer {
         String itemName = stack.getCustomName() == null ? stack.getItem().getName(stack).getString() : stack.getCustomName().getString();
         if(itemName.contains("BUY") || itemName.contains("SELL"))
         {
-            // bazaar order, separate by price per unit as well
-            for (Component line : stack.get(DataComponents.LORE).lines()) {
-                if(line.getString().contains("Price per unit"))
-                {
-                    return itemName + line.getString();
+            // bazaar order separate by price per unit. guard a missing lore component
+            // an item named buy sell with no lore would npe here on the render thread.
+            var loreComp = stack.get(DataComponents.LORE);
+            if (loreComp != null) {
+                for (Component line : loreComp.lines()) {
+                    if(line.getString().contains("Price per unit"))
+                    {
+                        return itemName + line.getString();
+                    }
                 }
             }
         }
@@ -1620,6 +1800,26 @@ public class CoflModClient implements ClientModInitializer {
                 || title.equals("Chest") || title.equals("Large Chest") // island chests
                 || title.equals("Chest Storage") || title.equals("Medium Shelves") || title.contains("Chest+") // furniture
                 || title.contains("Huntaxe") || title.startsWith("Hunting Toolkit"); // hunting menus
+    }
+
+    public static void refreshOpenInventoryDescriptions() {
+        Minecraft client = Minecraft.getInstance();
+        if (client == null) {
+            return;
+        }
+        client.execute(() -> {
+            try {
+                loreRenderCache = null;
+                DescriptionHandler.emptyTooltipData();
+                lastNbtRequest = "";
+                lastRefreshTimePerInventory.clear();
+                if (instance != null && client.gui.screen() instanceof AbstractContainerScreen<?> screen) {
+                    instance.loadDescriptionsForInv(screen);
+                }
+            } catch (RuntimeException exception) {
+                System.out.println("[Lore] could not refresh inventory descriptions: " + exception);
+            }
+        });
     }
 
     private static List<String> getScoreboard() {
@@ -2159,7 +2359,7 @@ public class CoflModClient implements ClientModInitializer {
         }
     }
 
-    private static void sendChatMessage(String message) {
+    public static void sendChatMessage(String message) {
         displayModMessage(Component.literal(message));
     }
 
@@ -2352,6 +2552,7 @@ public class CoflModClient implements ClientModInitializer {
         String[] confirmedArgs = pendingUntrustedConnectArgs;
         String confirmedDestination = decodeConnectDestination(confirmedArgs[1]);
         String confirmedHost = extractConnectHost(confirmedDestination);
+        com.coflnet.lore.LoreSync.resetSession();
         clearPendingUntrustedConnect();
         sendChatMessage("§eConfirmed untrusted connection to §c" + getDisplayedConnectTarget(confirmedDestination, confirmedHost) + "§e.");
         CoflSkyCommand.processCommand(confirmedArgs, username);
@@ -2366,6 +2567,7 @@ public class CoflModClient implements ClientModInitializer {
         String destination = decodeConnectDestination(args[1]);
         String host = extractConnectHost(destination);
         if (isTrustedConnectHost(host)) {
+            com.coflnet.lore.LoreSync.resetSession();
             clearPendingUntrustedConnect();
             return false;
         }

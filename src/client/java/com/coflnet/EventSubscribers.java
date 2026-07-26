@@ -6,6 +6,7 @@ import CoflCore.classes.*;
 import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.commands.CommandType;
 import CoflCore.events.*;
+import com.coflnet.util.JsonNesting;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -90,6 +91,9 @@ public class EventSubscribers {
                 combinedMessage.append(styledPart);
             }
         }
+        if (CoflModClient.captureLoreMenu(combinedMessage)) {
+            return;
+        }
         CoflModClient.displayModMessage(combinedMessage);
     }
 
@@ -133,6 +137,10 @@ public class EventSubscribers {
         if (event.command.getType() != CommandType.LoggedIn) {
             return;
         }
+        if (!JsonNesting.isWithinLimit(event.command.getData(), 64)) {
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
+            return;
+        }
         try {
             JsonElement parsed = JsonParser.parseString(event.command.getData());
             JsonObject data = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
@@ -159,7 +167,7 @@ public class EventSubscribers {
 
         if (CoflModClient.bestflipsKeyBinding.isDown()) {
             EventBus.getDefault().post(new OnOpenAuctionGUI("/viewauction "+f.Id, f));
-        } else 
+        } else
             CoflCore.flipHandler.fds.Insert(f);
 
         EventBus.getDefault().post(new OnChatMessageReceive(f.Messages));
@@ -249,8 +257,15 @@ public class EventSubscribers {
 
     @Subscribe
     public void onLoggedIn(OnLoggedIn event){
+        com.coflnet.lore.LoreSync.resetSession();
+        com.coflnet.gui.cofl.LoreConfigScreen.retryBackendReadIfOpen();
         System.out.println("Backend logged in event received, uploading scoreboard and tab list...");
         CoflModClient.uploadScoreboardAndTabList();
+    }
+
+    @Subscribe
+    public void onLoreSocketClose(SocketClose event) {
+        com.coflnet.lore.LoreSync.resetSession();
     }
 
     @Subscribe
