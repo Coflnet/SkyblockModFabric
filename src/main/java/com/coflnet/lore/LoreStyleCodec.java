@@ -63,15 +63,15 @@ public final class LoreStyleCodec {
             if (template.length() > MAX_TEMPLATE_LENGTH) {
                 throw new IllegalArgumentException("lore template exceeded the size limit");
             }
-            // only sync a genuine customisation blank or stock default is skipped .
-            String stock = seg != null ? seg.defaultTemplate : null;
+            // sync blank customisations and skip stock defaults.
+            String stock = seg.defaultTemplate;
             if (template.isBlank()) {
                 // a blank template shows the stock backend look still a customisation
                 // vs the mods default so sync it as an empty string.
                 obj.addProperty(key, "");
                 continue;
             }
-            if (stock != null && stock.equals(template)) {
+            if (stock.equals(template)) {
                 continue;
             }
             obj.addProperty(key, template);

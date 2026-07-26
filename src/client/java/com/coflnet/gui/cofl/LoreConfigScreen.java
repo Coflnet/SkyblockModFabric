@@ -51,6 +51,8 @@ import java.util.Map;
 public class LoreConfigScreen extends Screen {
     private static final int PAD = 10;
     private static final int ROW_H = 22;
+    private static final int MIN_PANEL_WIDTH = 240;
+    private static final int MIN_PANEL_HEIGHT = 180;
 
     private static final int CHIP_TINT = 0xFF2C323B;
     private static final int CHIP_HOVER = 0xFF3C4450;
@@ -171,8 +173,8 @@ public class LoreConfigScreen extends Screen {
 
     @Override
     protected void init() {
-        panelW = Math.min(560, Math.max(1, this.width - 8));
-        panelH = Math.min(320, Math.max(1, this.height - 8));
+        panelW = Math.min(560, Math.max(MIN_PANEL_WIDTH, this.width - 8));
+        panelH = Math.min(320, Math.max(MIN_PANEL_HEIGHT, this.height - 8));
         panelX = this.width / 2 - panelW / 2;
         panelY = this.height / 2 - panelH / 2;
 
@@ -221,6 +223,7 @@ public class LoreConfigScreen extends Screen {
                     Component.literal("search"));
             searchBox.setMaxLength(40);
             searchBox.setHint(Component.literal("search fields\u2026"));
+            searchBox.setResponder(value -> paletteScroll = 0);
             addRenderableWidget(searchBox);
         } else if (tab == Tab.TEMPLATES && editingModule >= 0 && editingModule < workingModules.size()) {
             // editor lives in the right column at a fixed position independent of
@@ -384,6 +387,7 @@ public class LoreConfigScreen extends Screen {
         int listTop = paletteY + 32;
         context.enableScissor(paletteX, listTop, paletteX + paletteW, paletteY + paletteH);
         String query = searchBox == null ? "" : searchBox.getValue().trim().toLowerCase(java.util.Locale.ROOT);
+        paletteScroll = Math.min(paletteScroll, maxPaletteScroll());
         int py = listTop + 2 - paletteScroll;
         for (LoreField f : LoreField.ALL) {
             if (!matchesQuery(f, query)) {
@@ -487,6 +491,7 @@ public class LoreConfigScreen extends Screen {
             box(context, editorX, boxTop, editorW, boxH, 0xFF15181D);
             context.enableScissor(editorX, boxTop, editorX + editorW, boxTop + boxH);
             List<String> preview = buildPreviewLines();
+            previewScroll = Math.min(previewScroll, maxPreviewScroll(preview.size()));
             int ly = boxTop + 3 - previewScroll;
             for (String line : preview) {
                 if (ly + 10 >= boxTop && ly <= boxTop + boxH) {
@@ -713,12 +718,12 @@ public class LoreConfigScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (tab == Tab.LAYOUT && inRect(mouseX, mouseY, paletteX, paletteY, paletteW, paletteH)) {
-            int max = Math.max(0, LoreField.ALL.size() * 15);
+            int max = maxPaletteScroll();
             paletteScroll = Math.max(0, Math.min(max, paletteScroll + (int) (-scrollY * 18)));
             return true;
         }
         if (tab == Tab.TEMPLATES && inRect(mouseX, mouseY, contentX, contentY + 77, contentW, Math.max(0, contentH - 77))) {
-            int max = Math.max(0, buildPreviewLines().size() * 10);
+            int max = maxPreviewScroll(buildPreviewLines().size());
             previewScroll = Math.max(0, Math.min(max, previewScroll + (int) (-scrollY * 12)));
             return true;
         }
@@ -813,6 +818,25 @@ public class LoreConfigScreen extends Screen {
     private int maxBlacklistScroll() {
         return Math.max(0,
                 workingBlacklist.size() * 18 - Math.max(1, contentH - 6));
+    }
+
+    private int maxPaletteScroll() {
+        String query = searchBox == null
+                ? ""
+                : searchBox.getValue().trim().toLowerCase(java.util.Locale.ROOT);
+        int fieldCount = 0;
+        for (LoreField field : LoreField.ALL) {
+            if (matchesQuery(field, query)) {
+                fieldCount++;
+            }
+        }
+        int viewportHeight = Math.max(0, paletteH - 32);
+        return Math.max(0, fieldCount * 15 - viewportHeight);
+    }
+
+    private int maxPreviewScroll(int lineCount) {
+        int viewportHeight = Math.max(0, contentH - 77);
+        return Math.max(0, lineCount * 10 + 2 - viewportHeight);
     }
 
     private void clampBlacklistScroll() {
@@ -997,7 +1021,7 @@ public class LoreConfigScreen extends Screen {
         }
     }
 
-    /** index of the module that restyles a layout field key or 1 if freeform. */
+    /** index of the module that restyles a layout field key or minus one if freeform. */
     private int moduleIndexForKey(String key) {
         for (int i = 0; i < workingModules.size(); i++) {
             LoreModule m = workingModules.get(i);
@@ -1043,11 +1067,16 @@ public class LoreConfigScreen extends Screen {
     }
 
     private int stockButtonX() {
-        return templateEditorX() + resetButtonWidth() + Math.min(6, Math.max(0, templateEditorWidth() - 2));
+        int editorX = templateEditorX();
+        int editorWidth = templateEditorWidth();
+        int requested = editorX + resetButtonWidth()
+                + Math.min(6, Math.max(0, editorWidth - 2));
+        return Math.min(editorX + editorWidth - 1, requested);
     }
 
     private int stockButtonWidth() {
-        return Math.max(1, contentX + contentW - stockButtonX());
+        return Math.max(1,
+                templateEditorX() + templateEditorWidth() - stockButtonX());
     }
 
     private void queueTip(int mouseX, int mouseY, String... lines) {

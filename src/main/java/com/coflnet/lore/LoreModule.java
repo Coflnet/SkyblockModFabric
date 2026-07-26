@@ -33,8 +33,8 @@ public class LoreModule {
      * Default restyle rules, one per {@link LoreSegment}. {@link #match} is the
      * segment key the backend field key e.g. lbin not a line class the
      * engine substitutes each fields segment independently. templates reproduce
-     * the stock look. a module applies whenever its template is non blank
-     *  clearing the template box disables that field . built directly from the
+     * the stock look. a module applies whenever its template is non blank.
+     * clearing the template box keeps the stock backend look. built directly from the
      * segment catalog so the two never drift.
      */
     public static List<LoreModule> defaults() {
