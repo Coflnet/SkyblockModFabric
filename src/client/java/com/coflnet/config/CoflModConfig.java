@@ -17,6 +17,7 @@ public class CoflModConfig {
     // Text widget position settings
     public int textWidgetOffsetX = -5;
     public int textWidgetOffsetY = 5;
+    public boolean textWidgetPositionMigrated = false;
     
     // Sell protection settings
     public boolean sellProtectionEnabled = true;

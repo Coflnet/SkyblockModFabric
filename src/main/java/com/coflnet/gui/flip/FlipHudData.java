@@ -6,6 +6,10 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.Locale;
+
 public record FlipHudData(
         String id,
         String itemName,
@@ -13,13 +17,17 @@ public record FlipHudData(
         long cost,
         long target,
         String finder,
+        String tag,
         String render,
+        long endsAt,
         long receivedAt) {
     public static final int MAX_PAYLOAD_LENGTH = 65_536;
     private static final int MAX_ITEM_NAME_LENGTH = 160;
     private static final int MAX_ID_LENGTH = 64;
     private static final int MAX_FINDER_LENGTH = 32;
+    private static final int MAX_TAG_LENGTH = 128;
     private static final int MAX_RENDER_LENGTH = 128;
+    private static final int MAX_STATUS_MESSAGE_LENGTH = 256;
     private static final int MAX_MESSAGE_COUNT = 8;
     private static final int MAX_JSON_DEPTH = 64;
 
@@ -52,7 +60,9 @@ public record FlipHudData(
                 firstLong(longValue(auction, "startingBid"), longValue(root, "cost")),
                 Math.max(0L, longValue(root, "target")),
                 displayString(root, "finder", MAX_FINDER_LENGTH),
+                itemTag(auction),
                 string(root, "render", MAX_RENDER_LENGTH),
+                instantValue(auction, "end"),
                 System.currentTimeMillis());
     }
 
@@ -83,6 +93,31 @@ public record FlipHudData(
             case "start", "stop", "reset" -> true;
             default -> false;
         };
+    }
+
+    static String statusFromGameMessage(String message) {
+        if (message == null || message.length() > MAX_STATUS_MESSAGE_LENGTH) {
+            return "";
+        }
+        String normalized = displayText(message, MAX_STATUS_MESSAGE_LENGTH)
+                .toLowerCase(Locale.ROOT);
+        if (normalized.contains("you purchased")
+                || normalized.contains("you have bought")) {
+            return "bought";
+        }
+        if (normalized.contains("someone else purchased the item")) {
+            return "sold";
+        }
+        if (normalized.contains("this auction wasn't found")
+                || normalized.contains("you cannot view this auction")) {
+            return "unavailable";
+        }
+        if (normalized.contains("you don't have enough coins")
+                || normalized.contains("there was an error with the auction house")
+                || normalized.contains("you didn't participate in this auction")) {
+            return "failed";
+        }
+        return "";
     }
 
     static String formatCoins(long coins) {
@@ -131,6 +166,24 @@ public record FlipHudData(
         return normalizeAuctionId(rawString(root, "id"));
     }
 
+    private static String itemTag(JsonObject auction) {
+        String value = rawString(auction, "tag").strip();
+        if (value.isBlank() || value.length() > MAX_TAG_LENGTH) {
+            return "";
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char character = value.charAt(i);
+            if (!(character >= 'A' && character <= 'Z')
+                    && !(character >= 'a' && character <= 'z')
+                    && !(character >= '0' && character <= '9')
+                    && character != '_'
+                    && character != '-') {
+                return "";
+            }
+        }
+        return value;
+    }
+
     static String normalizeAuctionId(String value) {
         if (value == null) {
             return "";
@@ -145,7 +198,10 @@ public record FlipHudData(
     }
 
     private static String displayString(JsonObject parent, String key, int maximumLength) {
-        String value = rawString(parent, key);
+        return displayText(rawString(parent, key), maximumLength);
+    }
+
+    private static String displayText(String value, int maximumLength) {
         StringBuilder clean = new StringBuilder(Math.min(value.length(), maximumLength));
         for (int i = 0; i < value.length() && clean.length() < maximumLength; i++) {
             char character = value.charAt(i);
@@ -158,6 +214,18 @@ public record FlipHudData(
             clean.append(Character.isISOControl(character) ? ' ' : character);
         }
         return clean.toString().strip();
+    }
+
+    private static long instantValue(JsonObject parent, String key) {
+        String value = rawString(parent, key);
+        if (value.isBlank() || value.length() > 64) {
+            return 0L;
+        }
+        try {
+            return Math.max(0L, Instant.parse(value).toEpochMilli());
+        } catch (DateTimeParseException | ArithmeticException exception) {
+            return 0L;
+        }
     }
 
     private static long longValue(JsonObject parent, String key) {

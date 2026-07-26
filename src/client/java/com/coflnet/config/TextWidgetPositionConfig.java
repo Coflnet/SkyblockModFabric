@@ -25,7 +25,7 @@ public class TextWidgetPositionConfig {
         
         // Check if old config exists and migrate
         try {
-            if (POSITION_CONFIG_FILE.exists()) {
+            if (POSITION_CONFIG_FILE.exists() && !combinedConfig.textWidgetPositionMigrated) {
                 String json = BoundedTextFile.readUtf8(
                         POSITION_CONFIG_FILE.toPath(), MAX_CONFIG_FILE_BYTES);
                 if (json != null && JsonNesting.isWithinLimit(json, 64)) {
@@ -35,6 +35,7 @@ public class TextWidgetPositionConfig {
                         // Migrate to new config
                         combinedConfig.textWidgetOffsetX = oldConfig.offsetX;
                         combinedConfig.textWidgetOffsetY = oldConfig.offsetY;
+                        combinedConfig.textWidgetPositionMigrated = true;
                         if (combinedConfig.saveAndReport()
                                 && !POSITION_CONFIG_FILE.delete()) {
                             System.out.println("Could not delete migrated text position config");

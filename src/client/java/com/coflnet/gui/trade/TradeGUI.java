@@ -224,13 +224,11 @@ public class TradeGUI extends Screen {
 
     @Override
     public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        Minecraft client = Minecraft.getInstance();
-        if (client.getConnection() == null || client.player == null
-                || client.player.containerMenu != menu) {
-            client.gui.setScreen(null);
+        if (Minecraft.getInstance().getConnection() == null || backing.getMenu() != this.menu) {
+            onClose();
             return;
         }
-        Font font = client.font;
+        Font font = Minecraft.getInstance().font;
 
         List<Row> youRows = buildRows(CoflModClient.TRADE_YOUR_SLOTS);
         List<Row> themRows = buildRows(CoflModClient.TRADE_THEIR_SLOTS);
@@ -631,13 +629,11 @@ public class TradeGUI extends Screen {
     }
 
     private void forwardSlot(int slotId, int button, ContainerInput type) {
-        Minecraft client = Minecraft.getInstance();
-        Player player = client.player;
-        if (player == null || client.gameMode == null || player.containerMenu != menu
-                || slotId < 0 || slotId >= menu.slots.size()) {
+        Player player = Minecraft.getInstance().player;
+        if (player == null) {
             return;
         }
-        client.gameMode.handleContainerInput(menu.containerId, slotId, button, type, player);
+        Minecraft.getInstance().gameMode.handleContainerInput(menu.containerId, slotId, button, type, player);
     }
 
     private static boolean inRect(double px, double py, int x, int y, int w, int h) {
@@ -684,10 +680,7 @@ public class TradeGUI extends Screen {
 
     @Override
     public void onClose() {
-        Minecraft client = Minecraft.getInstance();
-        if (client.player != null && client.player.containerMenu == menu) {
-            backing.onClose();
-        }
+        backing.onClose();
         super.onClose();
     }
 }

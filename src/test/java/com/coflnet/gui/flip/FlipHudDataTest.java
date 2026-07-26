@@ -17,7 +17,9 @@ class FlipHudDataTest {
                   "auction": {
                     "itemName": "§6Aspect of the End",
                     "count": 2,
-                    "startingBid": 12500000
+                    "startingBid": 12500000,
+                    "tag": "ASPECT_OF_THE_END",
+                    "end": "2026-07-26T19:00:00Z"
                   },
                   "target": 17500000,
                   "worth": 19000000,
@@ -32,7 +34,9 @@ class FlipHudDataTest {
         assertEquals(12_500_000L, data.cost());
         assertEquals(17_500_000L, data.target());
         assertEquals("SNIPER", data.finder());
+        assertEquals("ASPECT_OF_THE_END", data.tag());
         assertEquals("diamond", data.render());
+        assertEquals(1_785_092_400_000L, data.endsAt());
     }
 
     @Test
@@ -40,7 +44,10 @@ class FlipHudDataTest {
         FlipHudData data = FlipHudData.parse("""
                 {
                   "id": "auction id",
-                  "auction": {"itemName": "§6Aspect §bof the End\\u0007"},
+                  "auction": {
+                    "itemName": "§6Aspect §bof the End\\u0007",
+                    "tag": "../unsafe"
+                  },
                   "finder": "§cSNIPER"
                 }
                 """);
@@ -48,6 +55,7 @@ class FlipHudDataTest {
         assertEquals("", data.id());
         assertEquals("Aspect of the End", data.itemName());
         assertEquals("SNIPER", data.finder());
+        assertEquals("", data.tag());
     }
 
     @Test
@@ -165,5 +173,21 @@ class FlipHudDataTest {
         assertFalse(FlipHudData.changesBackendSession("cofl connect destination"));
         assertFalse(FlipHudData.changesBackendSession("cofl status"));
         assertFalse(FlipHudData.changesBackendSession("stop"));
+    }
+
+    @Test
+    void mapsOnlyKnownAuctionResultMessages() {
+        assertEquals("bought",
+                FlipHudData.statusFromGameMessage("§6You purchased Hyperion for 500 coins"));
+        assertEquals("sold",
+                FlipHudData.statusFromGameMessage("Someone else purchased the item"));
+        assertEquals("unavailable",
+                FlipHudData.statusFromGameMessage("This auction wasn't found"));
+        assertEquals("failed",
+                FlipHudData.statusFromGameMessage("You don't have enough coins"));
+        assertEquals("",
+                FlipHudData.statusFromGameMessage("Someone purchased an unrelated auction"));
+        assertEquals("",
+                FlipHudData.statusFromGameMessage("x".repeat(257)));
     }
 }

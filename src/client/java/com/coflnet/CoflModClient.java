@@ -557,6 +557,9 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();
+            if (!overlay) {
+                com.coflnet.gui.flip.FlipHud.observeGameMessage(messageText);
+            }
             // Capture the full trade-partner name from trade-request chat lines
             // (Hypixel truncates it in the trade window title).
             captureTradePartner(messageText);

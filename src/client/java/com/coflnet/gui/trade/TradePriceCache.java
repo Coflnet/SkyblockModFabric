@@ -102,13 +102,7 @@ public final class TradePriceCache {
             return coins;
         }
         Long unitWorth = worth(stack, basis);
-        if (unitWorth == null) {
-            return null;
-        }
-        int count = stack.getCount();
-        return count > 0 && unitWorth > Long.MAX_VALUE / count
-                ? Long.MAX_VALUE
-                : unitWorth * count;
+        return unitWorth == null ? null : unitWorth * stack.getCount();
     }
 
     /** Shared valuation used by the overlay, coin suggestions, and diagnostics. */
@@ -126,7 +120,7 @@ public final class TradePriceCache {
             Long coins = CoflModClient.parseCoinStack(stack);
             if (coins != null) {
                 if (includeCoins) {
-                    total = addClamped(total, coins);
+                    total += coins;
                 }
                 continue;
             }
@@ -134,19 +128,10 @@ public final class TradePriceCache {
             if (worth == null) {
                 unpriced++;
             } else {
-                total = addClamped(total, worth);
+                total += worth;
             }
         }
         return new SideValue(total, unpriced);
-    }
-
-    private static long addClamped(long current, long value) {
-        if (value <= 0L) {
-            return current;
-        }
-        return current > Long.MAX_VALUE - value
-                ? Long.MAX_VALUE
-                : current + value;
     }
 
     private static void drain() {
