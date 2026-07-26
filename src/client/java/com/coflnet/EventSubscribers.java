@@ -6,6 +6,7 @@ import CoflCore.classes.*;
 import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.commands.CommandType;
 import CoflCore.events.*;
+import com.coflnet.util.JsonNesting;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -133,6 +134,10 @@ public class EventSubscribers {
         if (event.command.getType() != CommandType.LoggedIn) {
             return;
         }
+        if (!JsonNesting.isWithinLimit(event.command.getData(), 64)) {
+            com.coflnet.config.TradeGuiManager.clearAccountTier();
+            return;
+        }
         try {
             JsonElement parsed = JsonParser.parseString(event.command.getData());
             JsonObject data = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
@@ -142,6 +147,18 @@ public class EventSubscribers {
             com.coflnet.config.TradeGuiManager.setAccountTier(tier);
         } catch (RuntimeException ignored) {
             com.coflnet.config.TradeGuiManager.clearAccountTier();
+        }
+    }
+
+    @Subscribe
+    public void onFlipHudCommand(ReceiveCommand event) {
+        if (event == null || event.command == null || event.command.getType() == null) {
+            return;
+        }
+        if (event.command.getType() == CommandType.Flip) {
+            com.coflnet.gui.flip.FlipHud.capture(event.command.getData());
+        } else if (event.command.getType() == CommandType.LoggedIn) {
+            com.coflnet.gui.flip.FlipHud.clear();
         }
     }
 
@@ -168,12 +185,20 @@ public class EventSubscribers {
 
     @Subscribe
     public void onOpenAuctionGUI(OnOpenAuctionGUI event){
+        if (event != null && event.flip != null) {
+            com.coflnet.gui.flip.FlipHud.markOpening(event.flip.Id);
+        }
         Minecraft.getInstance().execute(() -> {
             flipData = event.flip;
             if (Minecraft.getInstance().getConnection() != null) {
                 Minecraft.getInstance().getConnection().sendChat(event.openAuctionCommand);
             }
         });
+    }
+
+    @Subscribe
+    public void onFlipHudSocketClose(SocketClose event) {
+        com.coflnet.gui.flip.FlipHud.clear();
     }
 
     @Subscribe

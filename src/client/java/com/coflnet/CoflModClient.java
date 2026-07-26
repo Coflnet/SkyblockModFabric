@@ -72,6 +72,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -539,6 +540,26 @@ public class CoflModClient implements ClientModInitializer {
                         y,
                         0xFFFFFFFF, EventSubscribers.countdownData.getScale().intValue());
             }
+        });
+
+        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("coflnet", "flip_hud"), (drawContext, tickCounter) -> {
+            if (Minecraft.getInstance().gui.screen() == null
+                    || Minecraft.getInstance().gui.screen() instanceof ChatScreen) {
+                com.coflnet.gui.flip.FlipHud.render(drawContext);
+            }
+        });
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+                com.coflnet.gui.flip.FlipHud.clear());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+                com.coflnet.gui.flip.FlipHud.clear());
+        ClientSendMessageEvents.COMMAND.register(
+                com.coflnet.gui.flip.FlipHud::observeCommand);
+
+        ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
+            if (!overlay) {
+                com.coflnet.gui.flip.FlipHud.observeGameMessage(message.getString());
+            }
+            return true;
         });
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
@@ -1038,6 +1059,13 @@ public class CoflModClient implements ClientModInitializer {
                 })
                 .then(ClientCommands.argument("args", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
+                    String remaining = builder.getRemaining();
+                    for (String suggestion : com.coflnet.gui.flip.FlipHudCommandSuggestions.forInput(remaining)) {
+                        builder.suggest(suggestion);
+                    }
+                    if (remaining.stripLeading().toLowerCase(Locale.ROOT).startsWith("fliphud ")) {
+                        return builder.buildFuture();
+                    }
                     String input = context.getInput();
                     String[] inputArgs = input.split(" ");;
                     String currentWord = inputArgs.length > 0 ? inputArgs[inputArgs.length - 1] : "";
@@ -1139,6 +1167,26 @@ public class CoflModClient implements ClientModInitializer {
                             boolean current = com.coflnet.config.TradeGuiManager.isEnabled();
                             sendChatMessage("§7Trade overlay is currently " + (current ? "§aon" : "§coff"));
                             sendChatMessage("§7Usage: §e/cofl tradegui <on/off>");
+                        }
+                        return 1;
+                    }
+
+                    if (args.length >= 1 && args[0].equalsIgnoreCase("fliphud")) {
+                        if (args.length >= 2 && (args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off"))) {
+                            boolean enabled = args[1].equalsIgnoreCase("on");
+                            com.coflnet.config.FlipHudManager.setEnabled(enabled);
+                            sendChatMessage("§aflip hud " + (enabled ? "§aenabled" : "§cdisabled"));
+                        } else if (args.length >= 2 && args[1].equalsIgnoreCase("move")) {
+                            Minecraft minecraft = Minecraft.getInstance();
+                            minecraft.execute(() -> minecraft.gui.setScreen(
+                                    new com.coflnet.gui.flip.FlipHudEditorScreen(minecraft.gui.screen())));
+                        } else if (args.length >= 2 && args[1].equalsIgnoreCase("reset")) {
+                            com.coflnet.config.FlipHudManager.resetPosition();
+                            sendChatMessage("§aflip hud position reset");
+                        } else {
+                            boolean enabled = com.coflnet.config.FlipHudManager.isEnabled();
+                            sendChatMessage("§7flip hud is " + (enabled ? "§aon" : "§coff"));
+                            sendChatMessage("§7usage, §e/cofl fliphud <on, off, move, reset>");
                         }
                         return 1;
                     }
@@ -2353,6 +2401,7 @@ public class CoflModClient implements ClientModInitializer {
         String confirmedDestination = decodeConnectDestination(confirmedArgs[1]);
         String confirmedHost = extractConnectHost(confirmedDestination);
         clearPendingUntrustedConnect();
+        com.coflnet.gui.flip.FlipHud.clear();
         sendChatMessage("§eConfirmed untrusted connection to §c" + getDisplayedConnectTarget(confirmedDestination, confirmedHost) + "§e.");
         CoflSkyCommand.processCommand(confirmedArgs, username);
         return true;
@@ -2367,6 +2416,7 @@ public class CoflModClient implements ClientModInitializer {
         String host = extractConnectHost(destination);
         if (isTrustedConnectHost(host)) {
             clearPendingUntrustedConnect();
+            com.coflnet.gui.flip.FlipHud.clear();
             return false;
         }
 

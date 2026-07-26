@@ -1,6 +1,7 @@
 package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
+import com.coflnet.gui.flip.FlipHud;
 import com.coflnet.gui.trade.TradePriceCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -60,6 +61,7 @@ public class NewItemInChestMixin {
     @Inject(method = "handleContainerSetSlot", at = @At("TAIL"))
     private void onPacketReceive(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         try {
+            FlipHud.observeAuctionSlot(packet.getContainerId(), packet.getSlot(), packet.getItem());
             String itemTitle = packet.getItem().getCustomName() != null ? packet.getItem().getCustomName().getString() : "";
             int slot = packet.getSlot();
             // Offer slots are 0-35; slot 40 may be the final divider update
@@ -105,6 +107,11 @@ public class NewItemInChestMixin {
     /** Price the initial offer as soon as Minecraft has applied its complete contents. */
     @Inject(method = "handleContainerContent", at = @At("TAIL"))
     private void onContainerContent(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
+        try {
+            FlipHud.observeAuctionContainer(packet.containerId());
+        } catch (RuntimeException exception) {
+            System.out.println("[NewItemInChestMixin] Failed to update flip HUD: " + exception.getMessage());
+        }
         TradePriceCache.requestCurrentTrade(packet.containerId());
         CoflModClient.openTradeOverlayIfReady(packet.containerId());
     }
