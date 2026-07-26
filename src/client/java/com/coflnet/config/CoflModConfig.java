@@ -1,5 +1,6 @@
 package com.coflnet.config;
 
+import com.coflnet.util.BoundedTextFile;
 import com.coflnet.util.JsonNesting;
 import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
@@ -9,6 +10,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 
 public class CoflModConfig {
+    private static final int MAX_CONFIG_FILE_BYTES = 1_048_576;
     private static final Gson gson = new Gson();
     private static final File CONFIG_FILE = new File(Minecraft.getInstance().gameDirectory, "config/CoflSky/coflmod.json");
     
@@ -62,8 +64,9 @@ public class CoflModConfig {
     public static CoflModConfig load() {
         try {
             if (CONFIG_FILE.exists()) {
-                String json = java.nio.file.Files.readString(CONFIG_FILE.toPath());
-                if (JsonNesting.isWithinLimit(json, 64)) {
+                String json = BoundedTextFile.readUtf8(
+                        CONFIG_FILE.toPath(), MAX_CONFIG_FILE_BYTES);
+                if (json != null && JsonNesting.isWithinLimit(json, 64)) {
                     CoflModConfig config = gson.fromJson(json, CoflModConfig.class);
                     if (config != null) {
                         return config;

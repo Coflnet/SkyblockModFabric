@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FlipHudDataTest {
@@ -124,6 +125,26 @@ class FlipHudDataTest {
         assertEquals(160, data.itemName().length());
         assertEquals(32, data.finder().length());
         assertEquals(128, data.render().length());
+    }
+
+    @Test
+    void normalizesInvalidJsonFailures() {
+        assertThrowsExactly(IllegalArgumentException.class,
+                () -> FlipHudData.parse("[]"));
+        assertThrowsExactly(IllegalArgumentException.class,
+                () -> FlipHudData.parse("null"));
+        assertThrowsExactly(IllegalArgumentException.class,
+                () -> FlipHudData.parse("\"flip\""));
+        assertThrowsExactly(IllegalArgumentException.class,
+                () -> FlipHudData.parse("{\"auction\":}"));
+    }
+
+    @Test
+    void promotesRoundedPriceSuffixes() {
+        assertEquals("999.9k", FlipHudData.formatCoins(999_949L));
+        assertEquals("1.0m", FlipHudData.formatCoins(999_950L));
+        assertEquals("999.9m", FlipHudData.formatCoins(999_949_999L));
+        assertEquals("1.0b", FlipHudData.formatCoins(999_950_000L));
     }
 
     @Test

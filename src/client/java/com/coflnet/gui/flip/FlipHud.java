@@ -160,9 +160,11 @@ public final class FlipHud {
     }
 
     private static State createState(FlipHudData data, ItemStack icon, String status) {
-        String price = data.cost() > 0L ? "buy " + format(data.cost()) : "price unknown";
+        String price = data.cost() > 0L
+                ? "buy " + FlipHudData.formatCoins(data.cost())
+                : "price unknown";
         if (data.target() > 0L) {
-            price += ", target " + format(data.target());
+            price += ", target " + FlipHudData.formatCoins(data.target());
         }
         return new State(data, icon, status, price);
     }
@@ -200,29 +202,6 @@ public final class FlipHud {
             return text;
         }
         return font.plainSubstrByWidth(text, Math.max(0, width - font.width("..."))) + "...";
-    }
-
-    private static String format(long coins) {
-        if (coins >= 1_000_000_000L) {
-            return abbreviated(coins, 1_000_000_000L, 'b');
-        }
-        if (coins >= 1_000_000L) {
-            return abbreviated(coins, 1_000_000L, 'm');
-        }
-        if (coins >= 1_000L) {
-            return abbreviated(coins, 1_000L, 'k');
-        }
-        return String.valueOf(coins);
-    }
-
-    private static String abbreviated(long coins, long unit, char suffix) {
-        long whole = coins / unit;
-        long tenth = (coins % unit + unit / 20L) / (unit / 10L);
-        if (tenth == 10L) {
-            whole++;
-            tenth = 0L;
-        }
-        return whole + "." + tenth + suffix;
     }
 
     private static String age(long receivedAt) {

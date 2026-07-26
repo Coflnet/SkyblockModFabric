@@ -28,7 +28,18 @@ public record FlipHudData(
                 || !JsonNesting.isWithinLimit(json, MAX_JSON_DEPTH)) {
             throw new IllegalArgumentException("flip payload exceeded its structural limits");
         }
-        JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+        JsonElement parsed;
+        try {
+            parsed = JsonParser.parseString(json);
+        } catch (RuntimeException exception) {
+            throw new IllegalArgumentException(
+                    "flip payload must be a valid json object", exception);
+        }
+        if (!parsed.isJsonObject()) {
+            throw new IllegalArgumentException(
+                    "flip payload must be a valid json object");
+        }
+        JsonObject root = parsed.getAsJsonObject();
         JsonObject auction = object(root, "auction");
         String itemName = displayString(auction, "itemName", MAX_ITEM_NAME_LENGTH);
         if (itemName.isBlank()) {
@@ -72,6 +83,29 @@ public record FlipHudData(
             case "start", "stop", "reset" -> true;
             default -> false;
         };
+    }
+
+    static String formatCoins(long coins) {
+        if (coins >= 999_950_000L) {
+            return abbreviated(coins, 1_000_000_000L, 'b');
+        }
+        if (coins >= 999_950L) {
+            return abbreviated(coins, 1_000_000L, 'm');
+        }
+        if (coins >= 1_000L) {
+            return abbreviated(coins, 1_000L, 'k');
+        }
+        return String.valueOf(coins);
+    }
+
+    private static String abbreviated(long coins, long unit, char suffix) {
+        long whole = coins / unit;
+        long tenth = (coins % unit + unit / 20L) / (unit / 10L);
+        if (tenth == 10L) {
+            whole++;
+            tenth = 0L;
+        }
+        return whole + "." + tenth + suffix;
     }
 
     private static JsonObject object(JsonObject parent, String key) {

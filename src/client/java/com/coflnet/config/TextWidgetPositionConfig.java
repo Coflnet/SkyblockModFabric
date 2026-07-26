@@ -1,5 +1,6 @@
 package com.coflnet.config;
 
+import com.coflnet.util.BoundedTextFile;
 import com.coflnet.util.JsonNesting;
 import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
@@ -8,6 +9,7 @@ import java.io.File;
 import java.io.IOException;
 
 public class TextWidgetPositionConfig {
+    private static final int MAX_CONFIG_FILE_BYTES = 65_536;
     private static final Gson gson = new Gson();
     private static final File POSITION_CONFIG_FILE = new File(Minecraft.getInstance().gameDirectory, "config/CoflSky/coflsky_text_position.json");
     
@@ -24,8 +26,9 @@ public class TextWidgetPositionConfig {
         // Check if old config exists and migrate
         try {
             if (POSITION_CONFIG_FILE.exists()) {
-                String json = java.nio.file.Files.readString(POSITION_CONFIG_FILE.toPath());
-                if (JsonNesting.isWithinLimit(json, 64)) {
+                String json = BoundedTextFile.readUtf8(
+                        POSITION_CONFIG_FILE.toPath(), MAX_CONFIG_FILE_BYTES);
+                if (json != null && JsonNesting.isWithinLimit(json, 64)) {
                     TextWidgetPositionConfig oldConfig =
                             gson.fromJson(json, TextWidgetPositionConfig.class);
                     if (oldConfig != null) {
