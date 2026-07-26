@@ -25,9 +25,9 @@ import java.util.Set;
  *
  * The blob is a compact JSON object mapping a segment KEY (e.g. {@code "LBIN"})
  * to that field's template string with its {@code {tokens}} intact
- * (e.g. {@code "&l&cLowest &eBin: &r{lbin}"}). Only non-default, non-blank
- * templates are written so an unstyled install produces an empty blob and a
- * later mod update that changes a default is not frozen out by a stale copy.
+ * (e.g. {@code "&l&cLowest &eBin: &r{lbin}"}). Templates that differ from the
+ * default are written. Blank templates are included because they select the
+ * stock backend line.
  */
 public final class LoreStyleCodec {
 

@@ -44,6 +44,7 @@ import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
 import com.coflnet.gui.cofl.CoflSettingsScreen;
 import com.coflnet.gui.tfm.TfmBinGUI;
+import com.coflnet.lore.PetInfoParser;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -579,7 +580,8 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();
-            // capture the full trade partner name from trade request chat lines.
+            // Capture the full trade-partner name from trade-request chat lines
+            // (Hypixel truncates it in the trade window title).
             captureTradePartner(messageText);
             // Skip backend processing for our own display messages to avoid a feedback loop.
             if (!messageText.startsWith(TEXT_TUNNELS_MESSAGE_PREFIX)) {
@@ -1553,22 +1555,7 @@ public class CoflModClient implements ClientModInitializer {
 
     /** the pet type from the petinfo json in custom_data or null if unreadable. */
     private static String petTypeFromCustomData(CompoundTag tag) {
-        try {
-            String petInfo = tag.getString("petInfo").orElse(null);
-            if (petInfo == null || petInfo.isBlank()) {
-                return null;
-            }
-            JsonElement el = JsonParser.parseString(petInfo);
-            if (el.isJsonObject()) {
-                JsonElement type = el.getAsJsonObject().get("type");
-                if (type != null && type.isJsonPrimitive()) {
-                    return type.getAsString();
-                }
-            }
-        } catch (Exception ignored) {
-            // malformed petinfo fall back to the display name in the caller.
-        }
-        return null;
+        return PetInfoParser.type(tag.getString("petInfo").orElse(null));
     }
 
     public static String getUuidFromStack(ItemStack stack) {

@@ -73,6 +73,7 @@ public class LoreConfigScreen extends Screen {
     private int selectedLine = 0;
     private int paletteScroll = 0;
     private int previewScroll = 0;
+    private int templateScroll = 0;
     private int blacklistScroll = 0;
     private boolean capturedFromBackend = false;
     // set once the user edits the layout so a late backend echo cant clobber
@@ -261,6 +262,7 @@ public class LoreConfigScreen extends Screen {
         tab = next;
         paletteScroll = 0;
         previewScroll = 0;
+        templateScroll = 0;
         editingModule = -1;
         rebuildTabWidgets();
     }
@@ -419,15 +421,23 @@ public class LoreConfigScreen extends Screen {
         List<com.coflnet.lore.LoreSegment> detected = detectedSegments();
         int rowH = 14;
         int listTop = contentY + 4;
+        int listBottom = contentY + contentH;
+        int maxScroll = maxTemplateScroll(detected.size());
+        templateScroll = Math.min(templateScroll, maxScroll);
+        context.enableScissor(contentX, listTop, contentX + colW, listBottom);
         for (int i = 0; i < detected.size(); i++) {
             com.coflnet.lore.LoreSegment seg = detected.get(i);
-            int rowY = listTop + i * (rowH + 2);
-            if (rowY + rowH > contentY + contentH) {
+            int rowY = listTop + i * (rowH + 2) - templateScroll;
+            if (rowY + rowH < listTop) {
+                continue;
+            }
+            if (rowY > listBottom) {
                 break;
             }
             int modIdx = moduleIndexForKey(seg.key);
             boolean isSel = modIdx >= 0 && modIdx == editingModule;
-            boolean h = inRect(mouseX, mouseY, contentX, rowY, colW, rowH);
+            boolean h = inRect(mouseX, mouseY, contentX, listTop, colW, listBottom - listTop)
+                    && inRect(mouseX, mouseY, contentX, rowY, colW, rowH);
             int col = isSel ? CoflColConfig.BACKGROUND_SECONDARY : (h ? CoflColConfig.CONFIRM_HOVER : CHIP_TINT);
             box(context, contentX, rowY, colW, rowH, col);
             if (isSel) {
@@ -441,6 +451,15 @@ public class LoreConfigScreen extends Screen {
                 queueTip(mouseX, mouseY, "§a[click to edit] §f" + seg.display,
                         hidden ? "§8Currently showing the stock backend look (empty template)." : "§7Restyle just this field.");
             }
+        }
+        context.disableScissor();
+        if (maxScroll > 0) {
+            int trackH = Math.max(1, listBottom - listTop);
+            int contentHeight = Math.max(trackH, detected.size() * (rowH + 2) - 2);
+            int thumbH = Math.max(8, trackH * trackH / contentHeight);
+            int thumbY = listTop + templateScroll * Math.max(0, trackH - thumbH) / maxScroll;
+            RenderUtils.drawRect(context, contentX + colW - 2, listTop, 2, trackH, CHIP_PASSTHROUGH);
+            RenderUtils.drawRect(context, contentX + colW - 2, thumbY, 2, thumbH, SELECTED);
         }
         if (detected.isEmpty()) {
             RenderUtils.drawString(context, "§8(hold a Cofl item)", contentX + 4, listTop + 4, CoflColConfig.TEXT_PRIMARY);
@@ -662,13 +681,18 @@ public class LoreConfigScreen extends Screen {
         int colW = templateListWidth();
         int rowH = 14;
         int listTop = contentY + 4;
+        int listBottom = contentY + contentH;
         List<com.coflnet.lore.LoreSegment> detected = detectedSegments();
         for (int i = 0; i < detected.size(); i++) {
-            int rowY = listTop + i * (rowH + 2);
-            if (rowY + rowH > contentY + contentH) {
-                break;   // match the draw clamp never select a row scrolled off the panel.
+            int rowY = listTop + i * (rowH + 2) - templateScroll;
+            if (rowY + rowH < listTop) {
+                continue;
             }
-            if (inRect(mx, my, contentX, rowY, colW, rowH)) {
+            if (rowY > listBottom) {
+                break;
+            }
+            if (inRect(mx, my, contentX, listTop, colW, listBottom - listTop)
+                    && inRect(mx, my, contentX, rowY, colW, rowH)) {
                 int modIdx = moduleIndexForKey(detected.get(i).key);
                 if (modIdx >= 0) {
                     captureWidgets();
@@ -722,7 +746,17 @@ public class LoreConfigScreen extends Screen {
             paletteScroll = Math.max(0, Math.min(max, paletteScroll + (int) (-scrollY * 18)));
             return true;
         }
-        if (tab == Tab.TEMPLATES && inRect(mouseX, mouseY, contentX, contentY + 77, contentW, Math.max(0, contentH - 77))) {
+        if (tab == Tab.TEMPLATES
+                && inRect(mouseX, mouseY, contentX, contentY,
+                templateListWidth(), contentH)) {
+            int max = maxTemplateScroll(detectedSegments().size());
+            templateScroll = Math.max(0, Math.min(max,
+                    templateScroll + (int) (-scrollY * 18)));
+            return true;
+        }
+        if (tab == Tab.TEMPLATES
+                && inRect(mouseX, mouseY, templateEditorX(), contentY + 77,
+                templateEditorWidth(), Math.max(0, contentH - 77))) {
             int max = maxPreviewScroll(buildPreviewLines().size());
             previewScroll = Math.max(0, Math.min(max, previewScroll + (int) (-scrollY * 12)));
             return true;
@@ -1052,6 +1086,11 @@ public class LoreConfigScreen extends Screen {
 
     private int templateListWidth() {
         return Math.min(130, Math.max(1, (contentW - 8) / 2));
+    }
+
+    private int maxTemplateScroll(int itemCount) {
+        int contentHeight = Math.max(0, itemCount * 16 - 2);
+        return Math.max(0, contentHeight - Math.max(0, contentH - 4));
     }
 
     private int templateEditorX() {
