@@ -19,14 +19,13 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class FlipHud {
     public static final int WIDTH = 214;
-    public static final int HEIGHT = 56;
+    public static final int HEIGHT = 67;
 
     private static final AtomicBoolean PARSE_FAILURE_LOGGED = new AtomicBoolean();
     private static final AtomicInteger SESSION = new AtomicInteger();
@@ -138,7 +137,7 @@ public final class FlipHud {
             if (!confirmation && slot == 13) {
                 previous = current;
                 String status = "opening".equals(current.status) ? "opened" : current.status;
-                state = new State(current.data, item.copy(), null, true, status, current.price);
+                state = new State(current.data, item.copy(), null, true, status, current.price, current.profit);
             } else if (!confirmation && slot == 31) {
                 state = current.withStatus(statusFromActionItem(item));
             } else if (confirmation && slot == 11 && "Confirm".equals(itemName(item))) {
@@ -207,7 +206,11 @@ public final class FlipHud {
         String name = data.count() > 1 ? data.count() + "x " + data.itemName() : data.itemName();
         RenderUtils.drawString(context, "§bskycofl flip", x + 8, y + 6, CoflColConfig.TEXT_PRIMARY);
         RenderUtils.drawString(context, trim(font, name, 174), x + 31, y + 19, CoflColConfig.TEXT_PRIMARY);
-        RenderUtils.drawString(context, trim(font, current.price, 174), x + 31, y + 30, 0xFFB8C0CC);
+        RenderUtils.drawString(context, trim(font, current.price, 174), x + 31, y + 30, CoflColConfig.TEXT_PRIMARY);
+        if (!current.profit.isBlank()) {
+            RenderUtils.drawString(context, trim(font, current.profit, 174), x + 31, y + 41,
+                    CoflColConfig.TEXT_PRIMARY);
+        }
 
         String currentStatus = current.status;
         if (!previewing && !isTerminal(currentStatus)
@@ -215,11 +218,12 @@ public final class FlipHud {
                 && System.currentTimeMillis() >= data.endsAt()) {
             currentStatus = "expired";
         }
-        String status = currentStatus + ", " + (previewing ? "0s ago" : age(data.receivedAt()));
+        String status = FlipHudData.displayLabel(currentStatus) + ", "
+                + (previewing ? "0s ago" : age(data.receivedAt()));
         if (!data.finder().isBlank()) {
-            status = data.finder().toLowerCase(Locale.ROOT) + ", " + status;
+            status = FlipHudData.displayLabel(data.finder()) + ", " + status;
         }
-        RenderUtils.drawString(context, trim(font, status, WIDTH - 16), x + 8, y + 43, 0xFF8E99A8);
+        RenderUtils.drawString(context, trim(font, status, WIDTH - 16), x + 8, y + 54, 0xFF8E99A8);
     }
 
     private static void requestIcon(Minecraft client, FlipHudData data, int session) {
@@ -250,7 +254,8 @@ public final class FlipHud {
                 Identifier textureId = textureId(data, session);
                 client.getTextureManager().register(textureId, texture);
                 previous = current;
-                state = new State(current.data, current.icon, textureId, false, current.status, current.price);
+                state = new State(current.data, current.icon, textureId, false,
+                        current.status, current.price, current.profit);
             }
         } catch (RuntimeException exception) {
             texture.close();
@@ -277,13 +282,8 @@ public final class FlipHud {
     }
 
     private static State createState(FlipHudData data, ItemStack icon, String status) {
-        String price = data.cost() > 0L
-                ? "buy " + FlipHudData.formatCoins(data.cost())
-                : "price unknown";
-        if (data.target() > 0L) {
-            price += ", target " + FlipHudData.formatCoins(data.target());
-        }
-        return new State(data, icon, null, false, status, price);
+        FlipHudData.PriceLines lines = FlipHudData.priceLines(data.cost(), data.target());
+        return new State(data, icon, null, false, status, lines.price(), lines.profit());
     }
 
     private static String statusFromActionItem(ItemStack item) {
@@ -399,11 +399,12 @@ public final class FlipHud {
             Identifier texture,
             boolean itemFromContainer,
             String status,
-            String price) {
+            String price,
+            String profit) {
         private State withStatus(String value) {
             return value == null || value.isBlank()
                     ? this
-                    : new State(data, icon, texture, itemFromContainer, value, price);
+                    : new State(data, icon, texture, itemFromContainer, value, price, profit);
         }
     }
 }

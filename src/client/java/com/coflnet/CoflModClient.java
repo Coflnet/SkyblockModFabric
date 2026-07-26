@@ -1059,6 +1059,13 @@ public class CoflModClient implements ClientModInitializer {
                 })
                 .then(ClientCommands.argument("args", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
+                    String remaining = builder.getRemaining();
+                    for (String suggestion : com.coflnet.gui.flip.FlipHudCommandSuggestions.forInput(remaining)) {
+                        builder.suggest(suggestion);
+                    }
+                    if (remaining.stripLeading().toLowerCase(Locale.ROOT).startsWith("fliphud ")) {
+                        return builder.buildFuture();
+                    }
                     String input = context.getInput();
                     String[] inputArgs = input.split(" ");;
                     String currentWord = inputArgs.length > 0 ? inputArgs[inputArgs.length - 1] : "";

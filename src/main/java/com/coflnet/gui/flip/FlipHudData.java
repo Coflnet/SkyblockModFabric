@@ -133,6 +133,67 @@ public record FlipHudData(
         return String.valueOf(coins);
     }
 
+    static String displayLabel(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String clean = displayText(value, MAX_STATUS_MESSAGE_LENGTH)
+                .replace('_', ' ')
+                .replace('-', ' ')
+                .toLowerCase(Locale.ROOT);
+        StringBuilder label = new StringBuilder(clean.length());
+        boolean capitalize = true;
+        for (int i = 0; i < clean.length(); i++) {
+            char character = clean.charAt(i);
+            if (Character.isWhitespace(character)) {
+                if (!label.isEmpty() && label.charAt(label.length() - 1) != ' ') {
+                    label.append(' ');
+                }
+                capitalize = true;
+                continue;
+            }
+            label.append(capitalize ? Character.toUpperCase(character) : character);
+            capitalize = false;
+        }
+        return label.toString().strip();
+    }
+
+    static PriceLines priceLines(long cost, long target) {
+        String price = cost > 0L
+                ? "§7buy §6" + formatCoins(cost)
+                : "§7price unknown";
+        String profit = "§8profit unavailable";
+        if (target <= 0L) {
+            return new PriceLines(price, profit);
+        }
+        String targetColor = cost <= 0L
+                ? "§b"
+                : target > cost ? "§a" : target < cost ? "§c" : "§e";
+        price += " §8| §7target " + targetColor + formatCoins(target);
+        if (cost <= 0L) {
+            return new PriceLines(price, profit);
+        }
+        long difference = target - cost;
+        long amount = Math.abs(difference);
+        String color = difference > 0L ? "§a" : difference < 0L ? "§c" : "§e";
+        String label = difference < 0L ? "loss " : "profit ";
+        String sign = difference > 0L ? "+" : difference < 0L ? "-" : "";
+        profit = color + label + sign + formatCoins(amount)
+                + " §8| " + color + formatPercent(amount, cost);
+        return new PriceLines(price, profit);
+    }
+
+    private static String formatPercent(long amount, long cost) {
+        double percent = amount * 100.0 / cost;
+        if (percent >= 9_999.5) {
+            return "9999%+";
+        }
+        return String.format(Locale.US, "%.1f%%", percent);
+    }
+
+    record PriceLines(String price, String profit) {
+    }
+
     private static String abbreviated(long coins, long unit, char suffix) {
         long whole = coins / unit;
         long tenth = (coins % unit + unit / 20L) / (unit / 10L);

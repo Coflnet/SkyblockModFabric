@@ -156,6 +156,44 @@ class FlipHudDataTest {
     }
 
     @Test
+    void formatsFinderAndStatusLabelsForDisplay() {
+        assertEquals("Sniper Median", FlipHudData.displayLabel("SNIPER_MEDIAN"));
+        assertEquals("Flip", FlipHudData.displayLabel("flip"));
+        assertEquals("Insufficient Coins", FlipHudData.displayLabel("insufficient coins"));
+        assertEquals("Auction House", FlipHudData.displayLabel("auction--house"));
+        assertEquals("", FlipHudData.displayLabel(""));
+    }
+
+    @Test
+    void formatsColoredProfitAndLossLines() {
+        assertEquals(
+                new FlipHudData.PriceLines(
+                        "§7buy §612.5m §8| §7target §a16.0m",
+                        "§aprofit +3.5m §8| §a28.0%"),
+                FlipHudData.priceLines(12_500_000L, 16_000_000L));
+        assertEquals(
+                new FlipHudData.PriceLines(
+                        "§7buy §612.5m §8| §7target §c10.0m",
+                        "§closs -2.5m §8| §c20.0%"),
+                FlipHudData.priceLines(12_500_000L, 10_000_000L));
+    }
+
+    @Test
+    void handlesUnavailableAndExtremeProfitValues() {
+        assertEquals(
+                new FlipHudData.PriceLines("§7buy §612.5m", "§8profit unavailable"),
+                FlipHudData.priceLines(12_500_000L, 0L));
+        assertEquals(
+                new FlipHudData.PriceLines(
+                        "§7price unknown §8| §7target §b16.0m",
+                        "§8profit unavailable"),
+                FlipHudData.priceLines(0L, 16_000_000L));
+        assertEquals(
+                "§aprofit +9223372036.9b §8| §a9999%+",
+                FlipHudData.priceLines(1L, Long.MAX_VALUE).profit());
+    }
+
+    @Test
     void parsesOnlyExactViewAuctionCommands() {
         assertEquals("auction-id", FlipHudData.auctionIdFromCommand("viewauction auction-id"));
         assertEquals("auction-id", FlipHudData.auctionIdFromCommand("VIEWAUCTION   auction-id"));
