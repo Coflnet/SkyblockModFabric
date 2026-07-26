@@ -172,6 +172,24 @@ public class LoreConfigScreen extends Screen {
         });
     }
 
+    public static void retryBackendReadIfOpen() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft == null) {
+            return;
+        }
+        minecraft.execute(() -> {
+            if (current == null) {
+                return;
+            }
+            current.capturedFromBackend = false;
+            current.requestRealLayout();
+        });
+    }
+
+    private boolean hasBackendSnapshot() {
+        return capturedFromBackend && com.coflnet.lore.LoreSync.hasReceived();
+    }
+
     @Override
     protected void init() {
         panelW = Math.min(560, Math.max(MIN_PANEL_WIDTH, this.width - 8));
@@ -300,12 +318,13 @@ public class LoreConfigScreen extends Screen {
             case BLACKLIST -> drawBlacklistTab(context, font, mouseX, mouseY);
         }
 
-        boolean saveHover = capturedFromBackend && inRect(mouseX, mouseY, saveX, saveY, saveW, saveH);
-        int saveColor = capturedFromBackend
+        boolean backendReady = hasBackendSnapshot();
+        boolean saveHover = backendReady && inRect(mouseX, mouseY, saveX, saveY, saveW, saveH);
+        int saveColor = backendReady
                 ? (saveHover ? CoflColConfig.CONFIRM_HOVER : CoflColConfig.CONFIRM)
                 : 0xFF555B63;
         box(context, saveX, saveY, saveW, saveH, saveColor);
-        RenderUtils.drawCenteredString(context, capturedFromBackend ? "Save & Close" : "Waiting for server",
+        RenderUtils.drawCenteredString(context, backendReady ? "Save & Close" : "Waiting for server",
                 saveX + saveW / 2, saveY + 5, 0xFF222831);
         if (saveHover) {
             queueTip(mouseX, mouseY, "Apply all changes and close.",
@@ -573,7 +592,7 @@ public class LoreConfigScreen extends Screen {
         if (inRect(mx, my, tabLayoutX, tabY, tabW, tabH)) { switchTab(Tab.LAYOUT); return true; }
         if (inRect(mx, my, tabTemplatesX, tabY, tabW, tabH)) { switchTab(Tab.TEMPLATES); return true; }
         if (inRect(mx, my, tabBlacklistX, tabY, tabW, tabH)) { switchTab(Tab.BLACKLIST); return true; }
-        if (!capturedFromBackend) {
+        if (!hasBackendSnapshot()) {
             return true;
         }
         if (inRect(mx, my, saveX, saveY, saveW, saveH)) {

@@ -258,6 +258,7 @@ public class EventSubscribers {
     @Subscribe
     public void onLoggedIn(OnLoggedIn event){
         com.coflnet.lore.LoreSync.resetSession();
+        com.coflnet.gui.cofl.LoreConfigScreen.retryBackendReadIfOpen();
         System.out.println("Backend logged in event received, uploading scoreboard and tab list...");
         CoflModClient.uploadScoreboardAndTabList();
     }
