@@ -1,6 +1,7 @@
 package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
+import com.coflnet.PerfTracer;
 import com.coflnet.gui.trade.TradePriceCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -21,6 +22,7 @@ public class NewItemInChestMixin {
     @Inject(method = "handleContainerSetSlot", at = @At("HEAD"))
     private void onSlotUpdateHead(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         // Track UUID changes before the slot is updated
+        long perfStart = PerfTracer.begin();
         try {
             if (Minecraft.getInstance().player == null || Minecraft.getInstance().player.containerMenu == null)
                 return;
@@ -50,62 +52,69 @@ public class NewItemInChestMixin {
                     // Find the original UUID (follow chain if exists)
                     String originalUuid = CoflModClient.uuidToOriginalUuid.getOrDefault(prevUuid, prevUuid);
                     CoflModClient.uuidToOriginalUuid.put(newUuid, originalUuid);
+                    // A new stackId now resolves to already-loaded descriptions -
+                    // invalidate per-slot caches (e.g. ItemHighlightMixin).
+                    CoflModClient.descriptionsVersion.incrementAndGet();
                 }
             }
         } catch (Exception e) {
             // Silently ignore errors in UUID tracking
+        } finally {
+            PerfTracer.end("newItemInChestMixin.onSlotUpdateHead", perfStart);
         }
     }
 
     @Inject(method = "handleContainerSetSlot", at = @At("TAIL"))
     private void onPacketReceive(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
+        long perfStart = PerfTracer.begin();
         try {
-            String itemTitle = packet.getItem().getCustomName() != null ? packet.getItem().getCustomName().getString() : "";
             int slot = packet.getSlot();
             // Offer slots are 0-35; slot 40 may be the final divider update
             // that makes the full trade layout verifiable.
             if ((slot >= 0 && slot < 36) || slot == 40) {
                 TradePriceCache.requestCurrentTrade(packet.getContainerId());
                 CoflModClient.openTradeOverlayIfReady(packet.getContainerId());
-            } else if (!itemTitle.isEmpty() && (
-                    itemTitle.contains("Combine Items") // anvil result
+                return;
+            }
+
+            // Non-trade path: only worth the (getCustomName/getString) work below for
+            // the handful of menus that need an immediate description refresh; every
+            // other slot update packet (the vast majority - regular inventories,
+            // hoppers, etc.) returns above without allocating anything.
+            Component customName = packet.getItem().getCustomName();
+            if (customName == null) {
+                return;
+            }
+            String itemTitle = customName.getString();
+            if (itemTitle.contains("Combine Items") // anvil result
                     || itemTitle.equals("§aFlip Order") // bazaar order flip prices loaded
-            || itemTitle.contains("AUCTION FOR") // putting item in auction create
-            )) {
+                    || itemTitle.contains("AUCTION FOR") // putting item in auction create
+            ) {
                 try {
                     if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs)
                         CoflModClient.instance.loadDescriptionsForInv(hs);
-                    System.out.println("Trade Slot Update Packet received." + packet.getItem().getCustomName());
                 } catch (Exception inner) {
                     System.out.println("[NewItemInChestMixin] loadDescriptionsForInv failed: " + inner.getMessage());
-                }
-            }
-
-            if (Minecraft.getInstance().player != null && Minecraft.getInstance().player.containerMenu != null) {
-                if (slot < 0 || slot >= Minecraft.getInstance().player.containerMenu.slots.size())
-                    return;
-                    
-                ItemStack previousStack = Minecraft.getInstance().player.containerMenu.getSlot(slot).getItem();
-                if(previousStack.get(DataComponents.LORE) == null)
-                    return;
-                for (Component line : previousStack.get(DataComponents.LORE).lines()) {
-                    if(line.getString().contains("Refreshing"))
-                    {
-                        // TODO: try batching this to refresh lore sooner than current waittime
-                    }
                 }
             }
         } catch (Exception e) {
             // If it fails, it might be a custom packet or a different type.
             // You can log the exception or handle it as needed.
             System.out.println("[NewItemInChestMixin] Failed to process packet: " + e.getMessage());
+        } finally {
+            PerfTracer.end("newItemInChestMixin.onPacketReceive", perfStart);
         }
     }
 
     /** Price the initial offer as soon as Minecraft has applied its complete contents. */
     @Inject(method = "handleContainerContent", at = @At("TAIL"))
     private void onContainerContent(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
-        TradePriceCache.requestCurrentTrade(packet.containerId());
-        CoflModClient.openTradeOverlayIfReady(packet.containerId());
+        long perfStart = PerfTracer.begin();
+        try {
+            TradePriceCache.requestCurrentTrade(packet.containerId());
+            CoflModClient.openTradeOverlayIfReady(packet.containerId());
+        } finally {
+            PerfTracer.end("newItemInChestMixin.onContainerContent", perfStart);
+        }
     }
 }

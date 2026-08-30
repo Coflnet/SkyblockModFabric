@@ -8,6 +8,7 @@ package com.coflnet.config;
 public class DevManager {
     public static void reloadConfig() {
         CoflModConfig.reload();
+        com.coflnet.PerfTracer.setDevModeEnabled(isEnabled());
     }
 
     public static CoflModConfig getConfig() {
@@ -22,5 +23,6 @@ public class DevManager {
         CoflModConfig cfg = getConfig();
         cfg.devMode = enabled;
         cfg.save();
+        com.coflnet.PerfTracer.setDevModeEnabled(enabled);
     }
 }

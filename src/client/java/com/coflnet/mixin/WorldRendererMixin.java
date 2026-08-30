@@ -19,6 +19,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(LevelRenderer.class)
 public class WorldRendererMixin {
 
+    // Precomputed constants instead of allocating a new float[]{...} literal per position per frame.
+    private static final float HIGHLIGHT_R = 0.3f;
+    private static final float HIGHLIGHT_G = 1f;
+    private static final float HIGHLIGHT_B = 0.1f;
+    private static final float HIGHLIGHT_A = 0.5f;
+
     @Inject(method = "render", at = @At("TAIL"))
     private void onRenderWorld(GraphicsResourceAllocator allocator, DeltaTracker tickCounter, boolean renderBlockOutline, CameraRenderState cameraState, Matrix4fc positionMatrix, GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky, CallbackInfo ci) {
         if (EventSubscribers.positions == null || EventSubscribers.positions.isEmpty()) {
@@ -34,20 +40,13 @@ public class WorldRendererMixin {
         matrices.mulPose(new org.joml.Matrix4f(positionMatrix));
         
         for (Position position : EventSubscribers.positions) {
+            // Primitive overload: no double[]/float[] wrapper allocation per position per frame.
             RenderUtils.renderHighlightBox(
                     matrices,
                     cameraState.pos,
-                    new double[]{
-                            position.getX(),
-                            position.getY(),
-                            position.getZ()
-                    },
-                    new double[]{
-                            position.getX() + 1.0,
-                            position.getY() + 1.0,
-                            position.getZ() + 1.0
-                    },
-                    new float[]{0.3f, 1f, 0.1f, 0.5f}
+                    position.getX(), position.getY(), position.getZ(),
+                    position.getX() + 1.0, position.getY() + 1.0, position.getZ() + 1.0,
+                    HIGHLIGHT_R, HIGHLIGHT_G, HIGHLIGHT_B, HIGHLIGHT_A
             );
         }
     }

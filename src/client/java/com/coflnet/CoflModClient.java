@@ -12,8 +12,12 @@ import java.util.*;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
+import com.coflnet.core.BackgroundQueue;
+import com.coflnet.core.BoundedLruMap;
+import com.coflnet.core.SynchronizedHashMap;
 
 import CoflCore.classes.Position;
 import CoflCore.classes.Settings;
@@ -127,7 +131,12 @@ public class CoflModClient implements ClientModInitializer {
     public static KeyMapping openSettingsKeyBinding;
     public static List<KeyMapping> additionalKeyBindings = new ArrayList<KeyMapping>();
     public static Map<KeyMapping, HotkeyRegister> keybindingsToHotkeys = new HashMap<KeyMapping, HotkeyRegister>();
-    public static final Set<String> knownIds = ConcurrentHashMap.newKeySet();
+    // Bounded (LRU) instead of an unbounded Set: this is only used to dedupe repeated
+    // "missing description" tooltip lookups and item-id scans within a play session.
+    // It is already cleared per container-screen open (see ScreenEvents.AFTER_INIT
+    // below); the LRU cap is defense in depth for long sessions that never trigger
+    // that clear (e.g. only ever hovering the player inventory).
+    public static final BoundedLruMap<String, Boolean> knownIds = new BoundedLruMap<>(5000);
     public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
     private String username = "";
     private String lastCheckedUsername = ""; // Track last username to detect account switches
@@ -165,9 +174,12 @@ public class CoflModClient implements ClientModInitializer {
     private static volatile long lastScoreboardProcessMs = 0L;
     private static final long SCOREBOARD_PROCESS_INTERVAL_MS = 250L;
     
-    // Staggered refresh tracking: inventory name -> last request time
-    private static final Map<String, Long> lastRefreshTimePerInventory = new ConcurrentHashMap<>();
-    private static final Map<String, Long> lastDescriptionLoadRequestByMenu = new ConcurrentHashMap<>();
+    // Staggered refresh tracking: inventory name -> last request time. Bounded (LRU):
+    // lastDescriptionLoadRequestByMenu in particular is keyed by title + menu identity
+    // hash, so it gains one entry per container instance ever opened in the session -
+    // truly unbounded otherwise. Only recent menus matter for the debounce these exist for.
+    private static final BoundedLruMap<String, Long> lastRefreshTimePerInventory = new BoundedLruMap<>(500);
+    private static final BoundedLruMap<String, Long> lastDescriptionLoadRequestByMenu = new BoundedLruMap<>(500);
     private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
     private static final long DESCRIPTION_LOAD_TRIGGER_DEBOUNCE_MS = 250;
     private static final AtomicBoolean connectionStartInProgress = new AtomicBoolean(false);
@@ -181,8 +193,20 @@ public class CoflModClient implements ClientModInitializer {
     private static volatile ServerContext currentServerContext = ServerContext.UNKNOWN;
     
     // Maps new UUIDs to original UUID when items update with new UUIDs but same title
-    // This allows finding descriptions loaded for the original UUID when hovering an item with updated UUID
-    public static final Map<String, String> uuidToOriginalUuid = new ConcurrentHashMap<>();
+    // This allows finding descriptions loaded for the original UUID when hovering an item with updated UUID.
+    // Bounded (LRU): never explicitly cleared, so without a cap this grows for the whole client session.
+    public static final BoundedLruMap<String, String> uuidToOriginalUuid = new BoundedLruMap<>(2000);
+
+    // Single background worker for anything that can take the CoflSkyCore WSClientWrapper's
+    // lock (SendMessage/processCommand/etc.) so a stuck reconnect attempt (which holds that
+    // lock for up to the connect timeout) can never stall the render thread. See submit() call
+    // sites below for what got moved off the render thread and why.
+    public static final BackgroundQueue backgroundQueue = new BackgroundQueue("CoflSky-Background");
+
+    // Bumped whenever loaded tooltip descriptions change (a fresh loadDescriptionForInventory
+    // response lands, or a UUID gets remapped). Per-frame per-slot mixins (ItemHighlightMixin)
+    // use this to know when their per-slot cache is stale, instead of recomputing every frame.
+    public static final AtomicLong descriptionsVersion = new AtomicLong();
 
     private enum ServerContext {
         UNKNOWN(null),
@@ -197,6 +221,22 @@ public class CoflModClient implements ClientModInitializer {
         private boolean isSupported() {
             return this != UNKNOWN;
         }
+    }
+
+    /**
+     * Wraps a ScreenEvents.AFTER_INIT handler with dev-mode timing (see PerfTracer) so a slow
+     * screen-init hook shows up in {@code /cofl perf} instead of being invisible.
+     */
+    private static net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AfterInit perfWrapAfterInit(
+            String hookName, net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AfterInit delegate) {
+        return (client, screen, scaledWidth, scaledHeight) -> {
+            long start = PerfTracer.begin();
+            try {
+                delegate.afterInit(client, screen, scaledWidth, scaledHeight);
+            } finally {
+                PerfTracer.end(hookName, start);
+            }
+        };
     }
 
     public class TooltipMessage implements  Message{
@@ -223,6 +263,15 @@ public class CoflModClient implements ClientModInitializer {
         cofl.registerEventFile(new EventSubscribers());
         ensureTextTunnelsConfig();
 
+        // Stopgap thread-safety: DescriptionHandler.tooltipItemIdMap is a bare
+        // public static HashMap in CoflSkyCore, written from background description-load
+        // threads and read every frame on the render thread. Swap in a synchronized
+        // implementation until the library exposes a proper concurrent map.
+        DescriptionHandler.tooltipItemIdMap = new SynchronizedHashMap<>();
+
+        // Reflect any dev-mode setting already on disk into the perf tracer/watchdog.
+        PerfTracer.setDevModeEnabled(com.coflnet.config.DevManager.isEnabled());
+
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
             RenderUtils.init();
         });
@@ -244,6 +293,9 @@ public class CoflModClient implements ClientModInitializer {
             SKYCOFL_CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Feeds the dev-mode render-thread stall watchdog; cheap even when off.
+            PerfTracer.recordFrame();
+
             // Process scoreboard updates if dirty flag is set (set by ScoreboardMixin)
             if (scoreboardDirty && client.player != null) {
                 long now = System.currentTimeMillis();
@@ -260,7 +312,13 @@ public class CoflModClient implements ClientModInitializer {
 
             if (bestflipsKeyBinding.isDown()) {
                 if (counter == 0) {
-                    EventRegistry.onOpenBestFlip(username, true);
+                    // EventRegistry.onOpenBestFlip ends in a direct (non-thread-hopping)
+                    // WSClientWrapper.SendMessage call, which is synchronized on the
+                    // wrapper's monitor - the same monitor a stuck reconnect attempt
+                    // holds for up to its connect timeout. Never call it from the render
+                    // thread directly.
+                    String usernameSnapshot = username;
+                    backgroundQueue.submit(() -> EventRegistry.onOpenBestFlip(usernameSnapshot, true));
                 }
                 if (counter < 2)
                     counter++;
@@ -272,7 +330,8 @@ public class CoflModClient implements ClientModInitializer {
                 handleGetHoveredItem(client);
 
             if (openSettingsKeyBinding.consumeClick()) {
-                CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
+                String usernameSnapshot = username;
+                backgroundQueue.submit(() -> CoflSkyCommand.processCommand(new String[]{"get", "json"}, usernameSnapshot));
                 try {
                     client.gui.setScreen(CoflSettingsScreen.create(client.gui.screen()));
                 } catch (Throwable t) {
@@ -287,11 +346,14 @@ public class CoflModClient implements ClientModInitializer {
                 for (KeyMapping additionalKeyBinding : additionalKeyBindings) {
                     if(additionalKeyBinding.consumeClick()){
                         String keyName = keybindingsToHotkeys.get(additionalKeyBinding).Name;
+                        // Reading the hovered stack's NBT touches Minecraft state, so it must
+                        // stay on the render thread; only the network send is deferred.
                         String toAppend = getContextToAppend(client.player.getInventory().getItem(client.player.getInventory().getSelectedSlot()));
+                        String usernameSnapshot = Minecraft.getInstance().getUser().getName();
 
                         System.out.println("Exec hotkey "+ keyName + toAppend);
-                        CoflSkyCommand.processCommand(new String[]{"hotkey", keyName+toAppend},
-                                Minecraft.getInstance().getUser().getName());
+                        backgroundQueue.submit(() -> CoflSkyCommand.processCommand(
+                                new String[]{"hotkey", keyName+toAppend}, usernameSnapshot));
                     }
                 }
             } catch (ConcurrentModificationException e) {
@@ -342,7 +404,8 @@ public class CoflModClient implements ClientModInitializer {
             dispatcher.register(ClientCommands.literal("fc")
                 .executes(context -> {
                     // /fc with no arguments (toggles the chat server side)
-                    CoflSkyCommand.processCommand(new String[]{"chat"}, username);
+                    String usernameSnapshot = username;
+                    backgroundQueue.submit(() -> CoflSkyCommand.processCommand(new String[]{"chat"}, usernameSnapshot));
                     return 1;
                 })
                 .then(ClientCommands.literal("toggle")
@@ -381,7 +444,8 @@ public class CoflModClient implements ClientModInitializer {
                         String[] newArgs = new String[args.length + 1];
                         System.arraycopy(args, 0, newArgs, 1, args.length);
                         newArgs[0] = "chat";
-                        CoflSkyCommand.processCommand(newArgs, username);
+                        String usernameSnapshot = username;
+                        backgroundQueue.submit(() -> CoflSkyCommand.processCommand(newArgs, usernameSnapshot));
                         return 1;
                     })
                 )
@@ -392,11 +456,23 @@ public class CoflModClient implements ClientModInitializer {
         // open container's signature can be copied to the clipboard (you cannot
         // type chat commands while a container GUI has focus). Only added when
         // dev mode is enabled via /cofl dev on.
-        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+        ScreenEvents.AFTER_INIT.register(perfWrapAfterInit("afterInit.copyDumpButton", (client, screen, scaledWidth, scaledHeight) -> {
             if (!com.coflnet.config.DevManager.isEnabled()) {
                 return;
             }
             if (!(screen instanceof ContainerScreen)) {
+                return;
+            }
+            // AFTER_INIT also fires on window resize; on resize Minecraft clears the
+            // widget list before calling init() again, so a fresh add is normally
+            // correct - but guard against a duplicate button in case something
+            // triggers a second init() without clearing widgets first.
+            var widgets = net.fabricmc.fabric.api.client.screen.v1.Screens.getWidgets(screen);
+            boolean alreadyAdded = widgets.stream().anyMatch(widget ->
+                    widget instanceof net.minecraft.client.gui.components.Button button
+                            && button.getMessage() != null
+                            && "Copy Dump".contentEquals(button.getMessage().getString()));
+            if (alreadyAdded) {
                 return;
             }
             net.minecraft.client.gui.components.Button dumpButton =
@@ -404,14 +480,14 @@ public class CoflModClient implements ClientModInitializer {
                             Component.literal("Copy Dump"),
                             btn -> copyOpenContainerDumpToClipboard()
                     ).bounds(2, 2, 80, 16).build();
-            net.fabricmc.fabric.api.client.screen.v1.Screens.getWidgets(screen).add(dumpButton);
-        });
+            widgets.add(dumpButton);
+        }));
 
         // Trade pricing: when a Hypixel trade window opens, trigger the existing
         // description/price pipeline for its items so worth data is available.
         // The trade title is not in the SKYBLOCK_MENU allowlist that
         // loadDescriptionsForInv gates on, so we trigger the price load directly.
-        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+        ScreenEvents.AFTER_INIT.register(perfWrapAfterInit("afterInit.tradePricing", (client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof ContainerScreen cs && isTradeScreenByTitle(cs)) {
                 com.coflnet.gui.trade.TradePriceCache.clear();
                 // AFTER_INIT usually runs before the first content packet. Only
@@ -422,17 +498,17 @@ public class CoflModClient implements ClientModInitializer {
                     openTradeOverlayIfReady(cs.getMenu().containerId);
                 }
             }
-        });
+        }));
 
         // General screen event to check for account switches in menus
-        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+        ScreenEvents.AFTER_INIT.register(perfWrapAfterInit("afterInit.accountSwitchCheck", (client, screen, scaledWidth, scaledHeight) -> {
             // Only check for account switches when not connected to a server
             if (client.player == null) {
                 checkAndHandleAccountSwitch();
             }
-        });
+        }));
 
-        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+        ScreenEvents.AFTER_INIT.register(perfWrapAfterInit("afterInit.binPurchaseOverlay", (client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof ContainerScreen gcs && CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null ) {
                 // System.out.println(gcs.getTitle().getString());
                 if (!(client.gui.screen() instanceof BinGUI) && isBINAuction(gcs)) {
@@ -440,9 +516,9 @@ public class CoflModClient implements ClientModInitializer {
                     if (CoflCore.config.purchaseOverlay == GUIType.TFM) client.gui.setScreen(new TfmBinGUI(gcs));
                 }
             }
-        });
+        }));
 
-        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+        ScreenEvents.AFTER_INIT.register(perfWrapAfterInit("afterInit.loadDescriptions", (client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof AbstractContainerScreen<?> hs) {
                 knownIds.clear();
                 loadDescriptionsForInv(hs);
@@ -453,93 +529,115 @@ public class CoflModClient implements ClientModInitializer {
                     uploadedScoreboard = true;
                 }
             }
-        });
+        }));
 
         ItemTooltipCallback.EVENT.register((stack, tooltipContext, tooltipType, lines) -> {
-            String stackId = getIdFromStack(stack);
-            
-            // Check if this UUID maps to an original UUID that has descriptions
-            String lookupId = uuidToOriginalUuid.getOrDefault(stackId, stackId);
-            
-            if (!knownIds.contains(stackId) && !knownIds.contains(lookupId)
-                    && Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs) {
-                        
-                if(!stack.isEmpty() && !stackId.equals("Go Back;1"))
-                    loadDescriptionsForInv(hs);
-                knownIds.add(stackId);
-                System.out.println("Missing descriptions for " + stackId);
-                return;
-            }
+            long perfStart = PerfTracer.begin();
+            try {
+                // Computed once and reused below instead of recomputing per branch.
+                String stackId = getIdFromStack(stack);
+                boolean devMode = com.coflnet.config.DevManager.isEnabled();
 
-            DescriptionHandler.DescModification[] tooltips = getMappedTooltipData(stackId);
-            if(tooltips == null)
-                return;
+                // Check if this UUID maps to an original UUID that has descriptions
+                String lookupId = uuidToOriginalUuid.getOrDefault(stackId, stackId);
 
-            var text = stack.get(DataComponents.LORE);
-            List<Component> ogLoreLines = text == null ? new ArrayList<>() : text.lines();
+                if (!knownIds.containsKey(stackId) && !knownIds.containsKey(lookupId)
+                        && Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs) {
 
-            for (DescriptionHandler.DescModification tooltip : tooltips) {
-                switch (tooltip.type) {
-                    case "APPEND":
-                        lines.add(Component.literal(tooltip.value + " "));
-                        break;
-                    case "REPLACE":
-                        if (tooltip.line < 0 || tooltip.line >= lines.size() || tooltip.line >= ogLoreLines.size()) {
-                            System.out.println("Invalid line index: " + tooltip.line + " for tooltip: " + tooltip.value);
-                            continue; // Skip if the line index is invalid
-                        }
-                        int targetLine = tooltip.line;
-                        if(targetLine > 0
-                                && targetLine + 1 < ogLoreLines.size()
-                                && ChatFormatting.stripFormatting(ogLoreLines.get(targetLine).toString()).equals(ChatFormatting.stripFormatting(lines.get(targetLine).toString()))) {
-                            System.out.println("lines differ `" + ChatFormatting.stripFormatting(ogLoreLines.get(targetLine + 1).toString()) + "` to `" + ChatFormatting.stripFormatting(lines.get(targetLine).toString())  + "`");
-                            targetLine++; // assume another mod added a line and move this down
-                        }
-                        lines.remove(targetLine);
-                        lines.add(targetLine, Component.literal(tooltip.value));
-                        break;
-                    case "INSERT":
-                        int insertAt = Math.max(0, Math.min(tooltip.line, lines.size()));
-                        lines.add(insertAt, Component.literal(tooltip.value));
-                        break;
-                    case "DELETE":
-                        if (tooltip.line < 0 || tooltip.line >= lines.size()) {
-                            System.out.println("Invalid delete line index: " + tooltip.line);
-                            continue;
-                        }
-                        lines.remove(tooltip.line);
-                        break;
-                    case "HIGHLIGHT":
-                        // handled in mixin
-                        break;
-                    default:
-                        System.out.println("Unknown type: " + tooltip.type);
+                    if(!stack.isEmpty() && !stackId.equals("Go Back;1"))
+                        loadDescriptionsForInv(hs);
+                    knownIds.put(stackId, Boolean.TRUE);
+                    if (devMode) {
+                        System.out.println("Missing descriptions for " + stackId);
+                    }
+                    return;
                 }
-            }
 
-            // Add sell protection warnings to tooltips
-            addSellProtectionTooltip(stack, lines);
+                DescriptionHandler.DescModification[] tooltips = getMappedTooltipData(stackId);
+                if(tooltips == null)
+                    return;
+
+                var text = stack.get(DataComponents.LORE);
+                List<Component> ogLoreLines = text == null ? new ArrayList<>() : text.lines();
+
+                for (DescriptionHandler.DescModification tooltip : tooltips) {
+                    switch (tooltip.type) {
+                        case "APPEND":
+                            lines.add(Component.literal(tooltip.value + " "));
+                            break;
+                        case "REPLACE":
+                            if (tooltip.line < 0 || tooltip.line >= lines.size() || tooltip.line >= ogLoreLines.size()) {
+                                if (devMode) {
+                                    System.out.println("Invalid line index: " + tooltip.line + " for tooltip: " + tooltip.value);
+                                }
+                                continue; // Skip if the line index is invalid
+                            }
+                            int targetLine = tooltip.line;
+                            if(targetLine > 0
+                                    && targetLine + 1 < ogLoreLines.size()
+                                    && ChatFormatting.stripFormatting(ogLoreLines.get(targetLine).toString()).equals(ChatFormatting.stripFormatting(lines.get(targetLine).toString()))) {
+                                if (devMode) {
+                                    System.out.println("lines differ `" + ChatFormatting.stripFormatting(ogLoreLines.get(targetLine + 1).toString()) + "` to `" + ChatFormatting.stripFormatting(lines.get(targetLine).toString())  + "`");
+                                }
+                                targetLine++; // assume another mod added a line and move this down
+                            }
+                            lines.remove(targetLine);
+                            lines.add(targetLine, Component.literal(tooltip.value));
+                            break;
+                        case "INSERT":
+                            int insertAt = Math.max(0, Math.min(tooltip.line, lines.size()));
+                            lines.add(insertAt, Component.literal(tooltip.value));
+                            break;
+                        case "DELETE":
+                            if (tooltip.line < 0 || tooltip.line >= lines.size()) {
+                                if (devMode) {
+                                    System.out.println("Invalid delete line index: " + tooltip.line);
+                                }
+                                continue;
+                            }
+                            lines.remove(tooltip.line);
+                            break;
+                        case "HIGHLIGHT":
+                            // handled in mixin
+                            break;
+                        default:
+                            if (devMode) {
+                                System.out.println("Unknown type: " + tooltip.type);
+                            }
+                    }
+                }
+
+                // Add sell protection warnings to tooltips
+                addSellProtectionTooltip(stack, lines);
+            } finally {
+                PerfTracer.end("itemTooltipCallback", perfStart);
+            }
         });
 
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("coflnet", "countdown_hud"), (drawContext, tickCounter) -> {
-            if (EventSubscribers.showCountdown && EventSubscribers.countdownData != null
-                    && (Minecraft.getInstance().gui.screen() == null
-                            || Minecraft.getInstance().gui.screen() instanceof ChatScreen)) {
-                int heightPercentage = EventSubscribers.countdownData.getHeightPercentage();
-                int widthPercentage = EventSubscribers.countdownData.getWidthPercentage();
-                int screenWidth = drawContext.guiWidth();
-                int screenHeight = drawContext.guiHeight();
+            long perfStart = PerfTracer.begin();
+            try {
+                if (EventSubscribers.showCountdown && EventSubscribers.countdownData != null
+                        && (Minecraft.getInstance().gui.screen() == null
+                                || Minecraft.getInstance().gui.screen() instanceof ChatScreen)) {
+                    int heightPercentage = EventSubscribers.countdownData.getHeightPercentage();
+                    int widthPercentage = EventSubscribers.countdownData.getWidthPercentage();
+                    int screenWidth = drawContext.guiWidth();
+                    int screenHeight = drawContext.guiHeight();
 
-                int x = (screenWidth * widthPercentage) / 100;
-                int y = (screenHeight * heightPercentage) / 100;
+                    int x = (screenWidth * widthPercentage) / 100;
+                    int y = (screenHeight * heightPercentage) / 100;
 
-                RenderUtils.drawStringWithShadow(
-                        drawContext,
-                        EventSubscribers.countdownData.getPrefix()
-                                + getStringFromDouble(EventSubscribers.getCountdown(), EventSubscribers.countdownData.getMaxPrecision()),
-                        x,
-                        y,
-                        0xFFFFFFFF, EventSubscribers.countdownData.getScale().intValue());
+                    RenderUtils.drawStringWithShadow(
+                            drawContext,
+                            EventSubscribers.countdownData.getPrefix()
+                                    + getStringFromDouble(EventSubscribers.getCountdown(), EventSubscribers.countdownData.getMaxPrecision()),
+                            x,
+                            y,
+                            0xFFFFFFFF, EventSubscribers.countdownData.getScale().intValue());
+                }
+            } finally {
+                PerfTracer.end("hud.countdown", perfStart);
             }
         });
 
@@ -569,7 +667,7 @@ public class CoflModClient implements ClientModInitializer {
             return true;
         });
 
-        ScreenEvents.AFTER_INIT.register((minecraftClient, screen, i, i1) -> {
+        ScreenEvents.AFTER_INIT.register(perfWrapAfterInit("afterInit.titleScreenPopup", (minecraftClient, screen, i, i1) -> {
             if(!(Minecraft.getInstance().gui.screen() instanceof TitleScreen)) return;
             
             // Check for account switches in the title screen
@@ -595,7 +693,7 @@ public class CoflModClient implements ClientModInitializer {
                                 .build()
                 );
             }
-        });
+        }));
 
         UseBlockCallback.EVENT.register((playerEntity, world, hand, blockHitResult) -> {
             if(world.getBlockEntity(blockHitResult.getBlockPos()) instanceof RandomizableContainerBlockEntity lcbe){
@@ -935,7 +1033,6 @@ public class CoflModClient implements ClientModInitializer {
         client.keyboardHandler.setClipboard(dump);
         sendChatMessage("§a[dump] Copied container dump to clipboard §7(" + shown
                 + " items, size " + size + (trade ? ", TRADE" : "") + ")");
-        System.out.println("[CoflModClient] container dump:\n" + dump);
 
         // Step C diagnostic: if this is a trade, also log the per-side valuation.
         if (trade) {
@@ -959,7 +1056,7 @@ public class CoflModClient implements ClientModInitializer {
                     // Open YACL settings UI if available (scheduled to next tick so chat screen closes first)
                     client.execute(() -> {
                         try {
-                            CoflSkyCommand.processCommand(new String[]{"get", "json"}, username);
+                            backgroundQueue.submit(() -> CoflSkyCommand.processCommand(new String[]{"get", "json"}, username));
                             client.gui.setScreen(CoflSettingsScreen.create(client.gui.screen()));
                         } catch (Throwable t) {
                             sendChatMessage("§7Install §eYACL §7mod to access the settings GUI with §a/cofl§7.");
@@ -1014,7 +1111,17 @@ public class CoflModClient implements ClientModInitializer {
                         }
                     } else if(inputArgs.length > 3)
                         return builder.buildFuture();
-                    else {                        
+                    else {
+                        // Local-only commands; not in the server-pushed knownCommands map below,
+                        // so they must be suggested here rather than via CoflCore.config.knownCommands.
+                        if (inputArgs.length == 1 || "perf".startsWith(currentWord.toLowerCase())) {
+                            builder.suggest("perf", new Message() {
+                                @Override
+                                public String getString() {
+                                    return "Show dev-mode hook timing/stall diagnostics (/cofl perf reset to clear)";
+                                }
+                            });
+                        }
                         if(CoflCore.config.knownCommands == null)
                         {
                             System.out.println("No known commands loaded yet, cannot suggest");
@@ -1064,11 +1171,31 @@ public class CoflModClient implements ClientModInitializer {
                             boolean enabled = args[1].equalsIgnoreCase("on");
                             com.coflnet.config.DevManager.setEnabled(enabled);
                             sendChatMessage("§aDeveloper mode " + (enabled ? "§aenabled" : "§cdisabled")
-                                    + "§7. Open any container to " + (enabled ? "see" : "hide") + " the §eCopy Dump §7button.");
+                                    + "§7. Open any container to " + (enabled ? "see" : "hide") + " the §eCopy Dump §7button."
+                                    + (enabled ? " §7Use §e/cofl perf §7to see hook timings and stalls." : ""));
                         } else {
                             boolean current = com.coflnet.config.DevManager.isEnabled();
                             sendChatMessage("§7Developer mode is currently " + (current ? "§aon" : "§coff"));
                             sendChatMessage("§7Usage: §e/cofl dev <on/off>");
+                        }
+                        return 1;
+                    }
+
+                    // /cofl perf [reset]: dev-mode diagnostics - see PerfTracer/PerfStats.
+                    if (args.length >= 1 && args[0].equalsIgnoreCase("perf")) {
+                        if (args.length >= 2 && args[1].equalsIgnoreCase("reset")) {
+                            PerfTracer.stats().reset();
+                            sendChatMessage("§aPerf stats reset.");
+                            return 1;
+                        }
+                        String table = PerfTracer.stats().format();
+                        if (table.isBlank()) {
+                            sendChatMessage("§7No perf samples recorded yet. Enable §e/cofl dev on §7and play for a bit.");
+                        } else {
+                            sendChatMessage("§6§l=== SkyCofl Perf ===");
+                            for (String line : table.split("\n")) {
+                                sendChatMessage("§7" + line);
+                            }
                         }
                         return 1;
                     }
@@ -1173,7 +1300,8 @@ public class CoflModClient implements ClientModInitializer {
                     }
 
                     // Pass to CoflSkyCommand for other commands
-                    CoflSkyCommand.processCommand(args, username);
+                    String usernameSnapshot = username;
+                    backgroundQueue.submit(() -> CoflSkyCommand.processCommand(args, usernameSnapshot));
                     return 1;
                 })));
     }
@@ -1186,9 +1314,13 @@ public class CoflModClient implements ClientModInitializer {
         Minecraft client = Minecraft.getInstance();
         if (client.player == null || hoveredStack == null) return;
 
+        // Snapshot the item's NBT (Minecraft state) here on the calling (render) thread;
+        // only the actual network send is deferred to the background queue.
         RawCommand data = new RawCommand("hotkey", gson.toJson("upload_item" + getContextToAppend(hoveredStack)));
-        WSClientWrapper wrapper = CoflCore.Wrapper;
-        if (wrapper != null) wrapper.SendMessage(data);
+        backgroundQueue.submit(() -> {
+            WSClientWrapper wrapper = CoflCore.Wrapper;
+            if (wrapper != null) wrapper.SendMessage(data);
+        });
     }
 
     private static String getContextToAppend(ItemStack hoveredStack) {
@@ -1203,17 +1335,25 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     private static void uploadTabList() {
+        // Reading the network handler's player list is Minecraft state - snapshot it here
+        // on the calling (render) thread, then only defer the network send.
         Command<String[]> data = new Command<>(CommandType.uploadTab, CoflModClient.getTabList().toArray(new String[0]));
-        if (CoflCore.Wrapper != null)
-            CoflCore.Wrapper.SendMessage(data);
+        backgroundQueue.submit(() -> {
+            WSClientWrapper wrapper = CoflCore.Wrapper;
+            if (wrapper != null) wrapper.SendMessage(data);
+        });
     }
 
     private static void uploadScoreboard() {
+        // Reading the scoreboard is Minecraft state - snapshot it here on the calling
+        // (render) thread, then only defer the network send.
         String[] scores = CoflModClient.getScoreboard().toArray(new String[0]);
         lastScoreboardUploaded = getRelevantLinesFromScoreboard(scores);
         Command<String[]> data = new Command<>(CommandType.uploadScoreboard, scores);
-        if(CoflCore.Wrapper != null)
-            CoflCore.Wrapper.SendMessage(data);
+        backgroundQueue.submit(() -> {
+            WSClientWrapper wrapper = CoflCore.Wrapper;
+            if (wrapper != null) wrapper.SendMessage(data);
+        });
     }
 
     /**
@@ -1317,7 +1457,7 @@ public class CoflModClient implements ClientModInitializer {
             ItemStack stack = itemStacks.get(i);
             if (stack.getItem() != Items.AIR) {
                 String id = getIdFromStack(stack);
-                knownIds.add(id);
+                knownIds.put(id, Boolean.TRUE);
                 res.add(id);
             } else
                 res.add("EMPTY_SLOT_" + i); // Add a placeholder for empty slots
@@ -1533,6 +1673,8 @@ public class CoflModClient implements ClientModInitializer {
                 userName,
                 posToUpload
         );
+        // Descriptions changed - invalidate per-slot caches (e.g. ItemHighlightMixin).
+        descriptionsVersion.incrementAndGet();
     }
 
     /**
@@ -2239,7 +2381,7 @@ public class CoflModClient implements ClientModInitializer {
         String confirmedHost = extractConnectHost(confirmedDestination);
         clearPendingUntrustedConnect();
         sendChatMessage("§eConfirmed untrusted connection to §c" + getDisplayedConnectTarget(confirmedDestination, confirmedHost) + "§e.");
-        CoflSkyCommand.processCommand(confirmedArgs, username);
+        backgroundQueue.submit(() -> CoflSkyCommand.processCommand(confirmedArgs, username));
         return true;
     }
 
@@ -2449,7 +2591,10 @@ public class CoflModClient implements ClientModInitializer {
             modListData.addFilename(modName);
             modListData.addFilename(modId);
         }
-        WSClientWrapper wrapper = CoflCore.Wrapper;
-        if (wrapper != null) wrapper.SendMessage(new RawCommand("foundMods", new Gson().toJson(modListData)));
+        RawCommand data = new RawCommand("foundMods", new Gson().toJson(modListData));
+        backgroundQueue.submit(() -> {
+            WSClientWrapper wrapper = CoflCore.Wrapper;
+            if (wrapper != null) wrapper.SendMessage(data);
+        });
     }
 }

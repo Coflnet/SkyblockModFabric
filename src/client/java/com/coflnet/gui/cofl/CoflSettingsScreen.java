@@ -106,6 +106,9 @@ public class CoflSettingsScreen {
         YetAnotherConfigLib.Builder builder = YetAnotherConfigLib.createBuilder()
                 .title(Component.literal("SkyCofl Settings"));
 
+        // Client-side settings (not pushed from the server) go first.
+        builder.category(buildSkyCoflCategory());
+
         List<Runnable> saveActions = new ArrayList<>();
 
         byCategory.entrySet().stream()
@@ -142,6 +145,69 @@ public class CoflSettingsScreen {
         builder.save(() -> saveActions.forEach(Runnable::run));
 
         return builder.build().generateScreen(parent);
+    }
+
+    /**
+     * Client-side "SkyCofl" category: local config that never touches the server-pushed settings pipeline
+     * (dev mode, trade GUI, sell/co-op protection).
+     */
+    private static ConfigCategory buildSkyCoflCategory() {
+        com.coflnet.config.CoflModConfig cfg = com.coflnet.config.CoflModConfig.get();
+
+        ConfigCategory.Builder categoryBuilder = ConfigCategory.createBuilder()
+                .name(Component.literal("SkyCofl"));
+
+        categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Developer Mode"))
+                .description(OptionDescription.of(Component.literal(
+                        "Adds a \"Copy Dump\" button to container screens for diagnostics.")))
+                .binding(cfg.devMode,
+                        com.coflnet.config.DevManager::isEnabled,
+                        com.coflnet.config.DevManager::setEnabled)
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Trade GUI"))
+                .description(OptionDescription.of(Component.literal(
+                        "Replaces the Hypixel trade window with the SkyCofl trade overlay.")))
+                .binding(cfg.tradeGuiEnabled,
+                        com.coflnet.config.TradeGuiManager::isEnabled,
+                        com.coflnet.config.TradeGuiManager::setEnabled)
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Sell Protection Enabled"))
+                .description(OptionDescription.of(Component.literal(
+                        "Warns before selling an item worth more than the threshold below.")))
+                .binding(cfg.sellProtectionEnabled,
+                        com.coflnet.config.SellProtectionManager::isEnabled,
+                        com.coflnet.config.SellProtectionManager::setEnabled)
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        categoryBuilder.option(Option.<Long>createBuilder()
+                .name(Component.literal("Sell Protection Threshold"))
+                .description(OptionDescription.of(Component.literal(
+                        "Coin value above which sell protection warns before a sale.")))
+                .binding(cfg.sellProtectionThreshold,
+                        com.coflnet.config.SellProtectionManager::getMaxAmount,
+                        com.coflnet.config.SellProtectionManager::setMaxAmount)
+                .controller(LongFieldControllerBuilder::create)
+                .build());
+
+        categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Angry Co-op Protection"))
+                .description(OptionDescription.of(Component.literal(
+                        "Warns before actions that could upset a co-op member.")))
+                .binding(cfg.angryCoopProtectionEnabled,
+                        com.coflnet.config.AngryCoopProtectionManager::isEnabled,
+                        com.coflnet.config.AngryCoopProtectionManager::setEnabled)
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        return categoryBuilder.build();
     }
 
     private static Option<?> buildOption(Settings setting) {
@@ -356,14 +422,20 @@ public class CoflSettingsScreen {
         if (Minecraft.getInstance() == null || Minecraft.getInstance().getUser() == null) {
             return;
         }
-        CoflSkyCommand.processCommand(new String[]{"set", key, value}, Minecraft.getInstance().getUser().getName());
+        String username = Minecraft.getInstance().getUser().getName();
+        // Settings-screen option callbacks run on the render thread; defer the actual
+        // network call so it can never block on the WSClientWrapper's monitor.
+        com.coflnet.CoflModClient.backgroundQueue.submit(
+                () -> CoflSkyCommand.processCommand(new String[]{"set", key, value}, username));
     }
 
     private static void sendSetRemove(String key, String value) {
         if (Minecraft.getInstance() == null || Minecraft.getInstance().getUser() == null) {
             return;
         }
-        CoflSkyCommand.processCommand(new String[]{"set", key, "rm", value}, Minecraft.getInstance().getUser().getName());
+        String username = Minecraft.getInstance().getUser().getName();
+        com.coflnet.CoflModClient.backgroundQueue.submit(
+                () -> CoflSkyCommand.processCommand(new String[]{"set", key, "rm", value}, username));
     }
 
     private static boolean shouldHide(Settings setting) {

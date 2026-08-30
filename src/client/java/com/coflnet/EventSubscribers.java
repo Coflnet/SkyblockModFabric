@@ -61,7 +61,10 @@ public class EventSubscribers {
 
     @Subscribe
     public void WriteToChat(OnWriteToChatReceive command){
-        CoflModClient.displayModMessage(ChatComponent(command.ChatMessage));
+        // greenrobot EventBus posts synchronously on the calling thread (here: the
+        // WSClient network/read thread), but displayModMessage touches Minecraft's
+        // chat GUI, which is only safe to touch from the render thread.
+        runOnClientThread(() -> CoflModClient.displayModMessage(ChatComponent(command.ChatMessage)));
     }
 
     @Subscribe
@@ -90,7 +93,9 @@ public class EventSubscribers {
                 combinedMessage.append(styledPart);
             }
         }
-        CoflModClient.displayModMessage(combinedMessage);
+        // Building the Component tree above touches no live game state and is safe on
+        // any thread; posting it to chat is not (see WriteToChat above).
+        runOnClientThread(() -> CoflModClient.displayModMessage(combinedMessage));
     }
 
     @Subscribe

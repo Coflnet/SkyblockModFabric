@@ -30,7 +30,9 @@ public class ChatScreenMixin {
                 String[] args = new String[parts.length + 1];
                 args[0] = "chat";
                 System.arraycopy(parts, 0, args, 1, parts.length);
-                CoflSkyCommand.processCommand(args, username);
+                // Chat input handling runs on the render thread; defer the actual network
+                // call so it can never block on the WSClientWrapper's monitor.
+                CoflModClient.backgroundQueue.submit(() -> CoflSkyCommand.processCommand(args, username));
             }
             return;
         }
@@ -47,7 +49,9 @@ public class ChatScreenMixin {
                 String[] args = new String[message.split(" ").length + 1];
                 args[0] = "chat";
                 System.arraycopy(message.split(" "), 0, args, 1, message.split(" ").length);
-                CoflSkyCommand.processCommand(args, username);
+                // Chat input handling runs on the render thread; defer the actual network
+                // call so it can never block on the WSClientWrapper's monitor.
+                CoflModClient.backgroundQueue.submit(() -> CoflSkyCommand.processCommand(args, username));
             }
         }
     }

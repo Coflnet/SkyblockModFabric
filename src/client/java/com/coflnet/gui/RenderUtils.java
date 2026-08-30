@@ -373,18 +373,31 @@ public class RenderUtils {
         if (maxXYZ.length != 3) throw new ArgumentCountException(maxXYZ.length, 3, "Expected 3 values (x/y/z coordinates) in array");
         if (rgba.length != 4) throw new ArgumentCountException(rgba.length, 4, "Expected 4 values (r/g/b/a) in array");
 
+        renderHighlightBox(matrices, cameraPos,
+                minXYZ[0], minXYZ[1], minXYZ[2],
+                maxXYZ[0], maxXYZ[1], maxXYZ[2],
+                rgba[0], rgba[1], rgba[2], rgba[3]);
+    }
+
+    /**
+     * Primitive-argument version of {@link #renderHighlightBox(PoseStack, Vec3, double[], double[], float[])}.
+     * Callers that render a box per world position per frame (e.g. WorldRendererMixin
+     * highlighting several positions every frame) should use this overload so no
+     * double[]/float[] wrapper arrays are allocated on the hot path.
+     */
+    public static void renderHighlightBox(PoseStack matrices, Vec3 cameraPos,
+                                           double minX, double minY, double minZ,
+                                           double maxX, double maxY, double maxZ,
+                                           float r, float g, float b, float a) {
         // Convert RGBA floats to ARGB integer
-        int alpha = (int) (rgba[3] * 255);
-        int red = (int) (rgba[0] * 255);
-        int green = (int) (rgba[1] * 255);
-        int blue = (int) (rgba[2] * 255);
+        int alpha = (int) (a * 255);
+        int red = (int) (r * 255);
+        int green = (int) (g * 255);
+        int blue = (int) (b * 255);
         int color = (alpha << 24) | (red << 16) | (green << 8) | blue;
 
         // Create world-space AABB (not camera-relative - the Gizmo API handles this)
-        AABB box = new AABB(
-            minXYZ[0], minXYZ[1], minXYZ[2],
-            maxXYZ[0], maxXYZ[1], maxXYZ[2]
-        );
+        AABB box = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
 
         // Use the new Gizmo API to render a filled cuboid that renders through walls
         Gizmos.cuboid(box, GizmoStyle.strokeAndFill(color, 2.0f, color));
