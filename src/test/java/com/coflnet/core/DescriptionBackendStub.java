@@ -66,7 +66,7 @@ final class DescriptionBackendStub implements AutoCloseable {
             if (!CHEST_NAME.equals(request.get("chestName").getAsString())) {
                 throw new AssertionError("unexpected chestName");
             }
-            if (request.get("version").getAsInt() != 3) {
+            if (request.get("version").getAsInt() != 4) {
                 throw new AssertionError("unexpected description version");
             }
             verifyInventoryNbt(request.get("fullInventoryNbt").getAsString());

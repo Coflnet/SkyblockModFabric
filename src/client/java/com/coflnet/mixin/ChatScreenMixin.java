@@ -4,13 +4,48 @@ import com.coflnet.CoflModClient;
 import CoflCore.CoflSkyCommand;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.network.chat.HoverEvent;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Style;
+import com.coflnet.gui.hud.InfoDisplayRenderer;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ChatScreen.class)
 public class ChatScreenMixin {
+
+    @Inject(method = "extractRenderState", at = @At("TAIL"))
+    private void coflnet$hoverInfoDisplay(GuiGraphicsExtractor context, int mouseX, int mouseY,
+                                         float delta, CallbackInfo ci) {
+        Style style = InfoDisplayRenderer.styleAt(mouseX, mouseY, context.guiWidth(), context.guiHeight());
+        if (style != null && style.getHoverEvent() instanceof HoverEvent.ShowText hover) {
+            context.setTooltipForNextFrame(Minecraft.getInstance().font, hover.value(), mouseX, mouseY);
+        }
+    }
+
+    @Shadow
+    private boolean handleComponentClicked(Style style, boolean insertion) {
+        throw new AssertionError();
+    }
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void coflnet$clickInfoDisplay(MouseButtonEvent click, boolean doubleClick,
+                                         CallbackInfoReturnable<Boolean> cir) {
+        if (click.button() != 0) {
+            return;
+        }
+        var window = Minecraft.getInstance().getWindow();
+        Style style = InfoDisplayRenderer.styleAt(click.x(), click.y(),
+                window.getGuiScaledWidth(), window.getGuiScaledHeight());
+        if (style != null && style.getClickEvent() != null && handleComponentClicked(style, false)) {
+            cir.setReturnValue(true);
+        }
+    }
 
     @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)
     private void onSendMessage(String message, boolean addToHistory, CallbackInfo ci) {

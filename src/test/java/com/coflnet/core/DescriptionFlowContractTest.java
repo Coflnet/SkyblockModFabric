@@ -49,7 +49,7 @@ class DescriptionFlowContractTest {
 
             var request = stub.awaitRequest();
             assertEquals(DescriptionBackendStub.CHEST_NAME, request.get("chestName").getAsString());
-            assertEquals(3, request.get("version").getAsInt());
+            assertEquals(4, request.get("version").getAsInt());
             assertEquals(fullInventoryNbt, request.get("fullInventoryNbt").getAsString());
             assertEquals(DescriptionBackendStub.ITEM_DESCRIPTION,
                     DescriptionHandler.getTooltipData(orderId)[0].value);

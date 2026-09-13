@@ -1,11 +1,12 @@
 # Testing
 
-This project uses JUnit 5 for pure client-logic regression tests. The build requires JDK 25.
+This project uses JUnit 5 for pure client-logic regression tests. Gradle selects JDK 26;
+Java compilation targets release 25. CoflSkyCore is resolved from JitPack; no sibling checkout is required.
 
 Run the unit tests locally with:
 
 ```sh
-JAVA_HOME=/usr/lib/jvm/temurin-25-jdk-amd64 ./gradlew --no-daemon test
+./gradlew --no-daemon test
 ```
 
 The `testserver` subproject is included in both `test` and `build`. Its tests

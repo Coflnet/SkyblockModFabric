@@ -43,6 +43,77 @@ Requirements:
 
 Run `/cofl` in-game to open settings. See [sky.coflnet.com](https://sky.coflnet.com/wiki) for documentation.
 
+### Info displays
+
+Up to 3 permanent, backend-updatable HUD panels ("info displays") can be shown at all times in-game — for
+example a running list of flips, bazaar margins, or connection status. Each one can be moved, rescaled, and
+given its own background/text transparency.
+
+**Transport:** the backend sends an `infoDisplay` message over the existing websocket connection.
+The envelope is `{"type":"infoDisplay","data":"<JSON payload>"}`; `data` is a JSON-encoded string,
+as with other protocol messages. The client validates the payload and updates the HUD on the render thread.
+CoflSkyCore dispatches this message through its regular command event; no protocol mixin is needed.
+Gradle downloads and bundles the published CoflSkyCore dependency; no sibling checkout is required.
+`/cofl display <json>` remains available for local testing.
+
+With SkyModCommands, `/cofl test display` sends a test panel to slot 1 for 60 seconds;
+`/cofl test display clear` clears it through the same protocol.
+
+**Bazaar orders (2.0.0-pre1):** placing a buy order or sell offer introduces the order display
+in slot 2 through the tutorial system. The backend enables this only for clients reporting exactly
+`2.0.0-pre1`. Each line shows the last observed filled/total quantity and opens `/managebazaarorders`
+when clicked with chat open. While “Your Bazaar Orders” is open, changed overviews upload at most
+once per second, refreshing partial fills and removing orders that were claimed or cancelled.
+Full-fill chat messages also update the display. Partial fills are not polled while the menu is closed.
+
+Click **Disable display**, or run `/cofl set modhideBazaarOrderDisplay true`, to save a preference
+that hides slot 2's Bazaar content and suppresses its tutorial. Set it to `false` to re-enable.
+
+**JSON payload shape:**
+
+```json
+{
+  "id": 1,
+  "title": "§6Flips",
+  "lines": [
+    "§aplain colored line",
+    {"text": "clickable line", "hover": "shown on hover", "onClick": "suggest:/viewauction abc"}
+  ],
+  "ttl": 30,
+  "clear": false
+}
+```
+
+- `id` (required): which display slot, `1`-`3`.
+- `title` (optional): a single header line.
+- `lines` (optional): up to 30 entries, each either a plain string or an object with `text`/`hover`/`onClick`
+  (mirroring the existing chat `TextElement` format). `onClick` supports `http(s)://` URLs, `suggest:`,
+  `copy:`, or is otherwise run as a command. Each line is capped to 200 characters.
+- `ttl` (optional): seconds until the content expires and the display goes blank again. Omitted or `0` means
+  it stays until replaced or cleared.
+- `clear` (optional): `true` clears that display instead of setting content.
+
+**Commands:**
+
+To use a display line's click action, open chat with **T**, then left-click the text.
+Hover over a line while chat is open to show its `hover` tooltip, including on lines without a click action.
+The layout editor uses clicks for selecting and dragging, rather than running actions.
+
+- `/cofl displays` — opens the layout editor.
+- `/cofl display <json>` — pushes a payload (same shape as above).
+- `/cofl display clear [id]` — clears one display, or all three if `id` is omitted.
+- `/cofl display demo` — fills all three with sample content, for trying out the editor.
+- `/cofl display help` — prints the JSON shape and controls in chat.
+
+**Editor controls** (`/cofl displays`, or "Edit display layout" in `/cofl` → SkyCofl settings): left-click a
+display to select it, left-drag to move it; mouse wheel over a display rescales it, Shift+wheel adjusts its
+background transparency, Ctrl+wheel its text transparency; arrow keys nudge the selected display by 1px
+(Shift: 10px); `H` toggles it enabled, `R` resets it to defaults, `Escape` closes the editor. Positions are
+saved as fractions of the screen, so they hold up across resolution and GUI-scale changes.
+
+"Permanent" means the displays stay up while a container/other GUI is open too, not just with nothing (or
+chat) open — toggle this with "Show info displays while a GUI is open" in `/cofl` → SkyCofl settings.
+
 ## Links
 
 - [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)

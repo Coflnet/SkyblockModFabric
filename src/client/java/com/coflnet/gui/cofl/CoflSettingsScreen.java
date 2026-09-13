@@ -149,7 +149,7 @@ public class CoflSettingsScreen {
 
     /**
      * Client-side "SkyCofl" category: local config that never touches the server-pushed settings pipeline
-     * (dev mode, trade GUI, sell/co-op protection).
+     * (dev mode, trade GUI, sell/co-op protection, and the 3 permanent HUD info displays).
      */
     private static ConfigCategory buildSkyCoflCategory() {
         com.coflnet.config.CoflModConfig cfg = com.coflnet.config.CoflModConfig.get();
@@ -207,7 +207,86 @@ public class CoflSettingsScreen {
                 .controller(TickBoxControllerBuilder::create)
                 .build());
 
+        categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Show info displays while a GUI is open"))
+                .description(OptionDescription.of(Component.literal(
+                        "When on, the permanent info displays stay visible over container/other screens too, "
+                                + "not just when no GUI (or only chat) is open.")))
+                .binding(cfg.infoDisplaysShowInGuis, () -> cfg.infoDisplaysShowInGuis, value -> {
+                    cfg.infoDisplaysShowInGuis = value;
+                    saveInfoDisplays();
+                })
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        for (com.coflnet.config.CoflModConfig.InfoDisplaySettings display : cfg.infoDisplays) {
+            categoryBuilder.group(buildInfoDisplayGroup(display));
+        }
+
+        categoryBuilder.option(ButtonOption.createBuilder()
+                .name(Component.literal("Edit display layout"))
+                .description(OptionDescription.of(Component.literal(
+                        "Opens an in-game editor to drag, scale, and set the transparency of each info display.")))
+                .text(Component.literal("Open"))
+                .action(screen -> Minecraft.getInstance().gui.setScreen(
+                        new com.coflnet.gui.hud.InfoDisplayEditScreen(screen)))
+                .build());
+
         return categoryBuilder.build();
+    }
+
+    private static OptionGroup buildInfoDisplayGroup(com.coflnet.config.CoflModConfig.InfoDisplaySettings display) {
+        OptionGroup.Builder groupBuilder = OptionGroup.createBuilder()
+                .name(Component.literal("Display " + display.id))
+                .collapsed(false);
+
+        groupBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Enabled"))
+                .binding(display.enabled, () -> display.enabled, value -> {
+                    display.enabled = value;
+                    saveInfoDisplays();
+                })
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        groupBuilder.option(Option.<Double>createBuilder()
+                .name(Component.literal("Scale"))
+                .description(OptionDescription.of(Component.literal("0.5 - 3.0")))
+                .binding(display.scale, () -> display.scale, value -> {
+                    display.scale = com.coflnet.core.InfoDisplayLayout.clampScale(value);
+                    saveInfoDisplays();
+                })
+                .controller(opt -> DoubleFieldControllerBuilder.create(opt)
+                        .range(com.coflnet.core.InfoDisplayLayout.MIN_SCALE, com.coflnet.core.InfoDisplayLayout.MAX_SCALE))
+                .build());
+
+        groupBuilder.option(Option.<Double>createBuilder()
+                .name(Component.literal("Background Transparency"))
+                .description(OptionDescription.of(Component.literal("0.0 (invisible) - 1.0 (opaque)")))
+                .binding(display.backgroundAlpha, () -> display.backgroundAlpha, value -> {
+                    display.backgroundAlpha = com.coflnet.core.InfoDisplayLayout.clampBackgroundAlpha(value);
+                    saveInfoDisplays();
+                })
+                .controller(opt -> DoubleFieldControllerBuilder.create(opt)
+                        .range(com.coflnet.core.InfoDisplayLayout.MIN_BACKGROUND_ALPHA, com.coflnet.core.InfoDisplayLayout.MAX_BACKGROUND_ALPHA))
+                .build());
+
+        groupBuilder.option(Option.<Double>createBuilder()
+                .name(Component.literal("Text Transparency"))
+                .description(OptionDescription.of(Component.literal("0.2 (faint) - 1.0 (opaque)")))
+                .binding(display.textAlpha, () -> display.textAlpha, value -> {
+                    display.textAlpha = com.coflnet.core.InfoDisplayLayout.clampTextAlpha(value);
+                    saveInfoDisplays();
+                })
+                .controller(opt -> DoubleFieldControllerBuilder.create(opt)
+                        .range(com.coflnet.core.InfoDisplayLayout.MIN_TEXT_ALPHA, com.coflnet.core.InfoDisplayLayout.MAX_TEXT_ALPHA))
+                .build());
+
+        return groupBuilder.build();
+    }
+
+    private static void saveInfoDisplays() {
+        com.coflnet.config.CoflModConfig.get().save();
     }
 
     private static Option<?> buildOption(Settings setting) {

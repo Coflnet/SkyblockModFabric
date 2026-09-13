@@ -135,18 +135,30 @@ public class EventSubscribers {
         if (event == null || event.command == null || event.command.getType() == null) {
             return;
         }
-        if (event.command.getType() != CommandType.LoggedIn) {
+        CommandType type = event.command.getType();
+        if (type == CommandType.LoggedIn) {
+            try {
+                JsonElement parsed = JsonParser.parseString(event.command.getData());
+                JsonObject data = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+                String tier = data != null && data.has("tier") && !data.get("tier").isJsonNull()
+                        ? data.get("tier").getAsString()
+                        : null;
+                com.coflnet.config.TradeGuiManager.setAccountTier(tier);
+            } catch (RuntimeException ignored) {
+                com.coflnet.config.TradeGuiManager.clearAccountTier();
+            }
             return;
         }
-        try {
-            JsonElement parsed = JsonParser.parseString(event.command.getData());
-            JsonObject data = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
-            String tier = data != null && data.has("tier") && !data.get("tier").isJsonNull()
-                    ? data.get("tier").getAsString()
-                    : null;
-            com.coflnet.config.TradeGuiManager.setAccountTier(tier);
-        } catch (RuntimeException ignored) {
-            com.coflnet.config.TradeGuiManager.clearAccountTier();
+
+        // apply() moves HUD updates from the websocket thread onto the render thread.
+        if (type == CommandType.InfoDisplay) {
+            try {
+                com.coflnet.core.InfoDisplayPayload payload =
+                        com.coflnet.core.InfoDisplayPayloadParser.parse(event.command.getData());
+                com.coflnet.gui.hud.InfoDisplayManager.apply(payload);
+            } catch (com.coflnet.core.InfoDisplayPayloadParser.ParseException | RuntimeException e) {
+                System.out.println("[InfoDisplay] Failed to parse pushed payload: " + e.getMessage());
+            }
         }
     }
 
