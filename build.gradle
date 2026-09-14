@@ -106,6 +106,29 @@ jar {
 	}
 }
 
+tasks.register("installMod") {
+	group = "build"
+	description = "Builds and atomically installs the mod into -PmodsDir=<Minecraft mods directory>."
+	dependsOn tasks.named("build")
+	doLast {
+		def modsDir = providers.gradleProperty("modsDir").orNull
+		if (!modsDir) {
+			throw new GradleException("Specify the Minecraft mods directory with -PmodsDir=<path>")
+		}
+		def destination = file(modsDir).toPath()
+		def artifact = tasks.named("jar", Jar).get().archiveFile.get().asFile.toPath()
+		def temporary = java.nio.file.Files.createTempFile(destination, ".skycofl-", ".tmp")
+		try {
+			java.nio.file.Files.copy(artifact, temporary, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+			// Keep a running client's open ZIP reader on the old, intact jar until restart.
+			java.nio.file.Files.move(temporary, destination.resolve(artifact.fileName),
+					java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+		} finally {
+			java.nio.file.Files.deleteIfExists(temporary)
+		}
+	}
+}
+
 // configure the maven publication
 publishing {
 	publications {

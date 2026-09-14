@@ -34,6 +34,16 @@ Compatibility may change with future updates of any of these mods.
 
 Alternatively find it on CurseForge or Modrinth directly or in Prism Launcher.
 
+For local development, build and install with:
+
+```sh
+./gradlew installMod -PmodsDir=/path/to/minecraft/mods
+```
+
+This replaces the jar atomically. Copying over a jar while Minecraft is running can break
+resource loading, including the zero-width Text Tunnels marker font, with `invalid LOC header`.
+Restart Minecraft after installing to load the new build.
+
 Requirements:
 - Minecraft 1.21.5+ - 26.2
 - Fabric Loader 0.19.3+
