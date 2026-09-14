@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import com.coflnet.core.BackgroundQueue;
 import com.coflnet.core.BoundedLruMap;
+import com.coflnet.core.DescriptionRequest;
 import com.coflnet.core.SynchronizedHashMap;
 
 import CoflCore.classes.Position;
@@ -1693,49 +1694,23 @@ public class CoflModClient implements ClientModInitializer {
         return true;
     }
 
+    /** Captures inventory data now and performs the HTTP request on a worker. */
     public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items) {
-        String userName = Minecraft.getInstance().getUser().getName();
         String nbtString = inventoryToNBT(items);
         if (nbtString.equals(lastNbtRequest)) {
             return;
         }
         lastNbtRequest = nbtString;
 
-        // Check if we should throttle this request
+        // Capture before a closing screen is replaced or its chest position is cleared.
+        var request = new DescriptionRequest(title, getItemIdsFromInventory(items), nbtString,
+                Minecraft.getInstance().getUser().getName(), posToUpload);
         long currentTime = System.currentTimeMillis();
         Long lastRefreshTime = lastRefreshTimePerInventory.get(title);
-
-        if (lastRefreshTime != null && (currentTime - lastRefreshTime) < REFRESH_THROTTLE_MS) {
-            // Too soon since last refresh, schedule the request to be made after the throttle period
-            long delayMs = REFRESH_THROTTLE_MS - (currentTime - lastRefreshTime);
-            System.out.println("Throttling refresh for inventory: " + title + " (wait " + delayMs + "ms)");
-            Thread.startVirtualThread(() -> {
-                try {
-                    Thread.sleep(delayMs);
-                    // Request with current inventory state (in case it updated)
-                    NonNullList<ItemStack> currentItems = NonNullList.create();
-                    AbstractContainerScreen currentScreen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen 
-                        ? (AbstractContainerScreen) Minecraft.getInstance().gui.screen() 
-                        : null;
-                    if (currentScreen != null && currentScreen.getTitle().getString().equals(title)) {
-                        currentItems.addAll(currentScreen.getMenu().getItems());
-                    } else {
-                        // Inventory changed, use the items we have
-                        currentItems = items;
-                    }
-                    String currentNbt = inventoryToNBT(currentItems);
-                    fetchDescriptionsForItems(title, currentItems, currentNbt, userName);
-                    lastRefreshTimePerInventory.put(title, System.currentTimeMillis());
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
-            });
-            return;
-        }
-
-        // Update last refresh time and make the request
-        lastRefreshTimePerInventory.put(title, currentTime);
-        fetchDescriptionsForItems(title, items, nbtString, userName);
+        long delayMs = lastRefreshTime == null ? 0
+                : Math.max(0, REFRESH_THROTTLE_MS - (currentTime - lastRefreshTime));
+        lastRefreshTimePerInventory.put(title, currentTime + delayMs);
+        request.submit(delayMs, () -> descriptionsVersion.incrementAndGet());
     }
 
     /**
@@ -1745,24 +1720,8 @@ public class CoflModClient implements ClientModInitializer {
      * delayed throttle above.
      */
     public static void loadDescriptionsForItemsBlocking(String title, NonNullList<ItemStack> items) {
-        String userName = Minecraft.getInstance().getUser().getName();
-        String nbtString = inventoryToNBT(items);
-        fetchDescriptionsForItems(title, items, nbtString, userName);
-    }
-
-    private static void fetchDescriptionsForItems(
-            String title,
-            NonNullList<ItemStack> items,
-            String nbtString,
-            String userName) {
-        String[] visibleItems = getItemIdsFromInventory(items);
-        DescriptionHandler.loadDescriptionForInventory(
-                visibleItems,
-                title,
-                nbtString,
-                userName,
-                posToUpload
-        );
+        new DescriptionRequest(title, getItemIdsFromInventory(items), inventoryToNBT(items),
+                Minecraft.getInstance().getUser().getName(), posToUpload).load();
         // Descriptions changed - invalidate per-slot caches (e.g. ItemHighlightMixin).
         descriptionsVersion.incrementAndGet();
     }

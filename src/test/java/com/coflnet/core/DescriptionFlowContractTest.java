@@ -1,15 +1,25 @@
 package com.coflnet.core;
 
 import CoflCore.handlers.DescriptionHandler;
+import CoflCore.classes.Position;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DescriptionFlowContractTest {
     @AfterEach
@@ -28,6 +38,61 @@ class DescriptionFlowContractTest {
         System.setProperty(DescriptionEndpointOverride.PROPERTY, "https://example.com:443");
         assertThrows(IllegalArgumentException.class, DescriptionEndpointOverride::applySystemProperty);
         assertEquals("https://production-default.invalid", CoflCore.configuration.Config.BaseUrl);
+    }
+
+    @Test
+    void immediateAndThrottledRequestsReturnWhileBackendIsStalled(@TempDir Path sessionDirectory)
+            throws Exception {
+        CoflCore.misc.SessionManager.setMainPath(sessionDirectory);
+        for (long delayMs : new long[]{0, 50}) {
+            var received = new CountDownLatch(1);
+            var releaseResponse = new CountDownLatch(1);
+            var returned = new CountDownLatch(1);
+            var loaded = new CountDownLatch(1);
+            var captured = new AtomicReference<JsonObject>();
+            var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            server.createContext("/api/mod/description/modifications", exchange -> {
+                try {
+                    captured.set(JsonParser.parseString(new String(exchange.getRequestBody().readAllBytes(),
+                            StandardCharsets.UTF_8)).getAsJsonObject());
+                    received.countDown();
+                    if (!releaseResponse.await(5, TimeUnit.SECONDS)) {
+                        exchange.sendResponseHeaders(504, -1);
+                        return;
+                    }
+                    byte[] response = "[[{\"type\":\"APPEND\",\"value\":\"loaded\",\"line\":0}],[]]"
+                            .getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200, response.length);
+                    exchange.getResponseBody().write(response);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    exchange.close();
+                }
+            });
+            server.start();
+            try {
+                CoflCore.configuration.Config.BaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+                var request = new DescriptionRequest("Chest", new String[]{"outgoing-item"},
+                        "outgoing-inventory", "scenario-user", new Position(12, 64, 34));
+                Thread.startVirtualThread(() -> {
+                    request.submit(delayMs, loaded::countDown);
+                    returned.countDown();
+                });
+                assertTrue(received.await(2, TimeUnit.SECONDS), "request did not reach the backend");
+                assertTrue(returned.await(1, TimeUnit.SECONDS), "caller blocked waiting for the response");
+                assertEquals(1, loaded.getCount(), "completion ran before the response arrived");
+                releaseResponse.countDown();
+                assertTrue(loaded.await(2, TimeUnit.SECONDS), "response was not applied");
+                assertEquals("Chest", captured.get().get("chestName").getAsString());
+                assertEquals("outgoing-inventory", captured.get().get("fullInventoryNbt").getAsString());
+                assertEquals(JsonParser.parseString("{\"x\":12,\"y\":64,\"z\":34}"), captured.get().get("position"));
+                assertEquals("loaded", DescriptionHandler.getTooltipData("outgoing-item")[0].value);
+            } finally {
+                releaseResponse.countDown();
+                server.stop(0);
+            }
+        }
     }
 
     @Test
