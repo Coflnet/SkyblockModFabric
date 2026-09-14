@@ -69,12 +69,8 @@ Gradle downloads and bundles the published CoflSkyCore dependency; no sibling ch
 With SkyModCommands, `/cofl test display` sends a test panel to slot 1 for 60 seconds;
 `/cofl test display clear` clears it through the same protocol.
 
-**Bazaar orders (2.0.0-pre1):** placing a buy order or sell offer introduces the order display
-in slot 2 through the tutorial system. The backend enables this only for clients reporting exactly
-`2.0.0-pre1`. Each line shows the last observed filled/total quantity and opens `/managebazaarorders`
-when clicked with chat open. While “Your Bazaar Orders” is open, changed overviews upload at most
-once per second, refreshing partial fills and removing orders that were claimed or cancelled.
-Full-fill chat messages also update the display. Partial fills are not polled while the menu is closed.
+**Bazaar orders (2.0.0-pre1):** placing a buy order or sell offer introduces the order display. 
+
 
 Click **Disable display**, or run `/cofl set modhideBazaarOrderDisplay true`, to save a preference
 that hides slot 2's Bazaar content and suppresses its tutorial. Set it to `false` to re-enable.

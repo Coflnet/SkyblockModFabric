@@ -644,7 +644,6 @@ public class CoflModClient implements ClientModInitializer {
 
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("coflnet", "info_displays"),
                 com.coflnet.gui.hud.InfoDisplayRenderer.INSTANCE);
-        ClientTickEvents.END_CLIENT_TICK.register(new com.coflnet.gui.hud.BazaarOrderUpload());
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();

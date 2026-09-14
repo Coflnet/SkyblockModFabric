@@ -69,7 +69,7 @@ public class CoflModConfig {
 
     /** Sensible default layout for a given display slot (top-right, stacked). */
     public static InfoDisplaySettings defaultInfoDisplay(int id) {
-        return new InfoDisplaySettings(id, id == 1, 0.62, 0.02 + (id - 1) * 0.30);
+        return new InfoDisplaySettings(id, id == 1 || id == 2, 0.62, 0.02 + (id - 1) * 0.30);
     }
 
     /**
