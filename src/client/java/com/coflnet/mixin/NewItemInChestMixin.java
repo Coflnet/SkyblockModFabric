@@ -68,6 +68,7 @@ public class NewItemInChestMixin {
     private void onPacketReceive(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         long perfStart = PerfTracer.begin();
         try {
+            refreshBazaarOrders(packet.getContainerId());
             int slot = packet.getSlot();
             // Offer slots are 0-35; slot 40 may be the final divider update
             // that makes the full trade layout verifiable.
@@ -111,10 +112,19 @@ public class NewItemInChestMixin {
     private void onContainerContent(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
         long perfStart = PerfTracer.begin();
         try {
+            refreshBazaarOrders(packet.containerId());
             TradePriceCache.requestCurrentTrade(packet.containerId());
             CoflModClient.openTradeOverlayIfReady(packet.containerId());
         } finally {
             PerfTracer.end("newItemInChestMixin.onContainerContent", perfStart);
+        }
+    }
+
+    private static void refreshBazaarOrders(int containerId) {
+        if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> screen
+                && screen.getMenu().containerId == containerId
+                && com.coflnet.core.MenuClassifier.isBazaarOrders(screen.getTitle().getString())) {
+            CoflModClient.instance.loadDescriptionsForInv(screen);
         }
     }
 }

@@ -141,7 +141,7 @@ public class CoflModClient implements ClientModInitializer {
     public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
     private String username = "";
     private String lastCheckedUsername = ""; // Track last username to detect account switches
-    private static volatile String lastNbtRequest = "";
+    private static final java.util.concurrent.atomic.AtomicReference<String> lastNbtRequest = new java.util.concurrent.atomic.AtomicReference<>("");
     private boolean uploadedScoreboard = false;
     private static boolean popupShown = false;
     public static Position posToUpload = null;
@@ -522,6 +522,10 @@ public class CoflModClient implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register(perfWrapAfterInit("afterInit.loadDescriptions", (client, screen, scaledWidth, scaledHeight) -> {
             if (screen instanceof AbstractContainerScreen<?> hs) {
                 knownIds.clear();
+                // A fresh order view confirms state even when its items have not changed.
+                if (com.coflnet.core.MenuClassifier.isBazaarOrders(hs.getTitle().getString())) {
+                    lastNbtRequest.set("");
+                }
                 loadDescriptionsForInv(hs);
                 if(!uploadedScoreboard)
                 {
@@ -1633,7 +1637,7 @@ public class CoflModClient implements ClientModInitializer {
                 }
                 String[] visibleItems = getItemIdsFromInventory(itemStacks);
                 loadDescriptionsForItems(title, itemStacks);
-                boolean refresh = false;
+                boolean refresh = com.coflnet.core.MenuClassifier.isBazaarOrders(title);
                 if(title.contains("Auctions"))
                 {
                     for (ItemStack itemStack : itemStacks) {
@@ -1672,7 +1676,7 @@ public class CoflModClient implements ClientModInitializer {
                         return;
                     }
                     System.out.println("Refreshing descriptions for inventory: " + title);
-                    loadDescriptionsForItems(title, itemStacks);
+                    loadDescriptionsForItems(title, screen.getMenu().getItems());
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -1696,10 +1700,9 @@ public class CoflModClient implements ClientModInitializer {
     /** Captures inventory data now and performs the HTTP request on a worker. */
     public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items) {
         String nbtString = inventoryToNBT(items);
-        if (nbtString.equals(lastNbtRequest)) {
+        if (nbtString.equals(lastNbtRequest.getAndSet(nbtString))) {
             return;
         }
-        lastNbtRequest = nbtString;
 
         // Capture before a closing screen is replaced or its chest position is cleared.
         var request = new DescriptionRequest(title, getItemIdsFromInventory(items), nbtString,
@@ -1709,7 +1712,8 @@ public class CoflModClient implements ClientModInitializer {
         long delayMs = lastRefreshTime == null ? 0
                 : Math.max(0, REFRESH_THROTTLE_MS - (currentTime - lastRefreshTime));
         lastRefreshTimePerInventory.put(title, currentTime + delayMs);
-        request.submit(delayMs, () -> descriptionsVersion.incrementAndGet());
+        request.submit(delayMs, () -> descriptionsVersion.incrementAndGet(),
+                () -> lastNbtRequest.compareAndSet(nbtString, ""));
     }
 
     /**

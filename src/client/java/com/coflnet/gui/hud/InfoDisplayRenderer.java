@@ -9,8 +9,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.tooltip.DefaultTooltipPositioner;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.HoverEvent;
 import org.joml.Matrix3x2fStack;
 
 /**
@@ -37,7 +39,7 @@ public final class InfoDisplayRenderer implements HudElement {
     /** Finds a line using the same scaled, clamped geometry as rendering, topmost panel first. */
     public static Style styleAt(double mouseX, double mouseY, int screenWidth, int screenHeight) {
         Minecraft client = Minecraft.getInstance();
-        if (client.gui.hud.isHidden()) {
+        if (client.gui.hud.isHidden() || !isVisible(client.gui.screen())) {
             return null;
         }
         CoflModConfig config = CoflModConfig.get();
@@ -73,17 +75,10 @@ public final class InfoDisplayRenderer implements HudElement {
     @Override
     public void extractRenderState(GuiGraphicsExtractor context, DeltaTracker tickCounter) {
         Screen screen = Minecraft.getInstance().gui.screen();
-        // The layout editor draws its own representation of all three displays; never double-draw here.
-        if (screen instanceof InfoDisplayEditScreen) {
+        if (!isVisible(screen)) {
             return;
         }
-
         CoflModConfig config = CoflModConfig.get();
-        // "Permanent" means these stay up over other GUIs too, unless the user opted out - but they're
-        // always shown with no screen open (or chat, which never blocks anything) regardless of that setting.
-        if (screen != null && !(screen instanceof ChatScreen) && !config.infoDisplaysShowInGuis) {
-            return;
-        }
 
         int screenWidth = context.guiWidth();
         int screenHeight = context.guiHeight();
@@ -98,6 +93,22 @@ public final class InfoDisplayRenderer implements HudElement {
                 continue;
             }
             render(context, screenWidth, screenHeight, settings, snapshot);
+        }
+    }
+
+    private static boolean isVisible(Screen screen) {
+        return !(screen instanceof InfoDisplayEditScreen)
+                && (screen == null || screen instanceof ChatScreen || CoflModConfig.get().infoDisplaysShowInGuis);
+    }
+
+    /** Run after the screen's tooltips are queued, before Minecraft extracts them. */
+    public static void renderHover(GuiGraphicsExtractor context, int mouseX, int mouseY) {
+        Style style = styleAt(mouseX, mouseY, context.guiWidth(), context.guiHeight());
+        if (style != null && style.getHoverEvent() instanceof HoverEvent.ShowText hover) {
+            var font = Minecraft.getInstance().font;
+            context.setTooltipForNextFrame(font,
+                    font.split(hover.value(), Math.max(1, Math.min(300, context.guiWidth() - 16))),
+                    DefaultTooltipPositioner.INSTANCE, mouseX, mouseY, true);
         }
     }
 

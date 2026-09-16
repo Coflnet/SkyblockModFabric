@@ -6,6 +6,8 @@ import com.coflnet.PerfTracer;
 import com.coflnet.config.TextWidgetPositionConfig;
 import com.coflnet.core.InfoDisplayLayout;
 import com.coflnet.gui.RenderUtils;
+import com.coflnet.gui.hud.InfoDisplayRenderer;
+import net.minecraft.client.gui.screens.ChatScreen;
 import com.coflnet.models.TextElement;
 import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
@@ -489,6 +491,13 @@ public abstract class HandledScreenMixin extends Screen {
     public void onMouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubleClick, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
         long perfStart = PerfTracer.begin();
         try {
+            var hudStyle = InfoDisplayRenderer.styleAt(click.x(), click.y(), width, height);
+            if (click.button() == 0 && hudStyle != null && hudStyle.getClickEvent() != null) {
+                handleInfoDisplayClickEvent(hudStyle.getClickEvent());
+                cir.setReturnValue(true);
+                return;
+            }
+
             double mouseX = click.x();
             double mouseY = click.y();
             int button = click.button();
@@ -586,6 +595,8 @@ public abstract class HandledScreenMixin extends Screen {
                     player.connection.sendChat(command);
                 }
             }
+        } else if (clickEvent instanceof ClickEvent.SuggestCommand suggestion) {
+            Minecraft.getInstance().gui.setScreen(new ChatScreen(suggestion.command(), false));
         } else {
             Screen.defaultHandleClickEvent(clickEvent, Minecraft.getInstance(), this);
         }

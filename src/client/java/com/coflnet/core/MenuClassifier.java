@@ -4,6 +4,10 @@ public final class MenuClassifier {
     private MenuClassifier() {
     }
 
+    public static boolean isBazaarOrders(String title) {
+        return "Your Bazaar Orders".equals(title) || "Co-op Bazaar Orders".equals(title);
+    }
+
     public static boolean isStorageChest(String title) {
         if (title == null) {
             return false;

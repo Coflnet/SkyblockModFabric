@@ -96,6 +96,39 @@ class DescriptionFlowContractTest {
     }
 
     @Test
+    void failedUploadAllowsAnIdenticalOrderViewToBeRetried(@TempDir Path sessionDirectory) throws Exception {
+        CoflCore.misc.SessionManager.setMainPath(sessionDirectory);
+        var attempts = new java.util.concurrent.atomic.AtomicInteger();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/mod/description/modifications", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            if (attempts.incrementAndGet() == 1) {
+                exchange.sendResponseHeaders(503, -1);
+            } else {
+                byte[] response = "[[]]".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+            }
+            exchange.close();
+        });
+        server.start();
+        try {
+            CoflCore.configuration.Config.BaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            var failed = new CountDownLatch(1);
+            var loaded = new CountDownLatch(1);
+            var request = new DescriptionRequest("Co-op Bazaar Orders", new String[]{"order"}, "same-inventory", "scenario-user", null);
+            request.submit(0, loaded::countDown, failed::countDown);
+            assertTrue(failed.await(3, TimeUnit.SECONDS));
+            assertEquals(1, loaded.getCount(), "failed upload must not report successful loading");
+            request.submit(0, loaded::countDown, () -> {});
+            assertTrue(loaded.await(3, TimeUnit.SECONDS));
+            assertEquals(2, attempts.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void realDescriptionRequestMapsOrderDescriptionAndTrailingInfoDisplay(@TempDir Path sessionDirectory)
             throws Exception {
         try (var stub = new DescriptionBackendStub()) {
