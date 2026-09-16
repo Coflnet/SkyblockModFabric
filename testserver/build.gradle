@@ -154,7 +154,7 @@ tasks.register("verifyScenarioJar") {
 				]
 			]
 			if (metadata != expectedMetadata) {
-				throw new GradleException("scenario Fabric metadata is outside the reviewed main/26.2 runtime contract")
+				throw new GradleException("scenario Fabric metadata is outside the reviewed main/26.3 runtime contract")
 			}
 		}
 	}

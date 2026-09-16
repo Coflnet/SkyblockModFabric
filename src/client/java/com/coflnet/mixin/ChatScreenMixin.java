@@ -1,5 +1,6 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.CoflModClient;
 import CoflCore.CoflSkyCommand;
 import net.minecraft.client.Minecraft;
@@ -25,7 +26,7 @@ public class ChatScreenMixin {
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void coflnet$clickInfoDisplay(MouseButtonEvent click, boolean doubleClick,
                                          CallbackInfoReturnable<Boolean> cir) {
-        if (click.button() != 0) {
+        if (click.button() != InputConstants.MOUSE_BUTTON_LEFT) {
             return;
         }
         var window = Minecraft.getInstance().getWindow();

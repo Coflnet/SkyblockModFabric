@@ -1,5 +1,6 @@
 package com.coflnet;
 
+import com.mojang.blaze3d.Blaze3D;
 import java.util.*;
 
 import CoflCore.classes.*;
@@ -25,7 +26,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Util;
+import java.net.URI;
 
 public class EventSubscribers {
     public static volatile FlipData flipData = null;
@@ -73,7 +74,7 @@ public class EventSubscribers {
             return;
         }
 
-        runOnClientThread(() -> Util.getPlatform().openUri(event.url));
+        runOnClientThread(() -> Blaze3D.openUri(URI.create(event.url)));
     }
 
     @Subscribe

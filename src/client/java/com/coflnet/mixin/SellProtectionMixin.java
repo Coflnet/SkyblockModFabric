@@ -1,5 +1,6 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.config.SellProtectionManager;
 import com.coflnet.utils.SellAmountParser;
 import net.minecraft.client.Minecraft;
@@ -9,7 +10,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -31,7 +31,7 @@ public abstract class SellProtectionMixin {
 
             // Only check left and right clicks
             int button = click.button();
-            if (button != 0 && button != 1) {
+            if (button != InputConstants.MOUSE_BUTTON_LEFT && button != InputConstants.MOUSE_BUTTON_RIGHT) {
                 return;
             }
 
@@ -58,8 +58,8 @@ public abstract class SellProtectionMixin {
             }
 
             // Check if ctrl is pressed
-            boolean ctrlPressed = GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ||
-                                  GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+            boolean ctrlPressed = InputConstants.isKeyDown(InputConstants.KEY_LCONTROL) ||
+                                  InputConstants.isKeyDown(InputConstants.KEY_RCONTROL);
 
             // Check for sell protection patterns and extract amounts
             boolean shouldBlock = false;
@@ -68,7 +68,7 @@ public abstract class SellProtectionMixin {
 
             if (itemName.contains("Sell Instantly")) {
                 sellAmount = SellAmountParser.extractSellInstantlyAmount(clickedItem);
-                if (button == 0 && !ctrlPressed && sellAmount > SellProtectionManager.getMaxAmount()) { // Left click without ctrl
+                if (button == InputConstants.MOUSE_BUTTON_LEFT && !ctrlPressed && sellAmount > SellProtectionManager.getMaxAmount()) { // Left click without ctrl
                     shouldBlock = true;
                     protection = "Sell Instantly";
                 }

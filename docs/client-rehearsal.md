@@ -21,7 +21,7 @@ While the server is running, launch the client and capture screenshots after 20 
 ```sh
 JAVA_TOOL_OPTIONS=-Dcoflnet.description.base-url=http://127.0.0.1:PORT \
 coflnet-minecraft-client run \
-  --mod build/libs/SkyCofl-1.9.3.jar \
+  --mod build/libs/SkyCofl-2.0.0-pre1.jar \
   --server-port 25565 \
   --screenshots /workspace/.coflnet-client-run-source-description-final-v4 \
   --mode debug \
@@ -35,6 +35,27 @@ coflnet-minecraft-client run \
 
 Inspect the PNG files and `client.log` under
 `/workspace/.coflnet-client-run-source-description-final-v4`.
+
+## Minecraft 26.3 upgrade smoke (2026-09-17)
+
+`./gradlew build` passed all 55 client regression tests and 24 scenario-server tests.
+The built SkyCofl 2.0.0-pre1 JAR was installed in the new Prism instance `26.3`, with
+Fabric Loader 0.19.5, Fabric API 0.160.6+26.3, YACL 3.9.6+26.3-fabric, and Java 25.
+The previous Minecraft 26.2 code is preserved on branch `26.2` at `9e1fb02`.
+
+A temporary client helper connected an offline test player to the repository's
+`bazaar-orders` scenario server on `127.0.0.1:25576`. The final run completed with
+`COFL_SMOKE COMPLETE` after checking startup, the rendered Bazaar container,
+inventory HUD hover hit-testing and copy action, SDL hotkey lookup, display-editor
+selection/drag/resize, rendered YACL settings, and sign autofill. The runtime test
+caught and verified the fix for the scrollbar mixin's moved RenderPipeline target.
+This is a local client smoke test; it does not validate live Hypixel/backend behavior
+or compatibility with the other optional mods from older Prism instances.
+
+Final screenshots are in the Prism instance's `minecraft/screenshots` directory,
+from `2026-09-17_00.01.02.png` through `2026-09-17_00.01.21.png`. The helper source,
+result, and final client log are retained under `/tmp/skycofl-26.3-smoke`; the helper
+JAR was removed from the instance after testing and the localhost server stopped.
 
 ## Last Bazaar rehearsal (2026-09-03)
 

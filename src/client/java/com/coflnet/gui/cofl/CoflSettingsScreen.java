@@ -1,5 +1,6 @@
 package com.coflnet.gui.cofl;
 
+import com.mojang.blaze3d.Blaze3D;
 import CoflCore.CoflCore;
 import CoflCore.CoflSkyCommand;
 import CoflCore.classes.Settings;
@@ -20,7 +21,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Util;
+import java.net.URI;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -481,7 +482,7 @@ public class CoflSettingsScreen {
                 .name(Component.literal("Wiki / Documentation"))
                 .description(OptionDescription.of(Component.literal("Open the SkyCofl wiki for detailed documentation on all settings, finders, and filters.")))
                 .text(Component.literal("Open"))
-                .action(screen -> Util.getPlatform().openUri("https://sky.coflnet.com/wiki"))
+                .action(screen -> Blaze3D.openUri(URI.create("https://sky.coflnet.com/wiki")))
                 .build();
     }
 
@@ -493,7 +494,7 @@ public class CoflSettingsScreen {
                 .name(Component.literal("Filters & Whitelist/Blacklist"))
                 .description(OptionDescription.of(description))
                 .text(Component.literal("Configure"))
-                .action(screen -> Util.getPlatform().openUri("https://sky.coflnet.com/flipper"))
+                .action(screen -> Blaze3D.openUri(URI.create("https://sky.coflnet.com/flipper")))
                 .build();
     }
 

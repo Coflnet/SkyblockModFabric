@@ -1,5 +1,6 @@
 package com.coflnet.gui.cofl;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
@@ -76,7 +77,7 @@ public class CoflBinGUI extends BinGUI {
             @Override
             protected boolean isValidClickButton(net.minecraft.client.input.MouseButtonInfo mi) {
                 int b = mi.button();
-                return b == 0 || b == 1;
+                return b == InputConstants.MOUSE_BUTTON_LEFT || b == InputConstants.MOUSE_BUTTON_RIGHT;
             }
         };
 
@@ -120,8 +121,8 @@ public class CoflBinGUI extends BinGUI {
                 double mouseX = click.x();
                 double mouseY = click.y();
                 if (leftClickableWidget.isMouseOver(mouseX, mouseY)) {
-                    // No explicit button provided here; default to left mouse button (0) and no modifiers.
-                    net.minecraft.client.input.MouseButtonInfo mi = new net.minecraft.client.input.MouseButtonInfo(0, 0);
+                    // No explicit button provided here; default to the left mouse button and no modifiers.
+                    net.minecraft.client.input.MouseButtonInfo mi = new net.minecraft.client.input.MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0);
                     leftClickableWidget.onClick(new net.minecraft.client.input.MouseButtonEvent(mouseX, mouseY, mi), true);
                 } else {
                     switch (auctionStatus){
@@ -146,7 +147,7 @@ public class CoflBinGUI extends BinGUI {
             @Override
             protected boolean isValidClickButton(net.minecraft.client.input.MouseButtonInfo mi) {
                 int b = mi.button();
-                return b == 0 || b == 1;
+                return b == InputConstants.MOUSE_BUTTON_LEFT || b == InputConstants.MOUSE_BUTTON_RIGHT;
             }
         };
 

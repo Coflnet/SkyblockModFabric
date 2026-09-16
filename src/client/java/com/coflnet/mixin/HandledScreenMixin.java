@@ -1,5 +1,6 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
 import com.coflnet.PerfTracer;
@@ -419,7 +420,7 @@ public abstract class HandledScreenMixin extends Screen {
             double mouseX = click.x();
             double mouseY = click.y();
 
-            if (isDragging && button == 1) { // Right mouse button
+            if (isDragging && button == InputConstants.MOUSE_BUTTON_RIGHT) { // Right mouse button
                 // Update widget position based on drag
                 double newX = widgetStartX + (mouseX - dragStartX);
                 double newY = widgetStartY + (mouseY - dragStartY);
@@ -446,7 +447,7 @@ public abstract class HandledScreenMixin extends Screen {
     public void onMouseReleased(net.minecraft.client.input.MouseButtonEvent click, CallbackInfoReturnable<Boolean> cir) {
         try {
             int button = click.button();
-            if (isDragging && button == 1) { // Right mouse button
+            if (isDragging && button == InputConstants.MOUSE_BUTTON_RIGHT) { // Right mouse button
                 isDragging = false;
                 positionConfig.save(); // Save the new position
                 cir.setReturnValue(true);
@@ -492,7 +493,7 @@ public abstract class HandledScreenMixin extends Screen {
         long perfStart = PerfTracer.begin();
         try {
             var hudStyle = InfoDisplayRenderer.styleAt(click.x(), click.y(), width, height);
-            if (click.button() == 0 && hudStyle != null && hudStyle.getClickEvent() != null) {
+            if (click.button() == InputConstants.MOUSE_BUTTON_LEFT && hudStyle != null && hudStyle.getClickEvent() != null) {
                 handleInfoDisplayClickEvent(hudStyle.getClickEvent());
                 cir.setReturnValue(true);
                 return;
@@ -528,7 +529,7 @@ public abstract class HandledScreenMixin extends Screen {
             }
 
             // Handle right-click for dragging
-            if (button == 1 && overWidget) { // Right mouse button
+            if (button == InputConstants.MOUSE_BUTTON_RIGHT && overWidget) { // Right mouse button
                 isDragging = true;
                 dragStartX = mouseX;
                 dragStartY = mouseY;
@@ -539,7 +540,7 @@ public abstract class HandledScreenMixin extends Screen {
             }
 
             // Handle left-click for text interactions (existing functionality)
-            if (button == 0) { // Left mouse button
+            if (button == InputConstants.MOUSE_BUTTON_LEFT) { // Left mouse button
                 for (int i = 0; i < infos.size(); i++) {
                     LineInfo info = infos.get(i);
                     int lineY = startY + (i * lineHeight);

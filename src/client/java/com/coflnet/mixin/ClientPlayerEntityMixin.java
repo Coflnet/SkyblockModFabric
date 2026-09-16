@@ -5,6 +5,9 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.world.level.block.entity.SignText;
+import net.minecraft.world.level.block.entity.SignTextSlot;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
@@ -17,43 +20,43 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(LocalPlayer.class)
 public class ClientPlayerEntityMixin {
     @Inject(method = "openTextEdit", at = @At("HEAD"))
-    private void openTextEdit(SignBlockEntity sign, boolean front, CallbackInfo ci){
+    private void openTextEdit(SignBlockEntity sign, SignTextSlot slot, CallbackInfo ci){
         try {
             // Handle trade coins input first (auto-fill the coin amount sign).
             if (CoflModClient.pendingCoinAmount != null) {
-                handleCoinInput(sign, front);
+                handleCoinInput(sign, slot);
                 return;
             }
 
             // Handle bazaar search first
             if (CoflModClient.pendingBazaarSearch != null) {
-                handleBazaarSearch(sign, front);
+                handleBazaarSearch(sign, slot);
                 return;
             }
 
             // Handle a click-armed sign fill (e.g. the Instant Buy "buy max" suggestion).
             if (CoflModClient.pendingSignFill != null) {
-                handleSignFill(sign, front);
+                handleSignFill(sign, slot);
                 return;
             }
 
             // Handle existing price suggestion logic
             String toSuggest = CoflModClient.findPriceSuggestion();
             System.out.println("Value to suggest: '"+toSuggest+"'");
-            Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
+            List<Component> lines = new ArrayList<>(sign.getText(slot).getMessages(Minecraft.getInstance().isTextFilteringEnabled()));
             String[] suggestionParts = toSuggest.split(": ");
 
             if(toSuggest == "") return;
             if(suggestionParts.length == 0) return;
-            if(lines.length < 4) return;
-            if(!suggestionParts[0].equals(lines[3].getString())) return;
+            if(lines.size() < 4) return;
+            if(!suggestionParts[0].equals(lines.get(3).getString())) return;
 
-            lines[0] = Component.literal(suggestionParts[1].trim());
+            lines.set(0, Component.literal(suggestionParts[1].trim()));
             sign.updateText(signText -> new SignText(
                     lines, lines,
                     signText.getColor(),
                     signText.hasGlowingText()
-            ), true);
+            ), slot);
         } catch (Exception e) {
             System.out.println("[ClientPlayerEntityMixin] openEditSignScreen failed: " + e.getMessage());
         }
@@ -65,7 +68,7 @@ public class ClientPlayerEntityMixin {
      * sign so the amount is submitted. Payload format is "<4th line>: <value>", same as the
      * always-on price suggestion but gated behind an explicit InfoDisplay click.
      */
-    private void handleSignFill(SignBlockEntity sign, boolean front) {
+    private void handleSignFill(SignBlockEntity sign, SignTextSlot slot) {
         String payload = CoflModClient.pendingSignFill;
         CoflModClient.pendingSignFill = null; // consume once, regardless of match
 
@@ -85,18 +88,18 @@ public class ClientPlayerEntityMixin {
             return;
         }
 
-        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
-        if (lines.length < 4 || !matchLine.equals(lines[3].getString())) {
+        List<Component> lines = new ArrayList<>(sign.getText(slot).getMessages(Minecraft.getInstance().isTextFilteringEnabled()));
+        if (lines.size() < 4 || !matchLine.equals(lines.get(3).getString())) {
             CoflModClient.suppressSignRender = false; // not the sign this suggestion is for
             return;
         }
 
-        lines[0] = Component.literal(value.trim());
+        lines.set(0, Component.literal(value.trim()));
         sign.updateText(signText -> new SignText(
                 lines, lines,
                 signText.getColor(),
                 signText.hasGlowingText()
-        ), front);
+        ), slot);
 
         scheduleSignClose(Minecraft.getInstance(), "buy max sign fill");
     }
@@ -106,21 +109,21 @@ public class ClientPlayerEntityMixin {
      * bazaar-search auto-fill flow exactly — fills line 0 with the digit string
      * and closes the sign after a short delay so Hypixel registers the amount.
      */
-    private void handleCoinInput(SignBlockEntity sign, boolean front) {
+    private void handleCoinInput(SignBlockEntity sign, SignTextSlot slot) {
         String amount = CoflModClient.pendingCoinAmount;
         System.out.println("Filling trade coins with: " + amount);
 
-        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
-        lines[0] = Component.literal(amount);
-        lines[1] = Component.literal("");
-        lines[2] = Component.literal("");
-        lines[3] = Component.literal("");
+        List<Component> lines = new ArrayList<>(sign.getText(slot).getMessages(Minecraft.getInstance().isTextFilteringEnabled()));
+        lines.set(0, Component.literal(amount));
+        lines.set(1, Component.literal(""));
+        lines.set(2, Component.literal(""));
+        lines.set(3, Component.literal(""));
 
         sign.updateText(signText -> new SignText(
                 lines, lines,
                 signText.getColor(),
                 signText.hasGlowingText()
-        ), front);
+        ), slot);
 
         CoflModClient.pendingCoinAmount = null;
 
@@ -161,25 +164,25 @@ public class ClientPlayerEntityMixin {
     /**
      * Handles filling in the bazaar search term and closing the sign.
      */
-    private void handleBazaarSearch(SignBlockEntity sign, boolean front) {
+    private void handleBazaarSearch(SignBlockEntity sign, SignTextSlot slot) {
         System.out.println("Filling bazaar search with: " + CoflModClient.pendingBazaarSearch);
         
-        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
+        List<Component> lines = new ArrayList<>(sign.getText(slot).getMessages(Minecraft.getInstance().isTextFilteringEnabled()));
         
         // Fill the first line with the search term
-        lines[0] = Component.literal(CoflModClient.pendingBazaarSearch);
+        lines.set(0, Component.literal(CoflModClient.pendingBazaarSearch));
         
         // Clear other lines
-        lines[1] = Component.literal("");
-        lines[2] = Component.literal("");
-        lines[3] = Component.literal("");
+        lines.set(1, Component.literal(""));
+        lines.set(2, Component.literal(""));
+        lines.set(3, Component.literal(""));
         
         // Apply the changes to the sign
         sign.updateText(signText -> new SignText(
                 lines, lines,
                 signText.getColor(),
                 signText.hasGlowingText()
-        ), front);
+        ), slot);
         
         System.out.println("Applied bazaar search text to sign");
         

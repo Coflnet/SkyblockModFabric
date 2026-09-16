@@ -4,7 +4,8 @@
 # against bad commits.
 #
 # Supported branches:
-# - main: Latest version (Minecraft 26.2, Java 25)
+# - main: Latest version (Minecraft 26.3, Java 25)
+# - 26.2: Maintenance branch (Minecraft 26.2, Java 25)
 # - 26.1: Backport branch with feature parity (Minecraft 26.1.2, Java 25)
 
 name: build
@@ -14,6 +15,7 @@ on:
       - '**'
     branches:
       - 'main'
+      - '26.2'
       - '26.1'
   pull_request:
   release:
@@ -26,6 +28,10 @@ jobs:
         include:
           - java: 25
             branch: main
+            minecraft_version: "26.3"
+            fabric_version: "0.160.6+26.3"
+          - java: 25
+            branch: "26.2"
             minecraft_version: "26.2"
             fabric_version: "0.152.2+26.2"
           - java: 25

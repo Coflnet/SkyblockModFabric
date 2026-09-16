@@ -1,5 +1,6 @@
 package com.coflnet;
 
+import com.mojang.blaze3d.Blaze3D;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -44,7 +45,6 @@ import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.util.*;
 import net.minecraft.core.BlockPos;
-import org.lwjgl.glfw.GLFW;
 
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflBinGUI;
@@ -115,7 +115,7 @@ import net.minecraft.world.entity.player.Inventory;
 import oshi.util.tuples.Pair;
 
 public class CoflModClient implements ClientModInitializer {
-    public static final String targetVersion = "26.2";
+    public static final String targetVersion = "26.3";
     public static final int InventorysizeWithOffHand = 5 * 9 + 1;
     // Private-use marker rendered with a zero-width custom font so text_Tunnels
     // can match it without showing a missing-glyph box in chat.
@@ -279,18 +279,18 @@ public class CoflModClient implements ClientModInitializer {
 
         bestflipsKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "keybinding.coflmod.bestflips",
-                InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_B,
+                InputConstants.Type.KEYBOARD,
+                InputConstants.KEY_B,
                 SKYCOFL_CATEGORY));
         uploadItemKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "keybinding.coflmod.uploaditem",
-                InputConstants.Type.KEYSYM,
-                GLFW.GLFW_KEY_I,
+                InputConstants.Type.KEYBOARD,
+                InputConstants.KEY_I,
                 SKYCOFL_CATEGORY));
         openSettingsKeyBinding = KeyMappingHelper.registerKeyMapping(new KeyMapping(
             "keybinding.coflmod.opensettings",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_O,
+            InputConstants.Type.KEYBOARD,
+            InputConstants.KEY_O,
             SKYCOFL_CATEGORY));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -687,10 +687,10 @@ public class CoflModClient implements ClientModInitializer {
                 Minecraft.getInstance().gui.setScreen(
                         new PopupScreen.Builder(currentScreen, Component.literal("Warning"))
                                 .addButton(Component.literal("Modrinth"), popupScreen -> {
-                                    Util.getPlatform().openUri("https://modrinth.com/mod/skycofl/versions");
+                                    Blaze3D.openUri(URI.create("https://modrinth.com/mod/skycofl/versions"));
                                 })
                                 .addButton(Component.literal("Curseforge"), popupScreen -> {
-                                    Util.getPlatform().openUri("https://www.curseforge.com/minecraft/mc-mods/skycofl/files/all?page=1&pageSize=20");
+                                    Blaze3D.openUri(URI.create("https://www.curseforge.com/minecraft/mc-mods/skycofl/files/all?page=1&pageSize=20"));
                                 })
                                 .addButton(Component.literal("dismiss"), popupScreen -> popupScreen.onClose())
                                 .addMessage(Component.literal(
@@ -2138,20 +2138,13 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static int getKeyIndex(String name){
-        int result = -1;
-        String prefix = "GLFW_KEY_";
-        for (Field f : GLFW.class.getDeclaredFields()) {
-            if (f.getName().startsWith(prefix) && f.getName().substring(prefix.length()).equals(name)) {
-                try {
-                    result = (int) f.get(int.class);
-                } catch (IllegalAccessException e) {
-                    System.out.println("Key inaccessible. This shouldn't happen");
-                }
-                break;
-            }
+        String keyName = name.toLowerCase(Locale.ROOT).replace("_", ".")
+                .replace("kp.", "keypad.").replace(".super", ".win");
+        try {
+            return InputConstants.getKey("key.keyboard." + keyName).getValue();
+        } catch (IllegalArgumentException e) {
+            return InputConstants.UNKNOWN.getValue();
         }
-
-        return result;
     }
 
     /**

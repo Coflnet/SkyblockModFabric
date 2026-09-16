@@ -5,7 +5,7 @@ It provides in-game access to [sky.coflnet.com](https://sky.coflnet.com) auction
 
 For the Forge edition, see [Coflnet/Skyblockmod](https://github.com/Coflnet/Skyblockmod).
 
-Current version: **1.9.3** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
+Current version: **2.0.0-pre1** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
 
 ## License
 
@@ -13,7 +13,7 @@ Current version: **1.9.3** | [Releases](https://github.com/Coflnet/SkyblockModFa
 
 ## Compatibility
 
-Tested with the following mods as of 2026-06-01:
+Earlier Minecraft versions were tested with the following mods as of 2026-06-01; this is not a 26.3 compatibility guarantee:
 
 | Mod | Version | Status |
 | --- | --- | --- |
@@ -44,10 +44,13 @@ This replaces the jar atomically. Copying over a jar while Minecraft is running 
 resource loading, including the zero-width Text Tunnels marker font, with `invalid LOC header`.
 Restart Minecraft after installing to load the new build.
 
-Requirements:
-- Minecraft 1.21.5+ - 26.2
-- Fabric Loader 0.19.3+
-- Fabric API 0.152.2+
+Requirements for `main`:
+
+- Minecraft 26.3 (use the `26.2` branch for Minecraft 26.2)
+- Java 25+
+- Fabric Loader 0.19.5+
+- Fabric API 0.160.6+26.3
+- Optional settings GUI: YACL 3.9.6+26.3-fabric. Its release metadata lists snapshots, but its Minecraft dependency accepts 26.3.
 
 ## Usage
 

@@ -13,7 +13,6 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.joml.Matrix3x2fStack;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * Editor for the 3 permanent HUD info displays, opened by {@code /cofl displays}
@@ -168,7 +167,7 @@ public class InfoDisplayEditScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent click, boolean doubleClick) {
-        if (click.button() == 0) {
+        if (click.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             double mx = click.x();
             double my = click.y();
             // Later ids are drawn on top, so hit-test from the topmost down.
@@ -188,7 +187,7 @@ public class InfoDisplayEditScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent click, double dragX, double dragY) {
-        if (dragging && click.button() == 0) {
+        if (dragging && click.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             CoflModConfig.InfoDisplaySettings settings = CoflModConfig.get().displaySettings(selectedId);
             if (settings != null) {
                 int[] size = InfoDisplayRenderer.contentSize(InfoDisplayManager.snapshot(selectedId));
@@ -210,7 +209,7 @@ public class InfoDisplayEditScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent click) {
-        if (dragging && click.button() == 0) {
+        if (dragging && click.button() == InputConstants.MOUSE_BUTTON_LEFT) {
             dragging = false;
             save();
             return true;
@@ -242,11 +241,10 @@ public class InfoDisplayEditScreen extends Screen {
             return true;
         }
 
-        var window = Minecraft.getInstance().getWindow();
-        boolean shift = InputConstants.isKeyDown(window, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(window, InputConstants.KEY_RSHIFT);
-        boolean ctrl = InputConstants.isKeyDown(window, InputConstants.KEY_LCONTROL)
-                || InputConstants.isKeyDown(window, InputConstants.KEY_RCONTROL);
+        boolean shift = InputConstants.isKeyDown(InputConstants.KEY_LSHIFT)
+                || InputConstants.isKeyDown(InputConstants.KEY_RSHIFT);
+        boolean ctrl = InputConstants.isKeyDown(InputConstants.KEY_LCONTROL)
+                || InputConstants.isKeyDown(InputConstants.KEY_RCONTROL);
 
         if (shift) {
             settings.backgroundAlpha = InfoDisplayLayout.clampBackgroundAlpha(settings.backgroundAlpha + dir * 0.05);
@@ -265,32 +263,32 @@ public class InfoDisplayEditScreen extends Screen {
         if (settings != null) {
             int step = event.hasShiftDown() ? 10 : 1;
             int key = event.key();
-            if (key == GLFW.GLFW_KEY_UP) {
+            if (key == InputConstants.KEY_UP) {
                 nudge(settings, 0, -step);
                 save();
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_DOWN) {
+            if (key == InputConstants.KEY_DOWN) {
                 nudge(settings, 0, step);
                 save();
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_LEFT) {
+            if (key == InputConstants.KEY_LEFT) {
                 nudge(settings, -step, 0);
                 save();
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_RIGHT) {
+            if (key == InputConstants.KEY_RIGHT) {
                 nudge(settings, step, 0);
                 save();
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_H) {
+            if (key == InputConstants.KEY_H) {
                 settings.enabled = !settings.enabled;
                 save();
                 return true;
             }
-            if (key == GLFW.GLFW_KEY_R) {
+            if (key == InputConstants.KEY_R) {
                 resetToDefault(settings);
                 save();
                 return true;

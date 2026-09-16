@@ -1,5 +1,6 @@
 package com.coflnet.gui.tfm;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
@@ -49,8 +50,10 @@ public class TfmBinGUI extends BinGUI {
                 Component.literal(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
                 Minecraft.getInstance().font
         ){
-            protected boolean isValidClickButton(int button) {
-                return button == 0 || button == 1;
+            @Override
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseButtonInfo mi) {
+                int button = mi.button();
+                return button == InputConstants.MOUSE_BUTTON_LEFT || button == InputConstants.MOUSE_BUTTON_RIGHT;
             }
         }.setCentered(false);
 
@@ -73,7 +76,7 @@ public class TfmBinGUI extends BinGUI {
         double mouseX = click.x();
         double mouseY = click.y();
         if (cancelClickableWidget.isMouseOver(mouseX, mouseY)){
-            net.minecraft.client.input.MouseButtonInfo mi = new net.minecraft.client.input.MouseButtonInfo(0, 0);
+            net.minecraft.client.input.MouseButtonInfo mi = new net.minecraft.client.input.MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0);
             net.minecraft.client.input.MouseButtonEvent c = new net.minecraft.client.input.MouseButtonEvent(mouseX, mouseY, mi);
             cancelClickableWidget.onClick(c, true);
         } else {
@@ -99,8 +102,10 @@ public class TfmBinGUI extends BinGUI {
             @Override
             protected void updateWidgetNarration(NarrationElementOutput builder) {}
 
-            protected boolean isValidClickButton(int button) {
-                return button == 0 || button == 1;
+            @Override
+            protected boolean isValidClickButton(net.minecraft.client.input.MouseButtonInfo mi) {
+                int button = mi.button();
+                return button == InputConstants.MOUSE_BUTTON_LEFT || button == InputConstants.MOUSE_BUTTON_RIGHT;
             }
         };
 
@@ -131,7 +136,7 @@ public class TfmBinGUI extends BinGUI {
             @Override
             protected boolean isValidClickButton(net.minecraft.client.input.MouseButtonInfo mi) {
                 int b = mi.button();
-                return b == 0 || b == 1;
+                return b == InputConstants.MOUSE_BUTTON_LEFT || b == InputConstants.MOUSE_BUTTON_RIGHT;
             }
         };
 

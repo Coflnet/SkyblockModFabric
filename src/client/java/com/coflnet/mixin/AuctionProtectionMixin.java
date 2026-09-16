@@ -1,5 +1,6 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.config.AngryCoopProtectionManager;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -10,7 +11,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -33,7 +33,7 @@ public abstract class AuctionProtectionMixin {
             }
 
             int button = click.button();
-            if (button != 0 && button != 1) {
+            if (button != InputConstants.MOUSE_BUTTON_LEFT && button != InputConstants.MOUSE_BUTTON_RIGHT) {
                 return;
             }
 
@@ -59,8 +59,8 @@ public abstract class AuctionProtectionMixin {
                 return;
             }
 
-            boolean ctrlPressed = GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
-                    || GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+            boolean ctrlPressed = InputConstants.isKeyDown(InputConstants.KEY_LCONTROL)
+                    || InputConstants.isKeyDown(InputConstants.KEY_RCONTROL);
 
             String playerNameLower = client.player.getGameProfile().name().toLowerCase(Locale.ROOT);
             String clickedName = stripFormatting(clickedStack.getHoverName().getString()).trim();

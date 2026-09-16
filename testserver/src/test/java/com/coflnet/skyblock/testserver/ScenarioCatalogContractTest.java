@@ -41,9 +41,9 @@ class ScenarioCatalogContractTest {
             assertEquals("server", metadata.get("environment").getAsString());
             assertEquals(1, metadata.getAsJsonObject("custom").get("coflnet_scenario_schema").getAsInt());
             assertEquals("main", metadata.getAsJsonObject("custom").get("coflnet_target_branch").getAsString());
-            assertEquals("26.2", metadata.getAsJsonObject("depends").get("minecraft").getAsString());
-            assertEquals("0.19.3", metadata.getAsJsonObject("depends").get("fabricloader").getAsString());
-            assertEquals("0.152.2+26.2", metadata.getAsJsonObject("depends").get("fabric-api").getAsString());
+            assertEquals("26.3", metadata.getAsJsonObject("depends").get("minecraft").getAsString());
+            assertEquals("0.19.5", metadata.getAsJsonObject("depends").get("fabricloader").getAsString());
+            assertEquals("0.160.6+26.3", metadata.getAsJsonObject("depends").get("fabric-api").getAsString());
         }
     }
 

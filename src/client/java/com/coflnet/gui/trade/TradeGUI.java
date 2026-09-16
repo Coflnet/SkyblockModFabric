@@ -1,5 +1,6 @@
 package com.coflnet.gui.trade;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.CoflModClient;
 import com.coflnet.CoflModClient.WorthBasis;
 import com.coflnet.gui.RenderUtils;
@@ -16,7 +17,6 @@ import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -511,8 +511,13 @@ public class TradeGUI extends Screen {
     public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
         double mx = click.x();
         double my = click.y();
-        int button = click.button();
-        boolean shift = (click.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0;
+        // Container packets still use 0/1, unlike SDL mouse events (1/3).
+        int button = switch (click.button()) {
+            case InputConstants.MOUSE_BUTTON_LEFT -> 0;
+            case InputConstants.MOUSE_BUTTON_RIGHT -> 1;
+            default -> click.button();
+        };
+        boolean shift = (click.modifiers() & InputConstants.MOD_SHIFT) != 0;
 
         // Settings dropdown (drawn on top, so handle its hits first).
         if (settingsOpen) {

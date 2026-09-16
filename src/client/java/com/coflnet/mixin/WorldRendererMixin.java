@@ -3,14 +3,12 @@ package com.coflnet.mixin;
 import CoflCore.classes.Position;
 import com.coflnet.EventSubscribers;
 import com.coflnet.gui.RenderUtils;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import com.mojang.blaze3d.resource.GraphicsResourceAllocator;
 import com.mojang.blaze3d.vertex.PoseStack;
-import org.joml.Matrix4fc;
 import org.joml.Vector4f;
-import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.renderpearl.api.buffers.GpuBufferSlice;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -26,7 +24,7 @@ public class WorldRendererMixin {
     private static final float HIGHLIGHT_A = 0.5f;
 
     @Inject(method = "render", at = @At("TAIL"))
-    private void onRenderWorld(GraphicsResourceAllocator allocator, DeltaTracker tickCounter, boolean renderBlockOutline, CameraRenderState cameraState, Matrix4fc positionMatrix, GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky, CallbackInfo ci) {
+    private void onRenderWorld(GraphicsResourceAllocator allocator, boolean renderBlockOutline, CameraRenderState cameraState, GpuBufferSlice fogBuffer, Vector4f fogColor, boolean renderSky, boolean renderWeather, CallbackInfo ci) {
         if (EventSubscribers.positions == null || EventSubscribers.positions.isEmpty()) {
             return;
         }
@@ -37,7 +35,6 @@ public class WorldRendererMixin {
 
         // Create a PoseStack for world-space rendering
         PoseStack matrices = new PoseStack();
-        matrices.mulPose(new org.joml.Matrix4f(positionMatrix));
         
         for (Position position : EventSubscribers.positions) {
             // Primitive overload: no double[]/float[] wrapper allocation per position per frame.
