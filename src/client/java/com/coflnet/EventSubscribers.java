@@ -5,6 +5,7 @@ import java.util.*;
 import CoflCore.classes.*;
 import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.events.*;
+import CoflCore.commands.CommandType;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.NonNullList;
@@ -123,7 +124,18 @@ public class EventSubscribers {
 
     @Subscribe
     public void onReceiveCommand(ReceiveCommand event){
-        
+        if (event == null || event.command == null || event.command.getType() == null) return;
+        CommandType type = event.command.getType();
+        // apply() moves HUD updates from the websocket thread onto the render thread.
+        if (type == CommandType.InfoDisplay) {
+            try {
+                com.coflnet.core.InfoDisplayPayload payload =
+                        com.coflnet.core.InfoDisplayPayloadParser.parse(event.command.getData());
+                com.coflnet.gui.hud.InfoDisplayManager.apply(payload);
+            } catch (com.coflnet.core.InfoDisplayPayloadParser.ParseException | RuntimeException e) {
+                System.out.println("[InfoDisplay] Failed to parse pushed payload: " + e.getMessage());
+            }
+        }
     }
 
     @Subscribe

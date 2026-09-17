@@ -5,12 +5,37 @@ import CoflCore.CoflSkyCommand;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Style;
+import com.coflnet.gui.hud.InfoDisplayRenderer;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(ChatScreen.class)
 public class ChatScreenMixin {
+    @Shadow
+    private boolean handleComponentClicked(Style style, boolean insertion) {
+        throw new AssertionError();
+    }
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void coflnet$clickInfoDisplay(MouseButtonEvent click, boolean doubleClick,
+                                         CallbackInfoReturnable<Boolean> cir) {
+        if (click.button() != 0) {
+            return;
+        }
+        var window = Minecraft.getInstance().getWindow();
+        Style style = InfoDisplayRenderer.styleAt(click.x(), click.y(),
+                window.getGuiScaledWidth(), window.getGuiScaledHeight());
+        if (style != null && style.getClickEvent() != null && handleComponentClicked(style, false)) {
+            cir.setReturnValue(true);
+        }
+    }
+
+
 
     @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)
     private void onSendMessage(String message, boolean addToHistory, CallbackInfo ci) {

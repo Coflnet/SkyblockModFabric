@@ -425,6 +425,13 @@ public abstract class HandledScreenMixin extends Screen {
 
     @Inject(at = @At("HEAD"), method = "mouseClicked", cancellable = true)
     public void onMouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubleClick, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
+        var hudStyle = com.coflnet.gui.hud.InfoDisplayRenderer.styleAt(click.x(), click.y(), width, height);
+        if (click.button() == 0 && hudStyle != null && hudStyle.getClickEvent() != null) {
+            handleInfoDisplayClickEvent(hudStyle.getClickEvent());
+            cir.setReturnValue(true);
+            return;
+        }
+
         try {
             double mouseX = click.x();
             double mouseY = click.y();
@@ -525,6 +532,8 @@ public abstract class HandledScreenMixin extends Screen {
                     player.connection.sendChat(command);
                 }
             }
+        } else if (clickEvent instanceof ClickEvent.SuggestCommand suggestion) {
+            Minecraft.getInstance().setScreen(new net.minecraft.client.gui.screens.ChatScreen(suggestion.command(), false));
         } else {
             Screen.defaultHandleClickEvent(clickEvent, Minecraft.getInstance(), this);
         }

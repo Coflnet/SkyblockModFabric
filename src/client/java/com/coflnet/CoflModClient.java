@@ -511,6 +511,9 @@ public class CoflModClient implements ClientModInitializer {
             }
         });
 
+        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("coflnet", "info_displays"),
+                com.coflnet.gui.hud.InfoDisplayRenderer.INSTANCE);
+
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();
             // Skip backend processing for our own display messages to avoid a feedback loop.
@@ -742,6 +745,22 @@ public class CoflModClient implements ClientModInitializer {
                     } else if(inputArgs.length > 3)
                         return builder.buildFuture();
                     else {                        
+                        if (inputArgs.length == 1 || "displays".startsWith(currentWord.toLowerCase())) {
+                            builder.suggest("displays", new Message() {
+                                @Override
+                                public String getString() {
+                                    return "Open the info-display layout editor";
+                                }
+                            });
+                        }
+                        if (inputArgs.length == 1 || "display".startsWith(currentWord.toLowerCase())) {
+                            builder.suggest("display", new Message() {
+                                @Override
+                                public String getString() {
+                                    return "Push/clear info-display content: /cofl display <json>|clear|demo|help";
+                                }
+                            });
+                        }
                         if(CoflCore.config.knownCommands == null)
                         {
                             System.out.println("No known commands loaded yet, cannot suggest");
@@ -771,6 +790,20 @@ public class CoflModClient implements ClientModInitializer {
                 .executes(context -> {
                     String[] args = context.getArgument("args", String.class).split(" ");
                     
+                    // Opens the permanent HUD info-display layout editor (drag/scroll/arrow keys to position).
+                    if (args.length >= 1 && args[0].equalsIgnoreCase("displays")) {
+                        Minecraft.getInstance().execute(() -> {
+                            Screen current = Minecraft.getInstance().screen;
+                            Minecraft.getInstance().setScreen(new com.coflnet.gui.hud.InfoDisplayEditScreen(current));
+                        });
+                        return 1;
+                    }
+
+                    // Local testing command; backend updates arrive through the infoDisplay websocket message.
+                    if (args.length >= 1 && args[0].equalsIgnoreCase("display")) {
+                        return handleDisplayCommand(args, context.getArgument("args", String.class));
+                    }
+
                     // Handle sell protection commands locally
                     if (args.length >= 2 && args[0].equals("set")) {
                         if (args[1].equals("sellProtectionEnabled")) {
@@ -859,6 +892,56 @@ public class CoflModClient implements ClientModInitializer {
                     CoflSkyCommand.processCommand(args, username);
                     return 1;
                 })));
+    }
+
+    private int handleDisplayCommand(String[] args, String rawArgs) {
+        if (args.length >= 2 && args[1].equalsIgnoreCase("clear")) {
+            if (args.length >= 3) {
+                try {
+                    int id = Integer.parseInt(args[2]);
+                    com.coflnet.gui.hud.InfoDisplayManager.clear(id);
+                    sendChatMessage("§aCleared info display #" + id);
+                } catch (NumberFormatException e) {
+                    sendChatMessage("§cUsage: /cofl display clear [id]");
+                }
+            } else {
+                com.coflnet.gui.hud.InfoDisplayManager.clearAll();
+                sendChatMessage("§aCleared all info displays");
+            }
+            return 1;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("demo")) {
+            com.coflnet.gui.hud.InfoDisplayManager.demo();
+            sendChatMessage("§aFilled all 3 info displays with demo content. Use §e/cofl displays §ato position them.");
+            return 1;
+        }
+        if (args.length >= 2 && args[1].equalsIgnoreCase("help")) {
+            sendDisplayHelp();
+            return 1;
+        }
+
+        String json = rawArgs.length() > args[0].length() ? rawArgs.substring(args[0].length()).trim() : "";
+        if (json.isEmpty()) {
+            sendChatMessage("§cUsage: /cofl display <json> | clear [id] | demo | help");
+            return 1;
+        }
+        try {
+            com.coflnet.core.InfoDisplayPayload payload = com.coflnet.core.InfoDisplayPayloadParser.parse(json);
+            com.coflnet.gui.hud.InfoDisplayManager.apply(payload);
+        } catch (com.coflnet.core.InfoDisplayPayloadParser.ParseException e) {
+            sendChatMessage("§c[display] " + e.getMessage());
+        }
+        return 1;
+    }
+
+    private void sendDisplayHelp() {
+        sendChatMessage("§6=== /cofl display(s) ===");
+        sendChatMessage("§7/cofl displays §f- open the layout editor (drag/scroll/arrow keys to position)");
+        sendChatMessage("§7/cofl display <json> §f- push content to a display");
+        sendChatMessage("§7/cofl display clear [id] §f- clear one display, or all if id omitted");
+        sendChatMessage("§7/cofl display demo §f- fill all 3 with sample content");
+        sendChatMessage("§7JSON shape: {\"id\":1-3,\"title\":\"...\",\"lines\":[\"...\" or "
+                + "{\"text\":\"...\",\"hover\":\"...\",\"onClick\":\"...\"}],\"ttl\":seconds,\"clear\":true|false}");
     }
 
     private void handleGetHoveredItem(Minecraft client) {
