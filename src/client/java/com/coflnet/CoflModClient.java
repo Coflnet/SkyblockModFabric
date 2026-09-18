@@ -1505,6 +1505,13 @@ public class CoflModClient implements ClientModInitializer {
         return true;
     }
 
+    /** A confirmed lore upload invalidates cached descriptions for the next inventory refresh. */
+    public static void invalidateLoreDescriptions() {
+        DescriptionHandler.emptyTooltipData();
+        knownIds.clear();
+        lastNbtRequest = "";
+    }
+
     public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items)
     {
         String userName = Minecraft.getInstance().getUser().getName();
