@@ -225,6 +225,14 @@ public class CoflSettingsScreen {
         }
 
         categoryBuilder.option(ButtonOption.createBuilder()
+                .name(Component.literal("Edit lore fields and layout"))
+                .description(OptionDescription.of(Component.literal(
+                        "Drag fields between lore rows, preview an inventory item, and save the layout to your account.")))
+                .text(Component.literal("Open"))
+                .action(screen -> Minecraft.getInstance().gui.setScreen(new LoreEditorScreen(screen)))
+                .build());
+
+        categoryBuilder.option(ButtonOption.createBuilder()
                 .name(Component.literal("Edit display layout"))
                 .description(OptionDescription.of(Component.literal(
                         "Opens an in-game editor to drag, scale, and set the transparency of each info display.")))
