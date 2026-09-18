@@ -1697,6 +1697,14 @@ public class CoflModClient implements ClientModInitializer {
         return true;
     }
 
+    /** A confirmed lore upload invalidates cached descriptions for the next inventory refresh. */
+    public static void invalidateLoreDescriptions() {
+        DescriptionHandler.emptyTooltipData();
+        knownIds.clear();
+        lastNbtRequest.set("");
+        descriptionsVersion.incrementAndGet();
+    }
+
     /** Captures inventory data now and performs the HTTP request on a worker. */
     public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items) {
         String nbtString = inventoryToNBT(items);
