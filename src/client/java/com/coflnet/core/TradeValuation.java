@@ -1,6 +1,5 @@
 package com.coflnet.core;
 
-import java.util.Locale;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -8,38 +7,57 @@ import java.util.regex.Pattern;
 public final class TradeValuation {
     public enum WorthBasis { LBIN, MEDIAN }
 
-    private static final Pattern LBIN_VALUE = Pattern.compile(
-            "\\b(?:lbin|lowest\\s*bin)\\s*:?\\s*~?\\s*([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern MED_VALUE = Pattern.compile(
-            "\\bmed(?:ian)?\\s*:?\\s*~?\\s*([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)", Pattern.CASE_INSENSITIVE);
+    private static final String NUMBER = "([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)";
+    private static final Pattern QUOTE = Pattern.compile(
+            "\\b(lbin|lowest\\s*bin|med(?:ian)?|ai\\s*estimate|buy|sell)\\s*:?\\s*(~?)\\s*"
+                    + NUMBER + "((?:\\s*\\([^)]*\\))*)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EACH = Pattern.compile("\\(" + NUMBER + "\\s*each\\)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern COINS = Pattern.compile(
+            "^([\\d,]*\\.?\\d+\\s*[kmb]?)\\s+coins$", Pattern.CASE_INSENSITIVE);
 
     private TradeValuation() {
     }
 
     public static Long parseWorthFromTips(String[] tips, WorthBasis basis) {
-        if (tips == null) return null;
-        Pattern label = basis == WorthBasis.LBIN ? LBIN_VALUE : MED_VALUE;
-        Long bazaar = null;
+        return parseWorthFromTips(tips, basis, 1);
+    }
+
+    /** Prefer matching market quotes, then AI/approximate quotes; craft cost and paid price are not market value. */
+    public static Long parseWorthFromTips(String[] tips, WorthBasis basis, int stackCount) {
+        if (tips == null || stackCount <= 0) return null;
+        Long best = null;
+        int bestRank = Integer.MAX_VALUE;
         for (String tip : tips) {
             if (tip == null) continue;
-            String plain = FormattingCodes.strip(tip).trim();
-            Matcher matcher = label.matcher(plain);
-            if (matcher.find()) {
-                Long value = NumberParser.parseCoinNumber(matcher.group(1));
-                if (value != null && value > 0) return value;
-            }
-            String lower = plain.toLowerCase(Locale.ROOT);
-            if (bazaar == null && lower.contains("buy:") && lower.contains("each")) {
-                bazaar = parseBazaarEach(plain, basis == WorthBasis.LBIN ? "buy" : "sell");
+            Matcher quote = QUOTE.matcher(FormattingCodes.strip(tip));
+            while (quote.find()) {
+                String label = quote.group(1).toLowerCase(java.util.Locale.ROOT);
+                String suffix = quote.group(4).toLowerCase(java.util.Locale.ROOT);
+                // A base-item LBIN with no matching upgrades is not a usable trade quote.
+                if (suffix.contains("no match")) continue;
+                boolean approximate = !quote.group(2).isEmpty() || suffix.contains("higher value");
+                boolean median = label.startsWith("med");
+                boolean bazaar = label.equals("buy") || label.equals("sell");
+                boolean preferred = bazaar ? label.equals(basis == WorthBasis.LBIN ? "buy" : "sell")
+                        : median == (basis == WorthBasis.MEDIAN);
+                int rank = label.startsWith("ai") ? 2 : approximate ? (median ? 3 : 4) : preferred ? 0 : 1;
+                Matcher each = EACH.matcher(suffix);
+                boolean perItem = each.find();
+                Long value = NumberParser.parseCoinNumber(perItem ? each.group(1) : quote.group(3));
+                // Auction/AI and Bazaar headline prices are stack totals. Prefer explicit per-item values.
+                if (value != null && !perItem) value /= stackCount;
+                if (value != null && value > 0 && rank < bestRank) {
+                    best = value;
+                    bestRank = rank;
+                }
             }
         }
-        return bazaar;
+        return best;
     }
 
     public static Long parseCoinOffer(String displayName) {
         if (displayName == null) return null;
-        String plain = FormattingCodes.strip(displayName).trim();
-        Matcher matcher = Pattern.compile("^([\\d,]*\\.?\\d+\\s*[kmb]?)\\s+coins$", Pattern.CASE_INSENSITIVE).matcher(plain);
+        Matcher matcher = COINS.matcher(FormattingCodes.strip(displayName).trim());
         return matcher.matches() ? NumberParser.parseCoinNumber(matcher.group(1)) : null;
     }
 
@@ -51,11 +69,6 @@ public final class TradeValuation {
             else total += value;
         }
         return new SideValue(total, unpriced);
-    }
-
-    private static Long parseBazaarEach(String plain, String side) {
-        Matcher matcher = Pattern.compile(side + ":.*?\\(([\\d,.]+\\s*[kmb]?)\\s*each\\)", Pattern.CASE_INSENSITIVE).matcher(plain);
-        return matcher.find() ? NumberParser.parseCoinNumber(matcher.group(1)) : null;
     }
 
     public record SideValue(long total, int unpriced) {
