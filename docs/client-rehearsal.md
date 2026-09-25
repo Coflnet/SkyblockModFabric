@@ -21,7 +21,7 @@ While the server is running, launch the client and capture screenshots after 20 
 ```sh
 JAVA_TOOL_OPTIONS=-Dcoflnet.description.base-url=http://127.0.0.1:PORT \
 coflnet-minecraft-client run \
-  --mod build/libs/SkyCofl-2.0.0-pre1.jar \
+  --mod build/libs/SkyCofl-2.0.0.jar \
   --server-port 25565 \
   --screenshots /workspace/.coflnet-client-run-source-description-final-v4 \
   --mode debug \
