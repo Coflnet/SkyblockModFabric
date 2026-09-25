@@ -67,6 +67,16 @@ class TradeValuationTest {
         assertNull(TradeValuation.parseWorthFromTips(new String[]{"Med: 2m"}, TradeValuation.WorthBasis.LBIN, 0));
     }
 
+    @Test void aiBasisUsesOnlyAiQuotesAndNormalizesStacks() {
+        String[] tips = {"lbin: 100m", "Med: 90m", "§7AI Estimate: §e150m"};
+        assertEquals(150_000_000L, TradeValuation.parseWorthFromTips(tips, TradeValuation.WorthBasis.AI_ESTIMATE));
+        assertEquals(2_343_750L, TradeValuation.parseWorthFromTips(tips, TradeValuation.WorthBasis.AI_ESTIMATE, 64));
+        assertNull(TradeValuation.parseWorthFromTips(new String[]{"lbin: 100m", "Med: 90m", "AI Estimate: none"},
+                TradeValuation.WorthBasis.AI_ESTIMATE));
+        assertNull(TradeValuation.parseWorthFromTips(new String[]{"Buy: 10 Sell: 9", "AI Estimate: 0"},
+                TradeValuation.WorthBasis.AI_ESTIMATE));
+    }
+
     @Test void readsFormattedCoinOffer() {
         assertEquals(1_500_000L, TradeValuation.parseCoinOffer("§61.5m coins"));
         assertNull(TradeValuation.parseCoinOffer("§x1.5m coins"));

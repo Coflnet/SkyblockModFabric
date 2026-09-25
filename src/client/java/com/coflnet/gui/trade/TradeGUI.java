@@ -328,10 +328,17 @@ public class TradeGUI extends Screen {
         boolean basisHover = inRect(mouseX, mouseY, basisBtnX, basisBtnY, basisBtnW, basisBtnH);
         RenderUtils.drawRoundedRect(context, basisBtnX, basisBtnY, basisBtnW, basisBtnH, 2,
                 basisHover ? CoflColConfig.CONFIRM_HOVER : CoflColConfig.BACKGROUND_SECONDARY);
-        RenderUtils.drawCenteredString(context, (basis == WorthBasis.LBIN ? "Prefer: LBIN (click)" : "Prefer: Med (click)"),
+        String basisLabel = switch (basis) {
+            case LBIN -> "Prefer: LBIN (click)";
+            case MEDIAN -> "Prefer: Med (click)";
+            case AI_ESTIMATE -> "AI Estimate (click)";
+        };
+        RenderUtils.drawCenteredString(context, basisLabel,
                 basisBtnX + basisBtnW / 2, basisBtnY + 3, CoflColConfig.TEXT_PRIMARY);
         if (basisHover) {
-            context.setComponentTooltipForNextFrame(font, List.of(
+            context.setComponentTooltipForNextFrame(font, basis == WorthBasis.AI_ESTIMATE ? List.of(
+                    Component.literal("§7Uses the AI Estimate from item lore."),
+                    Component.literal("§7Missing AI estimates are shown as unpriced.")) : List.of(
                     Component.literal("§7Exact preferred quote, then other exact quote."),
                     Component.literal("§7Then AI estimate, then approximate market quote."),
                     Component.literal("§8Unmatched base LBIN ignored; estimates may differ from sale prices.")),
@@ -578,7 +585,11 @@ public class TradeGUI extends Screen {
         }
 
         if (inRect(mx, my, basisBtnX, basisBtnY, basisBtnW, basisBtnH)) {
-            basis = (basis == WorthBasis.LBIN) ? WorthBasis.MEDIAN : WorthBasis.LBIN;
+            basis = switch (basis) {
+                case LBIN -> WorthBasis.MEDIAN;
+                case MEDIAN -> WorthBasis.AI_ESTIMATE;
+                case AI_ESTIMATE -> WorthBasis.LBIN;
+            };
             return true;
         }
         if (inRect(mx, my, acceptBtnX, acceptBtnY, acceptBtnW, acceptBtnH)) {

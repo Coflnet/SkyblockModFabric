@@ -5,7 +5,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class TradeValuation {
-    public enum WorthBasis { LBIN, MEDIAN }
+    public enum WorthBasis { LBIN, MEDIAN, AI_ESTIMATE }
 
     private static final String NUMBER = "([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)";
     private static final Pattern QUOTE = Pattern.compile(
@@ -22,7 +22,7 @@ public final class TradeValuation {
         return parseWorthFromTips(tips, basis, 1);
     }
 
-    /** Prefer matching market quotes, then AI/approximate quotes; craft cost and paid price are not market value. */
+    /** AI mode requires an AI quote; market modes prefer exact quotes, then AI/approximate quotes. */
     public static Long parseWorthFromTips(String[] tips, WorthBasis basis, int stackCount) {
         if (tips == null || stackCount <= 0) return null;
         Long best = null;
@@ -32,6 +32,7 @@ public final class TradeValuation {
             Matcher quote = QUOTE.matcher(FormattingCodes.strip(tip));
             while (quote.find()) {
                 String label = quote.group(1).toLowerCase(java.util.Locale.ROOT);
+                if (basis == WorthBasis.AI_ESTIMATE && !label.startsWith("ai")) continue;
                 String suffix = quote.group(4).toLowerCase(java.util.Locale.ROOT);
                 // A base-item LBIN with no matching upgrades is not a usable trade quote.
                 if (suffix.contains("no match")) continue;

@@ -96,7 +96,11 @@ public final class TradePriceCache {
 
     public static Long worth(ItemStack stack, WorthBasis basis) {
         PricedItem value = findPrice(stack);
-        return value == null ? null : basis == WorthBasis.LBIN ? value.lbin : value.median;
+        return value == null ? null : switch (basis) {
+            case LBIN -> value.lbin;
+            case MEDIAN -> value.median;
+            case AI_ESTIMATE -> value.aiEstimate;
+        };
     }
 
     /** Offered items must use their own quote, never another same-name item's shared tooltip. */
@@ -228,7 +232,9 @@ public final class TradePriceCache {
                     com.coflnet.core.TradeValuation.WorthBasis.LBIN, stack.getCount());
             Long median = com.coflnet.core.TradeValuation.parseWorthFromTips(lines,
                     com.coflnet.core.TradeValuation.WorthBasis.MEDIAN, stack.getCount());
-            result.add(new PricedItem(stack, lbin, median, tips));
+            Long aiEstimate = com.coflnet.core.TradeValuation.parseWorthFromTips(lines,
+                    com.coflnet.core.TradeValuation.WorthBasis.AI_ESTIMATE, stack.getCount());
+            result.add(new PricedItem(stack, lbin, median, aiEstimate, tips));
         }
     }
 
@@ -276,6 +282,6 @@ public final class TradePriceCache {
             long sequence) {
     }
 
-    private record PricedItem(ItemStack stack, Long lbin, Long median, DescriptionHandler.DescModification[] tips) {
+    private record PricedItem(ItemStack stack, Long lbin, Long median, Long aiEstimate, DescriptionHandler.DescModification[] tips) {
     }
 }
