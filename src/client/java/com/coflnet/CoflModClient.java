@@ -558,7 +558,11 @@ public class CoflModClient implements ClientModInitializer {
                     return;
                 }
 
-                DescriptionHandler.DescModification[] tooltips = getMappedTooltipData(stackId);
+                var screen = Minecraft.getInstance().gui.screen();
+                DescriptionHandler.DescModification[] tooltips = screen instanceof com.coflnet.gui.trade.TradeGUI
+                        || screen instanceof com.coflnet.gui.trade.CoinInputGUI
+                        ? com.coflnet.gui.trade.TradePriceCache.tooltipData(stack, stackId)
+                        : getMappedTooltipData(stackId);
                 if(tooltips == null)
                     return;
 
@@ -866,26 +870,22 @@ public class CoflModClient implements ClientModInitializer {
         client.gui.setScreen(new com.coflnet.gui.trade.TradeGUI(cs));
     }
 
-    /** Worth basis selectable by the user (median vs lowest BIN). */
-    public enum WorthBasis { LBIN, MEDIAN }
+    /** Worth basis selectable by the user. */
+    public enum WorthBasis { LBIN, MEDIAN, AI_ESTIMATE }
 
     /**
      * Extracts a PER-ITEM coin worth from the backend tooltip lines.
      * <p>
-     * AH items: LBIN reads the "lbin:" line, MEDIAN the "Med:" line (both
-     * per-item). Bazaar items use a "Buy: X (N each)Sell: Y (M each)" line —
-     * LBIN maps to Buy's per-unit "each" value, MEDIAN to Sell's. The per-item
-     * value is what callers multiply by stack count. Returns null if neither a
-     * matching AH nor bazaar line is present (truly unpriced).
+     * Prefers the selected matching market quote, then falls back to the other
+     * market quote or item estimates. Explicit per-item values are used for stacks.
+     * Returns null when no usable quote is available.
      */
     @Deprecated
     public static Long parseWorthFromTips(DescriptionHandler.DescModification[] tips, WorthBasis basis) {
         String[] values = tips == null ? null : java.util.Arrays.stream(tips)
                 .map(tip -> tip == null ? null : tip.value).toArray(String[]::new);
         return com.coflnet.core.TradeValuation.parseWorthFromTips(values,
-                basis == WorthBasis.LBIN
-                        ? com.coflnet.core.TradeValuation.WorthBasis.LBIN
-                        : com.coflnet.core.TradeValuation.WorthBasis.MEDIAN);
+                com.coflnet.core.TradeValuation.WorthBasis.valueOf(basis.name()));
     }
 
     /**
@@ -955,7 +955,7 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     /**
-     * Step C diagnostic: computes and logs each side's total worth (both bases)
+     * Step C diagnostic: computes and logs each side's total worth (all bases)
      * plus the net difference. Triggered from the Copy Dump button on a trade
      * screen, so prices have had time to load. No overlay yet.
      */
@@ -969,7 +969,11 @@ public class CoflModClient implements ClientModInitializer {
             String netStr = (net >= 0)
                     ? "§a+" + formatCoins(net) + " (you gain)"
                     : "§c-" + formatCoins(-net) + " (you lose)";
-            String label = (basis == WorthBasis.LBIN) ? "LBIN " : "Med  ";
+            String label = switch (basis) {
+                case LBIN -> "LBIN ";
+                case MEDIAN -> "Med  ";
+                case AI_ESTIMATE -> "AI   ";
+            };
             sendChatMessage("§e" + label + "§7YOU §f" + formatCoins(you[0])
                     + " §7| THEY §f" + formatCoins(them[0])
                     + " §7| NET " + netStr
@@ -1579,7 +1583,7 @@ public class CoflModClient implements ClientModInitializer {
         if(itemName.contains("BUY") || itemName.contains("SELL"))
         {
             // bazaar order, separate by price per unit as well
-            for (Component line : stack.get(DataComponents.LORE).lines()) {
+            for (Component line : stack.getOrDefault(DataComponents.LORE, net.minecraft.world.item.component.ItemLore.EMPTY).lines()) {
                 if(line.getString().contains("Price per unit"))
                 {
                     return itemName + line.getString();
@@ -1730,11 +1734,9 @@ public class CoflModClient implements ClientModInitializer {
      * this response before publishing values instead of using the generic
      * delayed throttle above.
      */
-    public static void loadDescriptionsForItemsBlocking(String title, NonNullList<ItemStack> items) {
-        new DescriptionRequest(title, getItemIdsFromInventory(items), inventoryToNBT(items),
-                Minecraft.getInstance().getUser().getName(), posToUpload).load();
-        // Descriptions changed - invalidate per-slot caches (e.g. ItemHighlightMixin).
-        descriptionsVersion.incrementAndGet();
+    public static DescriptionHandler.DescModification[][] loadDescriptionsForItemsBlocking(String title, NonNullList<ItemStack> items) {
+        return new DescriptionRequest(title, getItemIdsFromInventory(items), inventoryToNBT(items),
+                Minecraft.getInstance().getUser().getName(), posToUpload).loadBySlot();
     }
 
     /**

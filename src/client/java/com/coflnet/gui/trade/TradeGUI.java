@@ -73,7 +73,15 @@ public class TradeGUI extends Screen {
     private int scrollYou = 0;
     private int scrollThem = 0;
 
-    private record Row(int slotId, ItemStack stack, boolean isCoins, long coinAmount) {}
+    private List<Row> youRows = List.of();
+    private List<Row> themRows = List.of();
+    private TradePriceCache.SideValue youValue = new TradePriceCache.SideValue(0, 0);
+    private TradePriceCache.SideValue themValue = new TradePriceCache.SideValue(0, 0);
+    private int rowsTick = Integer.MIN_VALUE;
+    private long rowsRevision = -1;
+    private WorthBasis rowsBasis;
+
+    private record Row(int slotId, ItemStack stack, boolean isCoins, Long worth, String name, String worthText) {}
 
     public TradeGUI(ContainerScreen backing) {
         super(Component.literal("SkyCofl Trade"));
@@ -209,33 +217,53 @@ public class TradeGUI extends Screen {
                 continue;
             }
             Long coins = CoflModClient.parseCoinStack(stack);
-            rows.add(new Row(slot, stack, coins != null, coins == null ? 0L : coins));
+            Long worth = coins != null ? coins : TradePriceCache.stackWorth(stack, basis);
+            String name = coins != null ? "Coins" : ChatStrip(stack.getHoverName().getString());
+            String worthText = worth == null ? "?" : coins != null ? fmtFull(coins) : fmt(worth);
+            rows.add(new Row(slot, stack, coins != null, worth, name, worthText));
         }
         return rows;
     }
 
-    private long rowWorth(Row row) {
-        if (row.isCoins()) {
-            return row.coinAmount();
+    private static TradePriceCache.SideValue total(List<Row> rows) {
+        long value = 0;
+        int unpriced = 0;
+        for (Row row : rows) {
+            if (row.worth() == null) unpriced++;
+            else value += row.worth();
         }
-        Long worth = TradePriceCache.stackWorth(row.stack(), basis);
-        return worth == null ? 0L : worth;
+        return new TradePriceCache.SideValue(value, unpriced);
+    }
+
+    private void refreshRows() {
+        TradePriceCache.retryIfNeeded(backing);
+        Player player = Minecraft.getInstance().player;
+        int tick = player == null ? rowsTick + 1 : player.tickCount;
+        long revision = TradePriceCache.revision();
+        if (tick == rowsTick && revision == rowsRevision && basis == rowsBasis) return;
+        rowsTick = tick;
+        rowsRevision = revision;
+        rowsBasis = basis;
+        youRows = buildRows(CoflModClient.TRADE_YOUR_SLOTS);
+        themRows = buildRows(CoflModClient.TRADE_THEIR_SLOTS);
+        youValue = total(youRows);
+        themValue = total(themRows);
+        scrollYou = clampScroll(scrollYou, youRows.size());
+        scrollThem = clampScroll(scrollThem, themRows.size());
     }
 
     @Override
     public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
-        if (Minecraft.getInstance().getConnection() == null || backing.getMenu() != this.menu) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.getConnection() == null || client.player == null || client.player.containerMenu != menu) {
             onClose();
             return;
         }
         Font font = Minecraft.getInstance().font;
 
-        List<Row> youRows = buildRows(CoflModClient.TRADE_YOUR_SLOTS);
-        List<Row> themRows = buildRows(CoflModClient.TRADE_THEIR_SLOTS);
-        long youTotal = TradePriceCache.valueSlots(
-                menu.getContainer(), CoflModClient.TRADE_YOUR_SLOTS, basis, true).total();
-        long themTotal = TradePriceCache.valueSlots(
-                menu.getContainer(), CoflModClient.TRADE_THEIR_SLOTS, basis, true).total();
+        refreshRows();
+        long youTotal = youValue.total();
+        long themTotal = themValue.total();
 
         RenderUtils.drawRoundedRect(context, panelX, panelY, panelW, panelH, RADIUS, CoflColConfig.BACKGROUND_PRIMARY);
         RenderUtils.drawString(context, "§lSkyCofl Trade", panelX + PAD, panelY + PAD, CoflColConfig.TEXT_PRIMARY);
@@ -263,8 +291,10 @@ public class TradeGUI extends Screen {
         drawScrollbar(context, colThemX, scrollThem, themRows.size());
 
         // Totals row under the tables.
-        RenderUtils.drawString(context, "§7You: §f" + fmt(youTotal), colYouX, tableBottom + 3, CoflColConfig.TEXT_PRIMARY);
-        RenderUtils.drawString(context, "§7" + otherName + ": §f" + fmt(themTotal), colThemX, tableBottom + 3, CoflColConfig.TEXT_PRIMARY);
+        RenderUtils.drawString(context, "§7You: §f" + fmt(youTotal) + (youValue.unpriced() > 0 ? " + ?" : ""),
+                colYouX, tableBottom + 3, CoflColConfig.TEXT_PRIMARY);
+        RenderUtils.drawString(context, "§7" + otherName + ": §f" + fmt(themTotal) + (themValue.unpriced() > 0 ? " + ?" : ""),
+                colThemX, tableBottom + 3, CoflColConfig.TEXT_PRIMARY);
 
         // Add Coins button (clear of the items thanks to the margin + clip).
         boolean coinsHover = inRect(mouseX, mouseY, coinsBtnX, coinsBtnY, coinsBtnW, coinsBtnH);
@@ -275,7 +305,9 @@ public class TradeGUI extends Screen {
         // --- Below the panel: control bar (left) + inventory (right) ---
         TradeState state = readTradeState();
         long net = themTotal - youTotal;
-        String netStr = (net >= 0) ? "§aProfit +" + fmt(net) : "§cLosing -" + fmt(-net);
+        int unpriced = youValue.unpriced() + themValue.unpriced();
+        String netStr = (net >= 0) ? "§aEst. profit +" + fmt(net) : "§cEst. loss -" + fmt(-net);
+        if (unpriced > 0) netStr = "§eIncomplete (" + unpriced + " unpriced)";
 
         // Control bar: its own gray box (NO border — borders only used on the
         // profit box, matching the rest of the trade UI).
@@ -296,8 +328,22 @@ public class TradeGUI extends Screen {
         boolean basisHover = inRect(mouseX, mouseY, basisBtnX, basisBtnY, basisBtnW, basisBtnH);
         RenderUtils.drawRoundedRect(context, basisBtnX, basisBtnY, basisBtnW, basisBtnH, 2,
                 basisHover ? CoflColConfig.CONFIRM_HOVER : CoflColConfig.BACKGROUND_SECONDARY);
-        RenderUtils.drawCenteredString(context, (basis == WorthBasis.LBIN ? "Basis: LBIN (click)" : "Basis: Med (click)"),
+        String basisLabel = switch (basis) {
+            case LBIN -> "Prefer: LBIN (click)";
+            case MEDIAN -> "Prefer: Med (click)";
+            case AI_ESTIMATE -> "AI Estimate (click)";
+        };
+        RenderUtils.drawCenteredString(context, basisLabel,
                 basisBtnX + basisBtnW / 2, basisBtnY + 3, CoflColConfig.TEXT_PRIMARY);
+        if (basisHover) {
+            context.setComponentTooltipForNextFrame(font, basis == WorthBasis.AI_ESTIMATE ? List.of(
+                    Component.literal("§7Uses the AI Estimate from item lore."),
+                    Component.literal("§7Missing AI estimates are shown as unpriced.")) : List.of(
+                    Component.literal("§7Exact preferred quote, then other exact quote."),
+                    Component.literal("§7Then AI estimate, then approximate market quote."),
+                    Component.literal("§8Unmatched base LBIN ignored; estimates may differ from sale prices.")),
+                    mouseX, mouseY);
+        }
 
         // Accept button.
         boolean acceptHover = inRect(mouseX, mouseY, acceptBtnX, acceptBtnY, acceptBtnW, acceptBtnH);
@@ -430,8 +476,8 @@ public class TradeGUI extends Screen {
                 }
             }
             int iconW = compact() ? (cellH - 2) : ITEM;
-            String name = row.isCoins() ? "Coins" : ChatStrip(row.stack().getHoverName().getString());
-            String worth = row.isCoins() ? fmtFull(row.coinAmount()) : fmt(rowWorth(row));
+            String name = row.name();
+            String worth = row.worthText();
             int worthW = font.width(worth);
             int textX = cx + iconW + 3;
             int worthCol = row.isCoins() ? 0xFFFFD24A : 0xFFFFC832;
@@ -539,7 +585,11 @@ public class TradeGUI extends Screen {
         }
 
         if (inRect(mx, my, basisBtnX, basisBtnY, basisBtnW, basisBtnH)) {
-            basis = (basis == WorthBasis.LBIN) ? WorthBasis.MEDIAN : WorthBasis.LBIN;
+            basis = switch (basis) {
+                case LBIN -> WorthBasis.MEDIAN;
+                case MEDIAN -> WorthBasis.AI_ESTIMATE;
+                case AI_ESTIMATE -> WorthBasis.LBIN;
+            };
             return true;
         }
         if (inRect(mx, my, acceptBtnX, acceptBtnY, acceptBtnW, acceptBtnH)) {
@@ -587,14 +637,15 @@ public class TradeGUI extends Screen {
     }
 
     private Integer rowSlotAt(double mx, double my) {
+        refreshRows();
         if (my < tableTop || my > tableBottom) {
             return null;
         }
         if (mx >= colYouX && mx < colYouX + colW) {
-            return rowSlotInList(buildRows(CoflModClient.TRADE_YOUR_SLOTS), colYouX, scrollYou, mx, my);
+            return rowSlotInList(youRows, colYouX, scrollYou, mx, my);
         }
         if (mx >= colThemX && mx < colThemX + colW) {
-            return rowSlotInList(buildRows(CoflModClient.TRADE_THEIR_SLOTS), colThemX, scrollThem, mx, my);
+            return rowSlotInList(themRows, colThemX, scrollThem, mx, my);
         }
         return null;
     }
@@ -617,11 +668,12 @@ public class TradeGUI extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        refreshRows();
         int delta = (int) (-scrollY * cellH());
         if (mouseX >= colThemX) {
-            scrollThem = clampScroll(scrollThem + delta, buildRows(CoflModClient.TRADE_THEIR_SLOTS).size());
+            scrollThem = clampScroll(scrollThem + delta, themRows.size());
         } else {
-            scrollYou = clampScroll(scrollYou + delta, buildRows(CoflModClient.TRADE_YOUR_SLOTS).size());
+            scrollYou = clampScroll(scrollYou + delta, youRows.size());
         }
         return true;
     }
@@ -635,7 +687,7 @@ public class TradeGUI extends Screen {
 
     private void forwardSlot(int slotId, int button, ContainerInput type) {
         Player player = Minecraft.getInstance().player;
-        if (player == null) {
+        if (player == null || player.containerMenu != menu) {
             return;
         }
         Minecraft.getInstance().gameMode.handleContainerInput(menu.containerId, slotId, button, type, player);
@@ -653,14 +705,8 @@ public class TradeGUI extends Screen {
         if (font.width(text) <= maxW) {
             return text;
         }
-        StringBuilder sb = new StringBuilder();
-        for (char c : text.toCharArray()) {
-            if (font.width(sb.toString() + c + "..") > maxW) {
-                break;
-            }
-            sb.append(c);
-        }
-        return sb + "..";
+        int available = maxW - font.width("..");
+        return available <= 0 ? "" : font.plainSubstrByWidth(text, available) + "..";
     }
 
     private static String fmt(long coins) {
@@ -685,7 +731,8 @@ public class TradeGUI extends Screen {
 
     @Override
     public void onClose() {
-        backing.onClose();
+        Player player = Minecraft.getInstance().player;
+        if (player != null && player.containerMenu == menu) backing.onClose();
         super.onClose();
     }
 }

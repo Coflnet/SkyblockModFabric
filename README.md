@@ -5,7 +5,7 @@ It provides in-game access to [sky.coflnet.com](https://sky.coflnet.com) auction
 
 For the Forge edition, see [Coflnet/Skyblockmod](https://github.com/Coflnet/Skyblockmod).
 
-Current version: **2.0.0-pre1** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
+Current version: **2.0.0** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
 
 ## License
 
@@ -72,7 +72,7 @@ Gradle downloads and bundles the published CoflSkyCore dependency; no sibling ch
 With SkyModCommands, `/cofl test display` sends a test panel to slot 1 for 60 seconds;
 `/cofl test display clear` clears it through the same protocol.
 
-**Bazaar orders (2.0.0-pre1):** placing a buy order or sell offer introduces the order display. 
+**Bazaar orders (2.0.0):** placing a buy order or sell offer introduces the order display.
 
 
 Click **Disable display**, or run `/cofl set modhideBazaarOrderDisplay true`, to save a preference
