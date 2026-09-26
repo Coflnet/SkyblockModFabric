@@ -871,7 +871,7 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     /** Worth basis selectable by the user. */
-    public enum WorthBasis { LBIN, MEDIAN, AI_ESTIMATE }
+    public enum WorthBasis { LBIN, MEDIAN, FULL_CRAFT_COST, AI_ESTIMATE }
 
     /**
      * Extracts a PER-ITEM coin worth from the backend tooltip lines.
@@ -972,6 +972,7 @@ public class CoflModClient implements ClientModInitializer {
             String label = switch (basis) {
                 case LBIN -> "LBIN ";
                 case MEDIAN -> "Med  ";
+                case FULL_CRAFT_COST -> "Craft";
                 case AI_ESTIMATE -> "AI   ";
             };
             sendChatMessage("§e" + label + "§7YOU §f" + formatCoins(you[0])
@@ -1735,8 +1736,12 @@ public class CoflModClient implements ClientModInitializer {
      * delayed throttle above.
      */
     public static DescriptionHandler.DescModification[][] loadDescriptionsForItemsBlocking(String title, NonNullList<ItemStack> items) {
+        return descriptionRequest(title, items).loadBySlot();
+    }
+
+    public static DescriptionRequest descriptionRequest(String title, NonNullList<ItemStack> items) {
         return new DescriptionRequest(title, getItemIdsFromInventory(items), inventoryToNBT(items),
-                Minecraft.getInstance().getUser().getName(), posToUpload).loadBySlot();
+                Minecraft.getInstance().getUser().getName(), posToUpload);
     }
 
     /**

@@ -24,6 +24,21 @@ separate host-owned gate.
 
 ## Regression baseline
 
+Trade pricing tests cover strict full craft cost selection, upgraded items,
+formatted quotes, missing costs, and per item versus stack total normalization.
+The description HTTP contract test verifies that hidden craft quotes use
+request scoped `FullCraftCost` fields, preserve duplicate item slots, reject
+incomplete responses, and leave live lore and info displays unchanged.
+
+In the trade screen, cycle LBIN, median, full craft cost, and the existing
+estimate mode. Test with full craft cost both visible and hidden in lore settings.
+For unchanged offers, repeated basis changes must reuse quotes, including an
+unavailable craft quote. Check removal, replacement by a same name item with
+different upgrades, and closing during a slow response. Old responses must not
+restore removed values. A temporary craft request failure must retain market
+quotes and retry only while the trade remains open. Check frame times with a
+full trade and the settings panel open on the laptop.
+
 The reserved comparison command targets `ScenarioServerContractTest`. That test uses only APIs
 already available on pinned base `f766e850023edbc63fbb4747523154cd2f5e618e`, so it compiles there
 and fails its assertions because `settings.gradle` has no `testserver` project and the

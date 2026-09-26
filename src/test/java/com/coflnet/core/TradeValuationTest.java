@@ -22,12 +22,13 @@ class TradeValuationTest {
                 "§7Paid: §e290,000,000 §88d ago"
         };
         for (var basis : TradeValuation.WorthBasis.values()) {
-            assertEquals(293_633_280L, TradeValuation.parseWorthFromTips(screenshot, basis));
-            assertEquals(293_633_280L, TradeValuation.parseWorthFromTips(
+            long expected = basis == TradeValuation.WorthBasis.FULL_CRAFT_COST ? 347_680_000L : 293_633_280L;
+            assertEquals(expected, TradeValuation.parseWorthFromTips(screenshot, basis));
+            assertEquals(expected, TradeValuation.parseWorthFromTips(
                     new String[]{String.join(" ", screenshot)}, basis));
             var reversed = java.util.Arrays.asList(screenshot.clone());
             java.util.Collections.reverse(reversed);
-            assertEquals(293_633_280L, TradeValuation.parseWorthFromTips(reversed.toArray(String[]::new), basis));
+            assertEquals(expected, TradeValuation.parseWorthFromTips(reversed.toArray(String[]::new), basis));
         }
     }
 
@@ -81,6 +82,24 @@ class TradeValuationTest {
         assertEquals(1_500_000L, TradeValuation.parseCoinOffer("§61.5m coins"));
         assertNull(TradeValuation.parseCoinOffer("§x1.5m coins"));
         assertNull(TradeValuation.parseCoinOffer("§6Golden Dragon"));
+    }
+
+    @Test void fullCraftCostIncludesUpgradesAndRemainsPerItemForStacks() {
+        String[] tips = {"§7Craft Cost: §e100k §7Full Craft Cost: §e347.68M {BUY_ORDER} Med: 290m"};
+        assertEquals(347_680_000L, TradeValuation.parseWorthFromTips(tips,
+                TradeValuation.WorthBasis.FULL_CRAFT_COST, 64));
+        assertEquals(1_234_567L, TradeValuation.parseWorthFromTips(new String[]{"Full Craft Cost: 1,234,567"},
+                TradeValuation.WorthBasis.FULL_CRAFT_COST));
+    }
+
+    @Test void fullCraftCostNeverSubstitutesCleanCraftOrMarketPrices() {
+        for (String missing : new String[]{"Craft Cost: 100m", "No Craft Cost found",
+                "Craft ingredients unavailable", "Obtain cost: 90m(not craftable)", "Full Craft Cost: 0"}) {
+            assertNull(TradeValuation.parseWorthFromTips(new String[]{missing, "Med: 150m", "AI Estimate: 200m"},
+                    TradeValuation.WorthBasis.FULL_CRAFT_COST));
+        }
+        assertNull(TradeValuation.parseWorthFromTips(new String[]{"Full Craft Cost: 1m"},
+                TradeValuation.WorthBasis.FULL_CRAFT_COST, 0));
     }
 
     @Test void totalsPricedAndUnpricedTradeItems() {

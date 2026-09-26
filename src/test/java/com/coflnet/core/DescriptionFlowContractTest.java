@@ -180,6 +180,54 @@ class DescriptionFlowContractTest {
     }
 
     @Test
+    void hiddenCraftCostUsesScopedFieldsAndKeepsDuplicateSlotsAndLiveLore(@TempDir Path sessions)
+            throws Exception {
+        CoflCore.misc.SessionManager.setMainPath(sessions);
+        var captured = new AtomicReference<JsonObject>();
+        var response = new AtomicReference<>("[[{\"type\":\"APPEND\",\"value\":\"Full Craft Cost: 10m\"}],"
+                + "[{\"type\":\"APPEND\",\"value\":\"Full Craft Cost: 250m\"}],[]]");
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/mod/description/modifications", exchange -> {
+            try {
+                captured.set(JsonParser.parseString(new String(exchange.getRequestBody().readAllBytes(),
+                        StandardCharsets.UTF_8)).getAsJsonObject());
+                byte[] bytes = response.get().getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        var existing = new DescriptionHandler.DescModification[0];
+        DescriptionHandler.tooltipItemIdMap.put("same-name", existing);
+        try {
+            CoflCore.configuration.Config.BaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            var request = new DescriptionRequest("You     Trader", new String[]{"same-name", "same-name"},
+                    "full-inventory-including-skyblock-menu", "scenario-user", new Position(12, 64, 34));
+            var infoBefore = DescriptionHandler.getInfoDisplay();
+            var costs = request.loadFullCraftCosts();
+            assertEquals("Full Craft Cost: 10m", costs[0][0].value);
+            assertEquals("Full Craft Cost: 250m", costs[1][0].value);
+            assertEquals(JsonParser.parseString("{\"Fields\":[[\"FullCraftCost\"]],\"Disabled\":false}"),
+                    captured.get().get("settings"));
+            assertEquals("You     Trader", captured.get().get("chestName").getAsString());
+            assertEquals("full-inventory-including-skyblock-menu", captured.get().get("fullInventoryNbt").getAsString());
+            assertEquals(4, captured.get().get("version").getAsInt());
+            assertEquals(JsonParser.parseString("{\"x\":12,\"y\":64,\"z\":34}"), captured.get().get("position"));
+            org.junit.jupiter.api.Assertions.assertSame(existing, DescriptionHandler.getTooltipData("same-name"));
+            org.junit.jupiter.api.Assertions.assertSame(infoBefore, DescriptionHandler.getInfoDisplay());
+            assertEquals(1, DescriptionHandler.tooltipItemIdMap.size());
+            for (String invalid : new String[]{"null", "[]", "[[]]"}) {
+                response.set(invalid);
+                assertThrows(IllegalStateException.class, request::loadFullCraftCosts);
+            }
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void realDescriptionRequestMapsOrderDescriptionAndTrailingInfoDisplay(@TempDir Path sessionDirectory)
             throws Exception {
         try (var stub = new DescriptionBackendStub()) {

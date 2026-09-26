@@ -307,6 +307,8 @@ public class TradeGUI extends Screen {
         long net = themTotal - youTotal;
         int unpriced = youValue.unpriced() + themValue.unpriced();
         String netStr = (net >= 0) ? "§aEst. profit +" + fmt(net) : "§cEst. loss -" + fmt(-net);
+        if (basis == WorthBasis.FULL_CRAFT_COST)
+            netStr = (net >= 0 ? "§aCost diff. +" : "§cCost diff. -") + fmt(Math.abs(net));
         if (unpriced > 0) netStr = "§eIncomplete (" + unpriced + " unpriced)";
 
         // Control bar: its own gray box (NO border — borders only used on the
@@ -331,6 +333,7 @@ public class TradeGUI extends Screen {
         String basisLabel = switch (basis) {
             case LBIN -> "Prefer: LBIN (click)";
             case MEDIAN -> "Prefer: Med (click)";
+            case FULL_CRAFT_COST -> "Full Craft Cost (click)";
             case AI_ESTIMATE -> "AI Estimate (click)";
         };
         RenderUtils.drawCenteredString(context, basisLabel,
@@ -338,7 +341,12 @@ public class TradeGUI extends Screen {
         if (basisHover) {
             context.setComponentTooltipForNextFrame(font, basis == WorthBasis.AI_ESTIMATE ? List.of(
                     Component.literal("§7Uses the AI Estimate from item lore."),
-                    Component.literal("§7Missing AI estimates are shown as unpriced.")) : List.of(
+                    Component.literal("§7Missing AI estimates are shown as unpriced."))
+                    : basis == WorthBasis.FULL_CRAFT_COST ? List.of(
+                    Component.literal("§7Full craft cost includes item upgrades."),
+                    Component.literal("§7Uses item lore, or fetches a hidden API quote."),
+                    Component.literal("§7Missing craft costs are shown as unpriced."),
+                    Component.literal("§8Replacement estimates, not expected resale prices.")) : List.of(
                     Component.literal("§7Exact preferred quote, then other exact quote."),
                     Component.literal("§7Then AI estimate, then approximate market quote."),
                     Component.literal("§8Unmatched base LBIN ignored; estimates may differ from sale prices.")),
@@ -587,9 +595,11 @@ public class TradeGUI extends Screen {
         if (inRect(mx, my, basisBtnX, basisBtnY, basisBtnW, basisBtnH)) {
             basis = switch (basis) {
                 case LBIN -> WorthBasis.MEDIAN;
-                case MEDIAN -> WorthBasis.AI_ESTIMATE;
+                case MEDIAN -> WorthBasis.FULL_CRAFT_COST;
+                case FULL_CRAFT_COST -> WorthBasis.AI_ESTIMATE;
                 case AI_ESTIMATE -> WorthBasis.LBIN;
             };
+            TradePriceCache.selectBasis(backing, basis);
             return true;
         }
         if (inRect(mx, my, acceptBtnX, acceptBtnY, acceptBtnW, acceptBtnH)) {
