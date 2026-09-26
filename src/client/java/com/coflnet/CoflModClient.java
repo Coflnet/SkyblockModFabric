@@ -60,6 +60,7 @@ import com.mojang.brigadier.Message;
 import com.mojang.brigadier.arguments.StringArgumentType;
 
 import CoflCore.CoflCore;
+import CoflCore.commands.CommandSuggestions;
 import CoflCore.CoflSkyCommand;
 import CoflCore.commands.Command;
 import CoflCore.commands.CommandType;
@@ -1077,10 +1078,6 @@ public class CoflModClient implements ClientModInitializer {
                     });
                     return 1;
                 })
-                .then(com.coflnet.commands.TradeGuiCommand.<FabricClientCommandSource>create(
-                        com.coflnet.config.TradeGuiManager::isEnabled,
-                        com.coflnet.config.TradeGuiManager::setEnabled,
-                        CoflModClient::sendChatMessage))
                 .then(ClientCommands.argument("args", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
                     String input = context.getInput();
@@ -1160,22 +1157,14 @@ public class CoflModClient implements ClientModInitializer {
                             System.out.println("No known commands loaded yet, cannot suggest");
                             return builder.buildFuture();
                         }
-                        for (String suggestion : CoflCore.config.knownCommands.keySet()) {
-                            if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())
-                                    || inputArgs.length == 1 // just /cofl should show all
-                            ){
-                                String messageText = CoflCore.config.knownCommands.get(suggestion);
-                                if(messageText == null)
-                                    builder.suggest(suggestion);
-                                else
-                                    builder.suggest(suggestion, new Message() {
-                                        @Override
-                                        public String getString() {
-                                            // Replace line breaks with spaces for single-line display
-                                            String[] parts = messageText.split("\n");
-                                            return parts.length > 0 ? parts[0] : "";
-                                        }
-                                    });
+                        for (var entry : CommandSuggestions.matching(
+                                CoflCore.config.knownCommands, builder.getRemaining())) {
+                            String suggestion = entry.getKey();
+                            String messageText = entry.getValue();
+                            if (messageText == null) {
+                                builder.suggest(suggestion);
+                            } else {
+                                builder.suggest(suggestion, () -> messageText.split("\n", 2)[0]);
                             }
                         }
                     }
@@ -1231,14 +1220,6 @@ public class CoflModClient implements ClientModInitializer {
                             }
                         }
                         return 1;
-                    }
-
-                    // Toggle the trade overlay (replaces the Hypixel trade window)
-                    if (args.length >= 1 && args[0].equalsIgnoreCase("tradegui")) {
-                        return com.coflnet.commands.TradeGuiCommand.execute(args,
-                                com.coflnet.config.TradeGuiManager::isEnabled,
-                                com.coflnet.config.TradeGuiManager::setEnabled,
-                                CoflModClient::sendChatMessage);
                     }
 
                     // Opens the permanent HUD info-display layout editor (drag/scroll/arrow keys to position).
@@ -2243,7 +2224,7 @@ public class CoflModClient implements ClientModInitializer {
         return com.coflnet.core.CoinFormatter.format(coins);
     }
 
-    private static void sendChatMessage(String message) {
+    static void sendChatMessage(String message) {
         displayModMessage(Component.literal(message));
     }
 

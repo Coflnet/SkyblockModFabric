@@ -69,6 +69,22 @@ public class EventSubscribers {
     }
 
     @Subscribe
+    public void onTradeGui(OnTradeGui event) {
+        runOnClientThread(() -> {
+            if (event.enabled == null) {
+                boolean enabled = com.coflnet.config.TradeGuiManager.isEnabled();
+                CoflModClient.sendChatMessage("§7Trade overlay is currently " + (enabled ? "§aon" : "§coff"));
+                CoflModClient.sendChatMessage("§7Usage: §e/cofl tradegui <on/off>");
+                return;
+            }
+            boolean enabled = event.enabled;
+            com.coflnet.config.TradeGuiManager.setEnabled(enabled);
+            CoflModClient.sendChatMessage("§aTrade overlay " + (enabled ? "§aenabled" : "§cdisabled")
+                    + "§7. Open a trade to " + (enabled ? "use the SkyCofl trade GUI." : "use the normal Hypixel window."));
+        });
+    }
+
+    @Subscribe
     public void onOpenUrl(OnOpenUrlReceive event) {
         if (event == null || event.url == null || event.url.isBlank()) {
             return;
