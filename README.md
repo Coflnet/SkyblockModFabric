@@ -58,6 +58,11 @@ Run `/cofl` in-game to open settings. See [sky.coflnet.com](https://sky.coflnet.
 
 ### Trade pricing
 
+Enable the overlay with `/cofl tradegui on`, or disable it with
+`/cofl tradegui off`. `/cl` is an alias. The command and its `on` and `off`
+arguments support tab completion without waiting for backend commands to load.
+Open a new trade after enabling it.
+
 The trade menu pricing button cycles through LBIN, median, full craft cost, and
 the existing estimate mode. LBIN and median prefer matching market quotes.
 Full craft cost includes upgrades and uses the offered item's tooltip quote.

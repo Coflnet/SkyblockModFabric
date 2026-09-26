@@ -26,6 +26,9 @@ separate host-owned gate.
 
 Trade pricing tests cover strict full craft cost selection, upgraded items,
 formatted quotes, missing costs, and per item versus stack total normalization.
+`TradeGuiCommandTest` uses the actual Brigadier dispatcher to check command and
+state completion, correct replacement ranges, both aliases, local execution,
+and preservation of unrelated backend commands.
 The description HTTP contract test verifies that hidden craft quotes use
 request scoped `FullCraftCost` fields, preserve duplicate item slots, reject
 incomplete responses, and leave live lore and info displays unchanged.

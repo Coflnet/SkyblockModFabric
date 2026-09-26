@@ -1077,6 +1077,10 @@ public class CoflModClient implements ClientModInitializer {
                     });
                     return 1;
                 })
+                .then(com.coflnet.commands.TradeGuiCommand.<FabricClientCommandSource>create(
+                        com.coflnet.config.TradeGuiManager::isEnabled,
+                        com.coflnet.config.TradeGuiManager::setEnabled,
+                        CoflModClient::sendChatMessage))
                 .then(ClientCommands.argument("args", StringArgumentType.greedyString())
                 .suggests((context, builder) -> {
                     String input = context.getInput();
@@ -1231,17 +1235,10 @@ public class CoflModClient implements ClientModInitializer {
 
                     // Toggle the trade overlay (replaces the Hypixel trade window)
                     if (args.length >= 1 && args[0].equalsIgnoreCase("tradegui")) {
-                        if (args.length >= 2 && (args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off"))) {
-                            boolean enabled = args[1].equalsIgnoreCase("on");
-                            com.coflnet.config.TradeGuiManager.setEnabled(enabled);
-                            sendChatMessage("§aTrade overlay " + (enabled ? "§aenabled" : "§cdisabled")
-                                    + "§7. Open a trade to " + (enabled ? "use the SkyCofl trade GUI." : "use the normal Hypixel window."));
-                        } else {
-                            boolean current = com.coflnet.config.TradeGuiManager.isEnabled();
-                            sendChatMessage("§7Trade overlay is currently " + (current ? "§aon" : "§coff"));
-                            sendChatMessage("§7Usage: §e/cofl tradegui <on/off>");
-                        }
-                        return 1;
+                        return com.coflnet.commands.TradeGuiCommand.execute(args,
+                                com.coflnet.config.TradeGuiManager::isEnabled,
+                                com.coflnet.config.TradeGuiManager::setEnabled,
+                                CoflModClient::sendChatMessage);
                     }
 
                     // Opens the permanent HUD info-display layout editor (drag/scroll/arrow keys to position).
