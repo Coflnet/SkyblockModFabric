@@ -60,6 +60,7 @@ import com.mojang.brigadier.Message;
 import com.mojang.brigadier.arguments.StringArgumentType;
 
 import CoflCore.CoflCore;
+import CoflCore.commands.CommandSuggestions;
 import CoflCore.CoflSkyCommand;
 import CoflCore.commands.Command;
 import CoflCore.commands.CommandType;
@@ -871,7 +872,7 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     /** Worth basis selectable by the user. */
-    public enum WorthBasis { LBIN, MEDIAN, AI_ESTIMATE }
+    public enum WorthBasis { LBIN, MEDIAN, FULL_CRAFT_COST, AI_ESTIMATE }
 
     /**
      * Extracts a PER-ITEM coin worth from the backend tooltip lines.
@@ -972,6 +973,7 @@ public class CoflModClient implements ClientModInitializer {
             String label = switch (basis) {
                 case LBIN -> "LBIN ";
                 case MEDIAN -> "Med  ";
+                case FULL_CRAFT_COST -> "Craft";
                 case AI_ESTIMATE -> "AI   ";
             };
             sendChatMessage("§e" + label + "§7YOU §f" + formatCoins(you[0])
@@ -1155,22 +1157,14 @@ public class CoflModClient implements ClientModInitializer {
                             System.out.println("No known commands loaded yet, cannot suggest");
                             return builder.buildFuture();
                         }
-                        for (String suggestion : CoflCore.config.knownCommands.keySet()) {
-                            if (suggestion.toLowerCase().startsWith(currentWord.toLowerCase())
-                                    || inputArgs.length == 1 // just /cofl should show all
-                            ){
-                                String messageText = CoflCore.config.knownCommands.get(suggestion);
-                                if(messageText == null)
-                                    builder.suggest(suggestion);
-                                else
-                                    builder.suggest(suggestion, new Message() {
-                                        @Override
-                                        public String getString() {
-                                            // Replace line breaks with spaces for single-line display
-                                            String[] parts = messageText.split("\n");
-                                            return parts.length > 0 ? parts[0] : "";
-                                        }
-                                    });
+                        for (var entry : CommandSuggestions.matching(
+                                CoflCore.config.knownCommands, builder.getRemaining())) {
+                            String suggestion = entry.getKey();
+                            String messageText = entry.getValue();
+                            if (messageText == null) {
+                                builder.suggest(suggestion);
+                            } else {
+                                builder.suggest(suggestion, () -> messageText.split("\n", 2)[0]);
                             }
                         }
                     }
@@ -1224,21 +1218,6 @@ public class CoflModClient implements ClientModInitializer {
                             for (String line : table.split("\n")) {
                                 sendChatMessage("§7" + line);
                             }
-                        }
-                        return 1;
-                    }
-
-                    // Toggle the trade overlay (replaces the Hypixel trade window)
-                    if (args.length >= 1 && args[0].equalsIgnoreCase("tradegui")) {
-                        if (args.length >= 2 && (args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("off"))) {
-                            boolean enabled = args[1].equalsIgnoreCase("on");
-                            com.coflnet.config.TradeGuiManager.setEnabled(enabled);
-                            sendChatMessage("§aTrade overlay " + (enabled ? "§aenabled" : "§cdisabled")
-                                    + "§7. Open a trade to " + (enabled ? "use the SkyCofl trade GUI." : "use the normal Hypixel window."));
-                        } else {
-                            boolean current = com.coflnet.config.TradeGuiManager.isEnabled();
-                            sendChatMessage("§7Trade overlay is currently " + (current ? "§aon" : "§coff"));
-                            sendChatMessage("§7Usage: §e/cofl tradegui <on/off>");
                         }
                         return 1;
                     }
@@ -1735,8 +1714,12 @@ public class CoflModClient implements ClientModInitializer {
      * delayed throttle above.
      */
     public static DescriptionHandler.DescModification[][] loadDescriptionsForItemsBlocking(String title, NonNullList<ItemStack> items) {
+        return descriptionRequest(title, items).loadBySlot();
+    }
+
+    public static DescriptionRequest descriptionRequest(String title, NonNullList<ItemStack> items) {
         return new DescriptionRequest(title, getItemIdsFromInventory(items), inventoryToNBT(items),
-                Minecraft.getInstance().getUser().getName(), posToUpload).loadBySlot();
+                Minecraft.getInstance().getUser().getName(), posToUpload);
     }
 
     /**
@@ -2241,7 +2224,7 @@ public class CoflModClient implements ClientModInitializer {
         return com.coflnet.core.CoinFormatter.format(coins);
     }
 
-    private static void sendChatMessage(String message) {
+    static void sendChatMessage(String message) {
         displayModMessage(Component.literal(message));
     }
 

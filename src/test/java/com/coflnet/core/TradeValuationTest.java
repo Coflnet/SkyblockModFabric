@@ -22,12 +22,13 @@ class TradeValuationTest {
                 "§7Paid: §e290,000,000 §88d ago"
         };
         for (var basis : TradeValuation.WorthBasis.values()) {
-            assertEquals(293_633_280L, TradeValuation.parseWorthFromTips(screenshot, basis));
-            assertEquals(293_633_280L, TradeValuation.parseWorthFromTips(
+            long expected = basis == TradeValuation.WorthBasis.FULL_CRAFT_COST ? 347_680_000L : 293_633_280L;
+            assertEquals(expected, TradeValuation.parseWorthFromTips(screenshot, basis));
+            assertEquals(expected, TradeValuation.parseWorthFromTips(
                     new String[]{String.join(" ", screenshot)}, basis));
             var reversed = java.util.Arrays.asList(screenshot.clone());
             java.util.Collections.reverse(reversed);
-            assertEquals(293_633_280L, TradeValuation.parseWorthFromTips(reversed.toArray(String[]::new), basis));
+            assertEquals(expected, TradeValuation.parseWorthFromTips(reversed.toArray(String[]::new), basis));
         }
     }
 

@@ -5,13 +5,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class TradeValuation {
-    public enum WorthBasis { LBIN, MEDIAN, AI_ESTIMATE }
+    public enum WorthBasis { LBIN, MEDIAN, FULL_CRAFT_COST, AI_ESTIMATE }
 
     private static final String NUMBER = "([\\d,]+(?:\\.\\d+)?(?:\\s*[kmb]\\b)?)";
     private static final Pattern QUOTE = Pattern.compile(
             "\\b(lbin|lowest\\s*bin|med(?:ian)?|ai\\s*estimate|buy|sell)\\s*:?\\s*(~?)\\s*"
                     + NUMBER + "((?:\\s*\\([^)]*\\))*)", Pattern.CASE_INSENSITIVE);
     private static final Pattern EACH = Pattern.compile("\\(" + NUMBER + "\\s*each\\)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern FULL_CRAFT_COST = Pattern.compile(
+            "\\bfull\\s+craft\\s+cost\\s*:\\s*" + NUMBER, Pattern.CASE_INSENSITIVE);
     private static final Pattern COINS = Pattern.compile(
             "^([\\d,]*\\.?\\d+\\s*[kmb]?)\\s+coins$", Pattern.CASE_INSENSITIVE);
 
@@ -25,6 +27,16 @@ public final class TradeValuation {
     /** AI mode requires an AI quote; market modes prefer exact quotes, then AI/approximate quotes. */
     public static Long parseWorthFromTips(String[] tips, WorthBasis basis, int stackCount) {
         if (tips == null || stackCount <= 0) return null;
+        if (basis == WorthBasis.FULL_CRAFT_COST) {
+            for (String tip : tips) {
+                if (tip == null) continue;
+                Matcher cost = FULL_CRAFT_COST.matcher(FormattingCodes.strip(tip));
+                if (!cost.find()) continue;
+                Long value = NumberParser.parseCoinNumber(cost.group(1));
+                if (value != null && value > 0) return value;
+            }
+            return null;
+        }
         Long best = null;
         int bestRank = Integer.MAX_VALUE;
         for (String tip : tips) {
