@@ -1612,11 +1612,7 @@ public class CoflModClient implements ClientModInitializer {
             return;
         }
 
-        String menuSlot = Minecraft.getInstance().player.getInventory().getItem(8).getComponents().toString();
-        if (!menuSlot.contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")
-            && !menuSlot.contains("Scaffolding") && !menuSlot.contains("Quiver")
-            && !menuSlot.contains("Your Score Summary") // dungeon completion
-            )
+        if (!isDescriptionContext())
             return;
         Thread.startVirtualThread(() -> {
             NonNullList<ItemStack> itemStacks = screen.getMenu().getItems();
@@ -1686,6 +1682,53 @@ public class CoflModClient implements ClientModInitializer {
                 e.printStackTrace();
                 System.out.println("Failed to load descriptions for inventory: " + e + " "
                         + inventoryToNBT(itemStacks));
+            }
+        });
+    }
+
+    /** True when the player is in a SkyBlock-like context (menu item in hotbar slot 9). Call on the client thread. */
+    private static boolean isDescriptionContext() {
+        String menuSlot = Minecraft.getInstance().player.getInventory().getItem(8).getComponents().toString();
+        return menuSlot.contains("minecraft:custom_data=>{id:\"SKYBLOCK_MENU\"}")
+                || menuSlot.contains("Scaffolding") || menuSlot.contains("Quiver")
+                || menuSlot.contains("Your Score Summary"); // dungeon completion
+    }
+
+    // Chest content changes (e.g. a new item put into the create-auction listing slot of the already
+    // open menu): bursts of slot packets are coalesced, then descriptions are reloaded.
+    private static final com.coflnet.core.ChestChangeDebouncer chestChangeDebouncer =
+            new com.coflnet.core.ChestChangeDebouncer(150, 600);
+    private static volatile AbstractContainerScreen<?> chestChangeScreen;
+
+    /**
+     * Called on the client thread when a chest slot of the open menu changed. Only marks the change;
+     * waiting and the (network) request run on a virtual thread, never on the render thread.
+     */
+    public void onChestContentChanged(AbstractContainerScreen<?> screen) {
+        if (screen == null || Minecraft.getInstance().player == null || !isDescriptionContext())
+            return;
+        if (chestChangeScreen == null || chestChangeScreen.getMenu() != screen.getMenu())
+            chestChangeDebouncer.reset();
+        chestChangeScreen = screen;
+        if (!chestChangeDebouncer.markChanged(System.currentTimeMillis()))
+            return;
+        Thread.ofVirtual().name("CoflSky-ChestChange").start(() -> {
+            try {
+                long wait;
+                while ((wait = chestChangeDebouncer.poll(System.currentTimeMillis())) > 0)
+                    Thread.sleep(wait);
+                if (wait < 0)
+                    return;
+                AbstractContainerScreen<?> target = chestChangeScreen;
+                if (target == null || !(Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> current)
+                        || current.getMenu() != target.getMenu())
+                    return; // menu closed or replaced meanwhile
+                // lastNbtRequest dedups when the contents did not actually change
+                loadDescriptionsForItems(target.getTitle().getString(), target.getMenu().getItems());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (Exception e) {
+                System.out.println("[chestChange] reload failed: " + e);
             }
         });
     }
