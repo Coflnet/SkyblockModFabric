@@ -19,4 +19,22 @@ class MenuClassifierTest {
                 new boolean[]{true, true, false, true, true}));
         assertFalse(MenuClassifier.isTradeTitle(54, "You     VerticleFr"));
     }
+
+    @Test void createAuctionTitlesTriggerOnAnyChange() {
+        assertTrue(MenuClassifier.shouldReloadOnChestChange("Create BIN Auction", null)); // cleared slot
+        assertTrue(MenuClassifier.shouldReloadOnChestChange("Create Auction", "§aSome Item"));
+        assertFalse(MenuClassifier.isCreateAuction("Auction House"));
+    }
+
+    @Test void storageAndOrdinaryMenusDoNotTriggerOnPlainChange() {
+        assertFalse(MenuClassifier.shouldReloadOnChestChange("Ender Chest (1/9)", "§aSome Item"));
+        assertFalse(MenuClassifier.shouldReloadOnChestChange("Ender Chest (1/9)", "Combine Items"));
+        assertFalse(MenuClassifier.shouldReloadOnChestChange("Harp - Hymn", "§aPlain"));
+        assertFalse(MenuClassifier.shouldReloadOnChestChange("Experimentation Table", null));
+    }
+
+    @Test void markerNamesTriggerInOtherMenus() {
+        assertTrue(MenuClassifier.shouldReloadOnChestChange("Anvil", "§aCombine Items"));
+        assertTrue(MenuClassifier.shouldReloadOnChestChange("Bazaar Order", "§aFlip Order"));
+    }
 }

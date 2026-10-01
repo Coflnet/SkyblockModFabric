@@ -10,7 +10,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.network.chat.Component;
+import com.coflnet.core.ChestChangeDebouncer;
+import com.coflnet.core.MenuClassifier;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -64,6 +67,28 @@ public class NewItemInChestMixin {
         }
     }
 
+    /** Set on the client thread in HEAD when the packet really changes the slot's content. */
+    @Unique
+    private boolean skycofl$chestSlotChanged;
+
+    @Inject(method = "handleContainerSetSlot", at = @At("HEAD"))
+    private void skycofl$detectSlotChange(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
+        // HEAD also runs on the netty thread before the packet is rescheduled; only the client-thread pass counts.
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (!mc.isSameThread() || mc.player == null)
+                return;
+            skycofl$chestSlotChanged = false;
+            var menu = mc.player.containerMenu;
+            int slot = packet.getSlot();
+            if (menu == null || menu.containerId != packet.getContainerId() || slot < 0 || slot >= menu.slots.size())
+                return;
+            skycofl$chestSlotChanged = !ItemStack.matches(menu.getSlot(slot).getItem(), packet.getItem());
+        } catch (Exception ignored) {
+            // best effort
+        }
+    }
+
     @Inject(method = "handleContainerSetSlot", at = @At("TAIL"))
     private void onPacketReceive(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         long perfStart = PerfTracer.begin();
@@ -75,27 +100,22 @@ public class NewItemInChestMixin {
             if ((slot >= 0 && slot < 36) || slot == 40) {
                 TradePriceCache.requestCurrentTrade(packet.getContainerId());
                 CoflModClient.openTradeOverlayIfReady(packet.getContainerId());
-                return;
             }
 
-            // Non-trade path: only worth the (getCustomName/getString) work below for
-            // the handful of menus that need an immediate description refresh; every
-            // other slot update packet (the vast majority - regular inventories,
-            // hoppers, etc.) returns above without allocating anything.
-            Component customName = packet.getItem().getCustomName();
-            if (customName == null) {
-                return;
-            }
-            String itemTitle = customName.getString();
-            if (itemTitle.contains("Combine Items") // anvil result
-                    || itemTitle.equals("§aFlip Order") // bazaar order flip prices loaded
-                    || itemTitle.contains("AUCTION FOR") // putting item in auction create
-            ) {
-                try {
-                    if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs)
-                        CoflModClient.instance.loadDescriptionsForInv(hs);
-                } catch (Exception inner) {
-                    System.out.println("[NewItemInChestMixin] loadDescriptionsForInv failed: " + inner.getMessage());
+            // Contents of the open chest GUI changed (e.g. a new item in the create-auction
+            // listing slot, anvil result, flip order): reload descriptions (debounced, off-thread).
+            // Must not be skipped for slots < 36 - the listing slot is one of them.
+            boolean changed = skycofl$chestSlotChanged;
+            skycofl$chestSlotChanged = false;
+            // Cheap gates first; title/name work only for real changes of chest slots.
+            if (changed && Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs
+                    && hs.getMenu().containerId == packet.getContainerId()) {
+                int total = hs.getMenu().slots.size();
+                String title = hs.getTitle().getString();
+                if (ChestChangeDebouncer.needsReload(slot, total, true, MenuClassifier.isTradeTitle(total - 36, title))) {
+                    Component name = MenuClassifier.isCreateAuction(title) ? null : packet.getItem().getCustomName();
+                    if (MenuClassifier.shouldReloadOnChestChange(title, name == null ? null : name.getString()))
+                        CoflModClient.instance.onChestContentChanged(hs);
                 }
             }
         } catch (Exception e) {
@@ -113,6 +133,12 @@ public class NewItemInChestMixin {
         long perfStart = PerfTracer.begin();
         try {
             refreshBazaarOrders(packet.containerId());
+            // A full content packet may be the answer to an inventory click in the listing menu.
+            if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs
+                    && hs.getMenu().containerId == packet.containerId()
+                    && MenuClassifier.isCreateAuction(hs.getTitle().getString())) {
+                CoflModClient.instance.onChestContentChanged(hs);
+            }
             TradePriceCache.requestCurrentTrade(packet.containerId());
             CoflModClient.openTradeOverlayIfReady(packet.containerId());
         } finally {
