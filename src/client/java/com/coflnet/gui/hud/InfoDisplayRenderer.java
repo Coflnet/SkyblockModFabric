@@ -97,8 +97,12 @@ public final class InfoDisplayRenderer implements HudElement {
     }
 
     private static boolean isVisible(Screen screen) {
-        return !(screen instanceof InfoDisplayEditScreen)
-                && (screen == null || screen instanceof ChatScreen || CoflModConfig.get().infoDisplaysShowInGuis);
+        // Without a level (title screen, server list, ...) there is nothing to overlay; the hover
+        // hook in ScreenMixin runs on every screen, so it must not show displays there.
+        Minecraft client = Minecraft.getInstance();
+        return com.coflnet.core.InfoDisplayVisibility.isVisible(client.level != null && client.player != null,
+                screen instanceof InfoDisplayEditScreen, screen == null || screen instanceof ChatScreen,
+                CoflModConfig.get().infoDisplaysShowInGuis);
     }
 
     /** Run after the screen's tooltips are queued, before Minecraft extracts them. */

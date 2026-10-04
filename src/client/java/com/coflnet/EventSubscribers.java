@@ -163,6 +163,17 @@ public class EventSubscribers {
         }
     }
 
+    // Websocket thread; clearAll() hops onto the render thread itself and never sends over the socket.
+    @Subscribe
+    public void onSocketClose(SocketClose event) {
+        com.coflnet.gui.hud.InfoDisplayManager.clearAll();
+    }
+
+    @Subscribe
+    public void onSocketError(SocketError event) {
+        com.coflnet.gui.hud.InfoDisplayManager.clearAll();
+    }
+
     @Subscribe
     public void onCountdownReceive(OnCountdownReceive event){
         countdownData = event.CountdownData;

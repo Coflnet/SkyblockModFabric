@@ -389,6 +389,7 @@ public class CoflModClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             applyServerContext(ServerContext.UNKNOWN);
+            com.coflnet.gui.hud.InfoDisplayManager.clearAll();
             WSClientWrapper wrapper = CoflCore.Wrapper;
             if (wrapper != null && wrapper.isRunning) {
                 System.out.println("Disconnected from server");
@@ -2646,6 +2647,8 @@ public class CoflModClient implements ClientModInitializer {
             if (currentWrapper != null && currentWrapper.isRunning) {
                 currentWrapper.stop();
             }
+            // A manual stop may not always raise SocketClose; never leave stale displays behind.
+            com.coflnet.gui.hud.InfoDisplayManager.clearAll();
         });
     }
 
