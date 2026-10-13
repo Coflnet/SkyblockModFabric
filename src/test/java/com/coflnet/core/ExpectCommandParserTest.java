@@ -35,4 +35,11 @@ class ExpectCommandParserTest {
     @Test void expectInsideOtherTypeStillIgnored() {
         assertTrue(ExpectCommandParser.parse("{\"type\":\"expected\",\"data\":\"{\\\"command\\\":\\\"/a\\\"}\"}").isEmpty());
     }
+
+    @Test
+    void parsesTheCurrentWireMessage() {
+        var r = ExpectCommandParser.parse("{\"type\":\"expect\",\"data\":\"{\\\"command\\\":\\\"/recipe Necron's Leggings\\\",\\\"ttl\\\":120}\"}");
+        assertEquals("/recipe Necron's Leggings", r.orElseThrow().command());
+        assertEquals(120, r.orElseThrow().ttlSeconds());
+    }
 }

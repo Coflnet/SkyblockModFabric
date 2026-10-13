@@ -184,6 +184,7 @@ public class CoflModClient implements ClientModInitializer {
     // truly unbounded otherwise. Only recent menus matter for the debounce these exist for.
     private static final BoundedLruMap<String, Long> lastRefreshTimePerInventory = new BoundedLruMap<>(500);
     private static final BoundedLruMap<String, Long> lastDescriptionLoadRequestByMenu = new BoundedLruMap<>(500);
+    private static final com.coflnet.core.LogDedupe invalidLineLogDedupe = new com.coflnet.core.LogDedupe(256);
     private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
     private static final long DESCRIPTION_LOAD_TRIGGER_DEBOUNCE_MS = 250;
     private static final AtomicBoolean connectionStartInProgress = new AtomicBoolean(false);
@@ -299,6 +300,7 @@ public class CoflModClient implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Feeds the dev-mode render-thread stall watchdog; cheap even when off.
             PerfTracer.recordFrame();
+            goalProgressTick(client);
 
             // Process scoreboard updates if dirty flag is set (set by ScoreboardMixin)
             if (scoreboardDirty && client.player != null) {
@@ -585,7 +587,7 @@ public class CoflModClient implements ClientModInitializer {
                             break;
                         case "REPLACE":
                             if (tooltip.line < 0 || tooltip.line >= lines.size() || tooltip.line >= ogLoreLines.size()) {
-                                if (devMode) {
+                                if (devMode && invalidLineLogDedupe.shouldLog("Invalid line index: " + tooltip.line + " for tooltip: " + tooltip.value)) {
                                     System.out.println("Invalid line index: " + tooltip.line + " for tooltip: " + tooltip.value);
                                 }
                                 continue; // Skip if the line index is invalid
@@ -594,7 +596,7 @@ public class CoflModClient implements ClientModInitializer {
                             if(targetLine > 0
                                     && targetLine + 1 < ogLoreLines.size()
                                     && ChatFormatting.stripFormatting(ogLoreLines.get(targetLine).toString()).equals(ChatFormatting.stripFormatting(lines.get(targetLine).toString()))) {
-                                if (devMode) {
+                                if (devMode && invalidLineLogDedupe.shouldLog("lines differ " + targetLine + stack.getHoverName().getString())) {
                                     System.out.println("lines differ `" + ChatFormatting.stripFormatting(ogLoreLines.get(targetLine + 1).toString()) + "` to `" + ChatFormatting.stripFormatting(lines.get(targetLine).toString())  + "`");
                                 }
                                 targetLine++; // assume another mod added a line and move this down
@@ -608,7 +610,7 @@ public class CoflModClient implements ClientModInitializer {
                             break;
                         case "DELETE":
                             if (tooltip.line < 0 || tooltip.line >= lines.size()) {
-                                if (devMode) {
+                                if (devMode && invalidLineLogDedupe.shouldLog("Invalid delete line index: " + tooltip.line)) {
                                     System.out.println("Invalid delete line index: " + tooltip.line);
                                 }
                                 continue;
@@ -619,7 +621,7 @@ public class CoflModClient implements ClientModInitializer {
                             // handled in mixin
                             break;
                         default:
-                            if (devMode) {
+                            if (devMode && invalidLineLogDedupe.shouldLog("Unknown type: " + tooltip.type)) {
                                 System.out.println("Unknown type: " + tooltip.type);
                             }
                     }
@@ -664,6 +666,8 @@ public class CoflModClient implements ClientModInitializer {
 
         ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
             String messageText = message.getString();
+            if (!overlay)
+                onPossibleGoalProgressMessage(messageText);
             // Capture the full trade-partner name from trade-request chat lines
             // (Hypixel truncates it in the trade window title).
             captureTradePartner(messageText);
@@ -1763,6 +1767,85 @@ public class CoflModClient implements ClientModInitializer {
         });
     }
 
+    // Goal progress: a confirming chat line or a changed main inventory re-uploads the inventory so
+    // the backend moves the tracked goal on without the player having to open a screen.
+    private static final com.coflnet.core.GoalProgressTrigger goalTrigger = new com.coflnet.core.GoalProgressTrigger();
+    private static final AtomicBoolean goalForceUpload = new AtomicBoolean(false);
+    private static final int GOAL_INFO_DISPLAY_ID = 3;
+
+    /** True while the backend holds a non-empty, non-expired goal step on the HUD display. */
+    private static boolean isGoalTracked() {
+        var snapshot = com.coflnet.gui.hud.InfoDisplayManager.snapshot(GOAL_INFO_DISPLAY_ID);
+        return snapshot != null && !snapshot.lines.isEmpty();
+    }
+
+    private static void onPossibleGoalProgressMessage(String messageText) {
+        if (!com.coflnet.core.GoalProgressTrigger.isProgressMessage(messageText) || !isGoalTracked())
+            return;
+        goalForceUpload.set(true);
+        long now = System.currentTimeMillis();
+        goalTrigger.openWatch(now);
+        goalTrigger.trigger(now);
+    }
+
+    private static long mainInventoryFingerprint(LocalPlayer player) {
+        int size = com.coflnet.core.GoalProgressTrigger.MAIN_INVENTORY_SLOTS;
+        String[] keys = new String[size];
+        int[] counts = new int[size];
+        Inventory inventory = player.getInventory();
+        for (int i = 0; i < size; i++) {
+            ItemStack stack = inventory.getItem(i);
+            if (stack.isEmpty())
+                continue;
+            String uuid = getUuidFromStack(stack);
+            keys[i] = uuid != null ? uuid : stack.getItem().getDescriptionId() + "|"
+                    + (stack.getCustomName() == null ? "" : stack.getCustomName().getString());
+            counts[i] = stack.getCount();
+        }
+        return com.coflnet.core.GoalProgressTrigger.fingerprint(keys, counts);
+    }
+
+    /** Client tick, cheap when no goal is tracked (one atomic read and a null check). */
+    private static void goalProgressTick(Minecraft client) {
+        if (client.player == null || !isGoalTracked()) {
+            goalTrigger.reset();
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Object watchedMenu = client.gui.screen() instanceof AbstractContainerScreen<?> screen ? screen.getMenu()
+                : goalTrigger.isWatching(now) ? com.coflnet.core.GoalProgressTrigger.NO_SCREEN : null;
+        if (watchedMenu != null) {
+            if (goalTrigger.shouldCheckFingerprint(now)
+                    && goalTrigger.observeInventory(watchedMenu, mainInventoryFingerprint(client.player)))
+                goalTrigger.trigger(now);
+        } else {
+            goalTrigger.menuClosed();
+        }
+        if (!goalTrigger.pollDue(now))
+            return;
+        if (!isDescriptionContext())
+            return;
+        if (goalForceUpload.getAndSet(false))
+            lastNbtRequest.set(""); // the confirmation itself is news even if the items look unchanged
+        // loadDescriptionsForItems dedups on lastNbtRequest, so a screen-open upload of the same
+        // content is not sent twice; the network request itself runs on a virtual thread.
+        if (client.gui.screen() instanceof AbstractContainerScreen<?> screen) {
+            loadDescriptionsForItems(screen.getTitle().getString(), screen.getMenu().getItems());
+        } else {
+            // Same title and slot layout as the player's own inventory screen (InventoryScreen).
+            // The response replaces the shared panel/tooltip data; if a container was opened meanwhile,
+            // request that screen again so it ends with its own panel.
+            loadDescriptionsForItems(Component.translatable("container.crafting").getString(),
+                    client.player.inventoryMenu.getItems(), () -> {
+                        if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> open
+                                && com.coflnet.core.GoalProgressTrigger.shouldRepairOpenScreen(true, true)) {
+                            lastNbtRequest.set("");
+                            loadDescriptionsForItems(open.getTitle().getString(), open.getMenu().getItems());
+                        }
+                    });
+        }
+    }
+
     /** True when the player is in a SkyBlock-like context (menu item in hotbar slot 9). Call on the client thread. */
     private static boolean isDescriptionContext() {
         String menuSlot = Minecraft.getInstance().player.getInventory().getItem(8).getComponents().toString();
@@ -1860,6 +1943,11 @@ public class CoflModClient implements ClientModInitializer {
 
     /** Captures inventory data now and performs the HTTP request on a worker. */
     public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items) {
+        loadDescriptionsForItems(title, items, null);
+    }
+
+    /** As above; {@code onApplied} (nullable) runs on the client thread after the response was applied. */
+    public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items, Runnable onApplied) {
         String nbtString = inventoryToNBT(items);
         if (nbtString.equals(lastNbtRequest.getAndSet(nbtString))) {
             return;
@@ -1873,7 +1961,10 @@ public class CoflModClient implements ClientModInitializer {
         long delayMs = lastRefreshTime == null ? 0
                 : Math.max(0, REFRESH_THROTTLE_MS - (currentTime - lastRefreshTime));
         lastRefreshTimePerInventory.put(title, currentTime + delayMs);
-        request.submit(delayMs, () -> Minecraft.getInstance().execute(() -> onDescriptionsApplied(title)),
+        request.submit(delayMs, () -> Minecraft.getInstance().execute(() -> {
+                    onDescriptionsApplied(title);
+                    if (onApplied != null) onApplied.run();
+                }),
                 () -> lastNbtRequest.compareAndSet(nbtString, ""));
     }
 
