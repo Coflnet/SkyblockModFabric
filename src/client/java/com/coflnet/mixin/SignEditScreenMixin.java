@@ -1,7 +1,12 @@
 package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
+import com.coflnet.core.SignGuidance;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.font.TextFieldHelper;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractSignEditScreen;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -45,6 +50,34 @@ public class SignEditScreenMixin {
     private void coflSuppressAutoFillRender(CallbackInfo ci) {
         if (CoflModClient.suppressSignRender) {
             ci.cancel();
+        }
+    }
+
+    /** Shows what to type below the sign, between the sign and the Done button. */
+    @Inject(method = "extractRenderState", at = @At("TAIL"))
+    private void coflDrawGuidance(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
+        if (CoflModClient.suppressSignRender || messages.length != 4) return;
+        long fillExpiresAt = CoflModClient.pendingSignFillExpiresAt;
+        String fill = fillExpiresAt != 0 && System.currentTimeMillis() > fillExpiresAt
+                ? null : CoflModClient.pendingSignFill;
+        String expected = SignGuidance.expectedValue(fill, CoflModClient.pendingBazaarSearch,
+                CoflModClient.findPriceSuggestion(), messages[3]);
+        SignGuidance.Guidance guidance = SignGuidance.compute(messages[0], expected);
+        if (guidance.state() == SignGuidance.State.NONE) return;
+
+        Screen screen = (Screen) (Object) this;
+        Font font = Minecraft.getInstance().font;
+        String[] parts = SignGuidance.displaySplit(guidance);
+        String label = "Amount: ";
+        int total = font.width(label + parts[0] + parts[1]);
+        int x = (screen.width - total) / 2;
+        // Vanilla sign sits around y=90 and the Done button at height/4+144; stay clear of both.
+        int y = Math.min(150, screen.height / 4 + 144 - 26);
+        graphics.text(font, label + parts[0], x, y, 0xFFFFFFFF, true);
+        graphics.text(font, parts[1], x + font.width(label + parts[0]), y, 0xFF888888, true);
+        if (guidance.state() != SignGuidance.State.TYPING) {
+            int color = guidance.state() == SignGuidance.State.DONE ? 0xFF55FF55 : 0xFFFF5555;
+            graphics.centeredText(font, guidance.message(), screen.width / 2, y + 12, color);
         }
     }
 }
