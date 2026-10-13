@@ -24,4 +24,15 @@ class ExpectCommandParserTest {
         assertTrue(ExpectCommandParser.parse("{\"type\":\"expectCommand\",\"data\":\"{\\\"ttl\\\":5}\"}").isEmpty());
         assertTrue(ExpectCommandParser.parse("{\"type\":\"expectCommand\",\"data\":\"{\\\"command\\\":\\\"/a\\\",\\\"ttl\\\":0}\"}").isEmpty());
     }
+
+    @Test void parsesTheWireTypeTheBackendActuallySends() {
+        var r = ExpectCommandParser.parse("{\"type\":\"expect\",\"data\":\"{\\\"command\\\":\\\"/viewauction 70e3559483ce4da8b\\\",\\\"ttl\\\":120}\"}");
+        assertTrue(r.isPresent());
+        assertEquals("/viewauction 70e3559483ce4da8b", r.get().command());
+        assertEquals(120, r.get().ttlSeconds());
+    }
+
+    @Test void expectInsideOtherTypeStillIgnored() {
+        assertTrue(ExpectCommandParser.parse("{\"type\":\"expected\",\"data\":\"{\\\"command\\\":\\\"/a\\\"}\"}").isEmpty());
+    }
 }
