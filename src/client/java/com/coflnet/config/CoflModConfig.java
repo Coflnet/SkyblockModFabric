@@ -1,6 +1,7 @@
 package com.coflnet.config;
 
 import com.google.gson.Gson;
+import com.coflnet.core.InfoDisplayDefaults;
 import net.minecraft.client.Minecraft;
 
 import java.io.File;
@@ -40,6 +41,11 @@ public class CoflModConfig {
     // Always exactly 3 entries; see ensureInfoDisplays().
     public List<InfoDisplaySettings> infoDisplays;
 
+    // Marker for one-time info display config migrations. Must stay 0 here: a file
+    // written before the field existed has to read as "not migrated". Fresh configs
+    // are stamped with the current version in load().
+    public int infoDisplayDefaultsVersion = 0;
+
     // When true (default), the info displays stay visible even while a container/other
     // GUI is open, not just when no GUI (or only chat) is open - that's the point of
     // calling them "permanent". Off reverts to hiding behind any non-chat screen.
@@ -69,7 +75,7 @@ public class CoflModConfig {
 
     /** Sensible default layout for a given display slot (top-right, stacked). */
     public static InfoDisplaySettings defaultInfoDisplay(int id) {
-        return new InfoDisplaySettings(id, id == 1 || id == 2, 0.62, 0.02 + (id - 1) * 0.30);
+        return new InfoDisplaySettings(id, InfoDisplayDefaults.defaultEnabled(id), 0.62, 0.02 + (id - 1) * 0.30);
     }
 
     /**
@@ -90,6 +96,18 @@ public class CoflModConfig {
                 infoDisplays.set(i, defaultInfoDisplay(i + 1));
             }
         }
+    }
+
+    /** Runs pending one-time migrations (slot 3 on by default); returns true if the config changed. */
+    public boolean migrateInfoDisplays() {
+        if (!InfoDisplayDefaults.needsMigration(infoDisplayDefaultsVersion)) {
+            return false;
+        }
+        for (InfoDisplaySettings settings : infoDisplays) {
+            settings.enabled = InfoDisplayDefaults.enabledAfterMigration(settings.id, settings.enabled, infoDisplayDefaultsVersion);
+        }
+        infoDisplayDefaultsVersion = InfoDisplayDefaults.CURRENT_VERSION;
+        return true;
     }
 
     /** Looks up a display's settings by id (1-3); null if not present. */
@@ -134,6 +152,9 @@ public class CoflModConfig {
                 reader.close();
                 if (config != null) {
                     config.ensureInfoDisplays();
+                    if (config.migrateInfoDisplays()) {
+                        config.save();
+                    }
                     return config;
                 }
             }
@@ -144,6 +165,7 @@ public class CoflModConfig {
         // Return default config if loading fails or file doesn't exist
         CoflModConfig config = new CoflModConfig();
         config.ensureInfoDisplays();
+        config.infoDisplayDefaultsVersion = InfoDisplayDefaults.CURRENT_VERSION;
         return config;
     }
     

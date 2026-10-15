@@ -142,26 +142,17 @@ public class RenderUtils {
 //        RenderLayer.getGui().draw(buffer.end());
     }
 
-    //draws a rounded rectangle with a given radius and color and size
+    // Fill each rounded corner with one horizontal span per row.
     public static void drawRoundedRect(GuiGraphicsExtractor context, int x, int y, int width, int height, int radius, @NotNull int color) {
-        //draw the two rectangles
-        drawRect(context, x + radius, y, width - radius * 2, height, color);
-        drawRect(context, x, y + radius, radius, height - radius * 2, color);
-        drawRect(context, x + width - radius, y + radius, radius, height - radius * 2, color);
-
-        //draw the circles
-        //drawArc(x + radius, y + radius, radius, 180, 270, color);
-        //drawArc(x + width - radius, y + radius, radius, 90, 180, color);
-        //drawArc(x + radius, y + height - radius, radius, 270, 360, color);
-        //drawArc(x + width - radius, y + height - radius, radius, 0, 90, color);
-
-        drawCircle(context, x + radius, y + radius, radius, color);
-        drawCircle(context, x + width - radius + 1, y + radius, radius, color);
-        drawCircle(context, x + radius, y + height - radius + 1, radius, color);
-        drawCircle(context, x + width - radius + 1, y + height - radius + 1, radius, color);
-
-        //drawRectOutline(x, y, width, height, 1, Color.GREEN);
-        //System.out.println("Rounded Rect drawn!");
+        if (width <= 0 || height <= 0) return;
+        radius = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
+        context.fill(x, y + radius, x + width, y + height - radius, color);
+        for (int row = 0; row < radius; row++) {
+            double distance = radius - row - 0.5;
+            int inset = (int) Math.round(radius - Math.sqrt(radius * radius - distance * distance));
+            context.fill(x + inset, y + row, x + width - inset, y + row + 1, color);
+            context.fill(x + inset, y + height - row - 1, x + width - inset, y + height - row, color);
+        }
     }
 
     //draws a gradient rectangle with a given color and size
