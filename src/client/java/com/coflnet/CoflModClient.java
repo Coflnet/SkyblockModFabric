@@ -1523,7 +1523,7 @@ public class CoflModClient implements ClientModInitializer {
         Command<String[]> data = new Command<>(CommandType.uploadTab, entries.toArray(new String[0]));
         backgroundQueue.submit(() -> {
             WSClientWrapper wrapper = CoflCore.Wrapper;
-            if (wrapper != null) wrapper.SendMessage(data);
+            if (wrapper != null && wrapper.isRunning) wrapper.SendMessage(data);
         });
     }
 
@@ -1535,7 +1535,7 @@ public class CoflModClient implements ClientModInitializer {
         Command<String[]> data = new Command<>(CommandType.uploadScoreboard, scores);
         backgroundQueue.submit(() -> {
             WSClientWrapper wrapper = CoflCore.Wrapper;
-            if (wrapper != null) wrapper.SendMessage(data);
+            if (wrapper != null && wrapper.isRunning) wrapper.SendMessage(data);
         });
     }
 
