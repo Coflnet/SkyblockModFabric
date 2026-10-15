@@ -1,0 +1,165 @@
+plugins {
+	id 'net.fabricmc.fabric-loom'
+	id 'java'
+}
+
+group = 'com.coflnet'
+version = project.mod_version
+
+base {
+	archivesName = 'skycofl-scenario-server'
+}
+
+def productionCoreOutput = rootProject.sourceSets.client.output
+def mockitoAgent = configurations.create("mockitoAgent")
+def scenarioArtifactName = "skycofl-scenario-server" + ".jar"
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	testImplementation platform("org.junit:junit-bom:5.11.4")
+	testImplementation "org.junit.jupiter:junit-jupiter-api"
+	testImplementation "org.mockito:mockito-core:5.20.0"
+	add(mockitoAgent.name, "org.mockito:mockito-core:5.20.0") {
+		transitive = false
+	}
+	testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+	testImplementation files(productionCoreOutput)
+}
+
+loom {
+	serverOnlyMinecraftJar()
+	mods {
+		"coflnet_skyblock_scenarios" {
+			sourceSet sourceSets.main
+		}
+	}
+}
+
+processResources {
+	inputs.property "version", project.version
+	inputs.property "minecraft_version", project.minecraft_version
+	inputs.property "loader_version", project.loader_version
+	inputs.property "fabric_api_version", project.fabric_api_version
+	filesMatching("fabric.mod.json") {
+		expand inputs.properties
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.release = 25
+}
+
+java {
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.named("test", Test) {
+	useJUnitPlatform()
+	jvmArgs("-javaagent:${mockitoAgent.asPath}", "-Xshare:off")
+}
+
+tasks.named("jar", Jar) {
+	destinationDirectory = layout.buildDirectory.dir("intermediate")
+	archiveFileName = "skycofl-scenario-server.intermediate"
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
+}
+
+def scenarioJar = tasks.register("scenarioJar", Zip) {
+	dependsOn tasks.named("jar")
+	archiveFileName = scenarioArtifactName
+	destinationDirectory = layout.buildDirectory.dir("libs")
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
+	from({ zipTree(tasks.named("jar", Jar).get().archiveFile.get().asFile) }) {
+		exclude "META-INF/MANIFEST.MF"
+	}
+	from(resources.text.fromString("Manifest-Version: 1.0\r\n\r\n")) {
+		rename { "MANIFEST.MF" }
+		into "META-INF"
+	}
+}
+
+tasks.named("assemble") {
+	dependsOn scenarioJar
+}
+
+tasks.register("verifyScenarioJar") {
+	dependsOn scenarioJar
+	doLast {
+		def artifact = layout.buildDirectory.file("libs/${scenarioArtifactName}").get().asFile
+		if (!artifact.isFile()) {
+			throw new GradleException("missing scenario artifact: ${artifact}")
+		}
+		def allowedResources = [
+			'META-INF/MANIFEST.MF',
+			'fabric.mod.json',
+			'data/coflnet_scenarios/scenarios/index.json'
+		] as Set
+		def allowedDirectories = [
+			'META-INF/',
+			'com/',
+			'com/coflnet/',
+			'com/coflnet/skyblock/',
+			'com/coflnet/skyblock/testserver/',
+			'data/',
+			'data/coflnet_scenarios/',
+			'data/coflnet_scenarios/scenarios/'
+		] as Set
+		def seen = [] as Set
+		new java.util.zip.ZipFile(artifact).withCloseable { zip ->
+			zip.entries().each { entry ->
+				if (entry.extra != null && entry.extra.length != 0) {
+					throw new GradleException("ZIP extras are forbidden: ${entry.name}")
+				}
+				if (!seen.add(entry.name)) {
+					throw new GradleException("duplicate JAR entry: ${entry.name}")
+				}
+				if (entry.directory) {
+					if (!(entry.name in allowedDirectories)) {
+						throw new GradleException("unexpected scenario JAR directory: ${entry.name}")
+					}
+					return
+				}
+				if (!(entry.name in allowedResources)
+						&& !(entry.name ==~ /com\/coflnet\/skyblock\/testserver\/[A-Za-z0-9_$]+\.class/)) {
+					throw new GradleException("unexpected scenario JAR entry: ${entry.name}")
+				}
+			}
+			def manifest = new java.util.jar.Manifest(zip.getInputStream(zip.getEntry('META-INF/MANIFEST.MF')))
+			def attributes = manifest.mainAttributes.collectEntries { key, value -> [(key.toString()): value] }
+			if (attributes != ['Manifest-Version': '1.0']) {
+				throw new GradleException("scenario manifest is not minimal: ${attributes.keySet()}")
+			}
+			def metadata = new groovy.json.JsonSlurper().parse(zip.getInputStream(zip.getEntry('fabric.mod.json')))
+			def expectedMetadata = [
+				schemaVersion: 1,
+				id: 'coflnet_skyblock_scenarios',
+				version: project.mod_version,
+				environment: 'server',
+				entrypoints: [main: ['com.coflnet.skyblock.testserver.ScenarioMod']],
+				depends: [
+					fabricloader: project.loader_version,
+					'fabric-api': project.fabric_api_version,
+					minecraft: project.minecraft_version
+				],
+				custom: [
+					coflnet_scenario_schema: 1,
+					coflnet_target_branch: '26.1'
+				]
+			]
+			if (metadata != expectedMetadata) {
+				throw new GradleException("scenario Fabric metadata is outside the reviewed 26.1/26.1.2 runtime contract")
+			}
+		}
+	}
+}
+
+tasks.named("check") {
+	dependsOn tasks.named("verifyScenarioJar")
+}

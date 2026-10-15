@@ -1,21 +1,30 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.CoflModClient;
 import CoflCore.CoflSkyCommand;
+import com.coflnet.core.ExpectedCommandState;
+import com.coflnet.core.GhostText;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Style;
 import com.coflnet.gui.hud.InfoDisplayRenderer;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ChatScreen.class)
 public class ChatScreenMixin {
+
+    @Shadow
+    protected EditBox input;
+
     @Shadow
     private boolean handleComponentClicked(Style style, boolean insertion) {
         throw new AssertionError();
@@ -24,7 +33,7 @@ public class ChatScreenMixin {
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void coflnet$clickInfoDisplay(MouseButtonEvent click, boolean doubleClick,
                                          CallbackInfoReturnable<Boolean> cir) {
-        if (click.button() != 0) {
+        if (click.button() != InputConstants.MOUSE_BUTTON_LEFT) {
             return;
         }
         var window = Minecraft.getInstance().getWindow();
@@ -35,7 +44,33 @@ public class ChatScreenMixin {
         }
     }
 
+    /** Vanilla's CommandSuggestions.updateCommandInfo() resets the suggestion on every edit; re-apply ours. */
+    @Inject(method = "onEdited", at = @At("TAIL"))
+    private void coflnet$ghostText(String text, CallbackInfo ci) {
+        var expected = ExpectedCommandState.current(System.currentTimeMillis());
+        if (expected.isEmpty()) return;
+        String suffix = GhostText.compute(text, expected.get()).suggestionSuffix();
+        if (!suffix.isEmpty()) input.setSuggestion(suffix);
+    }
 
+    /** Draws the part of the typed text that diverges from the expected command in red. */
+    @Inject(method = "extractRenderState", at = @At("TAIL"))
+    private void coflnet$ghostMismatch(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
+        var expected = ExpectedCommandState.current(System.currentTimeMillis());
+        if (expected.isEmpty()) return;
+        String typed = input.getValue();
+        int mismatch = GhostText.compute(typed, expected.get()).mismatchIndex();
+        if (mismatch < 0 || mismatch >= typed.length()) return;
+        var font = Minecraft.getInstance().font;
+        int x = input.getScreenX(mismatch);
+        int y = input.isBordered() ? input.getY() + (input.getHeight() - 8) / 2 : input.getY();
+        graphics.text(font, typed.substring(mismatch), x, y, 0xFFFF5555, true);
+    }
+
+    @Inject(method = "handleChatInput", at = @At("HEAD"))
+    private void coflnet$clearExpectedCommand(String message, boolean addToHistory, CallbackInfo ci) {
+        ExpectedCommandState.consume(message, System.currentTimeMillis());
+    }
 
     @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)
     private void onSendMessage(String message, boolean addToHistory, CallbackInfo ci) {
@@ -55,7 +90,9 @@ public class ChatScreenMixin {
                 String[] args = new String[parts.length + 1];
                 args[0] = "chat";
                 System.arraycopy(parts, 0, args, 1, parts.length);
-                CoflSkyCommand.processCommand(args, username);
+                // Chat input handling runs on the render thread; defer the actual network
+                // call so it can never block on the WSClientWrapper's monitor.
+                CoflModClient.backgroundQueue.submit(() -> CoflSkyCommand.processCommand(args, username));
             }
             return;
         }
@@ -72,7 +109,9 @@ public class ChatScreenMixin {
                 String[] args = new String[message.split(" ").length + 1];
                 args[0] = "chat";
                 System.arraycopy(message.split(" "), 0, args, 1, message.split(" ").length);
-                CoflSkyCommand.processCommand(args, username);
+                // Chat input handling runs on the render thread; defer the actual network
+                // call so it can never block on the WSClientWrapper's monitor.
+                CoflModClient.backgroundQueue.submit(() -> CoflSkyCommand.processCommand(args, username));
             }
         }
     }

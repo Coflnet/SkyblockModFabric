@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "coflnet_skyblock_scenarios",
+  "version": "${version}",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.coflnet.skyblock.testserver.ScenarioMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": "${loader_version}",
+    "fabric-api": "${fabric_api_version}",
+    "minecraft": "${minecraft_version}"
+  },
+  "custom": {
+    "coflnet_scenario_schema": 1,
+    "coflnet_target_branch": "26.1"
+  }
+}

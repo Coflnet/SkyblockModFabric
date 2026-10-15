@@ -105,7 +105,7 @@ public class LoreEditorScreen extends Screen {
     }
 
     private void send(String argument) {
-        Thread.ofVirtual().name("CoflSky-LoreSync").start(() -> {
+        CoflModClient.backgroundQueue.submit(() -> {
             try {
                 var wrapper = CoflCore.getWrapper();
                 if (!wrapper.isRunning) throw new IllegalStateException("Connect to SkyCofl first");

@@ -14,14 +14,25 @@ public class TextWidgetPositionConfig {
     
     public int offsetX = -5;
     public int offsetY = 5;
-    
+
+    // The old per-file config only ever needs migrating once (either it existed and got
+    // migrated+deleted, or it never existed). load() is called from HandledScreenMixin.init,
+    // i.e. on every single container screen open - without this flag that's a disk stat
+    // (File.exists()) on every chest/menu open for the rest of the game session.
+    private static volatile boolean migrationChecked = false;
+
     public static TextWidgetPositionConfig load() {
         // Try to load from combined config first
         CoflModConfig combinedConfig = CoflModConfig.get();
         TextWidgetPositionConfig config = new TextWidgetPositionConfig();
         config.offsetX = combinedConfig.textWidgetOffsetX;
         config.offsetY = combinedConfig.textWidgetOffsetY;
-        
+
+        if (migrationChecked) {
+            return config;
+        }
+        migrationChecked = true;
+
         // Check if old config exists and migrate
         try {
             if (POSITION_CONFIG_FILE.exists()) {
@@ -33,10 +44,10 @@ public class TextWidgetPositionConfig {
                     combinedConfig.textWidgetOffsetX = oldConfig.offsetX;
                     combinedConfig.textWidgetOffsetY = oldConfig.offsetY;
                     combinedConfig.save();
-                    
+
                     // Delete old config file
                     POSITION_CONFIG_FILE.delete();
-                    
+
                     config.offsetX = oldConfig.offsetX;
                     config.offsetY = oldConfig.offsetY;
                 }
@@ -44,7 +55,7 @@ public class TextWidgetPositionConfig {
         } catch (IOException e) {
             // Use default values if loading fails
         }
-        
+
         return config;
     }
     

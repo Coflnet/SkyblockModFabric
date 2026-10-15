@@ -1,6 +1,8 @@
 package com.coflnet.config;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
+import com.coflnet.core.InfoDisplayDefaults;
 import net.minecraft.client.Minecraft;
 
 import java.io.File;
@@ -12,7 +14,9 @@ import java.util.List;
 
 public class CoflModConfig {
     private static final Gson gson = new Gson();
-    private static final File CONFIG_FILE = new File(Minecraft.getInstance().gameDirectory, "config/CoflSky/coflmod.json");
+    private static File configFile() {
+        return new File(Minecraft.getInstance().gameDirectory, "config/CoflSky/coflmod.json");
+    }
     
     // Text widget position settings
     public int textWidgetOffsetX = -5;
@@ -24,9 +28,26 @@ public class CoflModConfig {
 
     public boolean angryCoopProtectionEnabled = true;
 
+    // Developer mode: when on, container screens show a "Copy Dump" button that
+    // copies the open container's title/size/slots to the clipboard. Off by default.
+    public boolean devMode = false;
+
+    // Trade overlay: when on, the SkyCofl TradeGUI replaces the Hypixel trade
+    // window. Independent of dev mode (which only controls the Copy Dump button).
+    public boolean tradeGuiEnabled = false;
+
+    // TradeGUI item-list column count (1-3). Persisted so the user's choice
+    // sticks across trades and restarts. Default 1 (the original look).
+    public int tradeListColumns = 1;
+
     // Permanent, backend-updatable HUD "info displays" (1-3, fixed slots).
     // Always exactly 3 entries; see ensureInfoDisplays().
     public List<InfoDisplaySettings> infoDisplays;
+
+    // Marker for one-time info display config migrations. Must stay 0 here: a file
+    // written before the field existed has to read as "not migrated". Fresh configs
+    // are stamped with the current version in load().
+    public int infoDisplayDefaultsVersion = 0;
 
     // When true (default), the info displays stay visible even while a container/other
     // GUI is open, not just when no GUI (or only chat) is open - that's the point of
@@ -57,7 +78,7 @@ public class CoflModConfig {
 
     /** Sensible default layout for a given display slot (top-right, stacked). */
     public static InfoDisplaySettings defaultInfoDisplay(int id) {
-        return new InfoDisplaySettings(id, id == 1 || id == 2, 0.62, 0.02 + (id - 1) * 0.30);
+        return new InfoDisplaySettings(id, InfoDisplayDefaults.defaultEnabled(id), 0.62, 0.02 + (id - 1) * 0.30);
     }
 
     /**
@@ -80,6 +101,18 @@ public class CoflModConfig {
         }
     }
 
+    /** Runs pending one-time migrations (slot 3 on by default); returns true if the config changed. */
+    public boolean migrateInfoDisplays() {
+        if (!InfoDisplayDefaults.needsMigration(infoDisplayDefaultsVersion)) {
+            return false;
+        }
+        for (InfoDisplaySettings settings : infoDisplays) {
+            settings.enabled = InfoDisplayDefaults.enabledAfterMigration(settings.id, settings.enabled, infoDisplayDefaultsVersion);
+        }
+        infoDisplayDefaultsVersion = InfoDisplayDefaults.CURRENT_VERSION;
+        return true;
+    }
+
     /** Looks up a display's settings by id (1-3); null if not present. */
     public InfoDisplaySettings displaySettings(int id) {
         if (infoDisplays == null) {
@@ -93,7 +126,11 @@ public class CoflModConfig {
         return null;
     }
 
-    // Share config between all local settings managers so a save cannot overwrite a newer layout.
+    // Single shared, lazily-loaded instance. All managers (DevManager,
+    // TradeGuiManager, SellProtectionManager, ...) delegate to this so there is
+    // exactly one in-memory copy of the config. Without it, each manager cached
+    // its own copy and a save() from one could clobber a fresh change made
+    // through another.
     private static CoflModConfig instance = null;
 
     /** Returns the shared config instance, loading it from disk on first use. */
@@ -111,32 +148,42 @@ public class CoflModConfig {
     }
 
     public static CoflModConfig load() {
-        try {
-            if (CONFIG_FILE.exists()) {
-                FileReader reader = new FileReader(CONFIG_FILE);
+        return load(configFile());
+    }
+
+    static CoflModConfig load(File file) {
+        if (file.exists()) {
+            try (FileReader reader = new FileReader(file)) {
                 CoflModConfig config = gson.fromJson(reader, CoflModConfig.class);
-                reader.close();
                 if (config != null) {
                     config.ensureInfoDisplays();
+                    if (config.migrateInfoDisplays()) {
+                        config.save(file);
+                    }
                     return config;
                 }
+            } catch (IOException | JsonParseException e) {
+                System.err.println("[SkyCofl] Cannot read " + file + "; using defaults: " + e.getMessage());
             }
-        } catch (IOException e) {
-            // Use default values if loading fails
         }
 
         // Return default config if loading fails or file doesn't exist
         CoflModConfig config = new CoflModConfig();
         config.ensureInfoDisplays();
+        config.infoDisplayDefaultsVersion = InfoDisplayDefaults.CURRENT_VERSION;
         return config;
     }
     
     public void save() {
+        save(configFile());
+    }
+
+    private void save(File file) {
         try {
-            CONFIG_FILE.getParentFile().mkdirs();
-            FileWriter writer = new FileWriter(CONFIG_FILE);
-            gson.toJson(this, writer);
-            writer.close();
+            file.getParentFile().mkdirs();
+            try (FileWriter writer = new FileWriter(file)) {
+                gson.toJson(this, writer);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }

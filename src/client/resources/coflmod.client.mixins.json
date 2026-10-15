@@ -4,6 +4,8 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "LoreSettingsMixin",
+    "ExpectCommandMixin",
+    "TabListCustomisationMixin",
     "ChatScreenMixin",
     "ClientPlayerEntityMixin",
     "HandledScreenMixin",
@@ -13,6 +15,7 @@
     "ScreenMixin",
     "ScoreboardMixin",
     "ScrollableWidgetMixin",
+    "SignEditScreenMixin",
     "AuctionProtectionMixin",
     "SellProtectionMixin",
     "WorldRendererMixin"

@@ -4,8 +4,11 @@ import java.util.*;
 
 import CoflCore.classes.*;
 import CoflCore.commands.models.HotkeyRegister;
-import CoflCore.events.*;
 import CoflCore.commands.CommandType;
+import CoflCore.events.*;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.NonNullList;
@@ -17,7 +20,6 @@ import static com.coflnet.Utils.ChatComponent;
 import CoflCore.CoflCore;
 import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
-import CoflCore.handlers.DescriptionHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.sounds.SoundSource;
@@ -58,7 +60,10 @@ public class EventSubscribers {
 
     @Subscribe
     public void WriteToChat(OnWriteToChatReceive command){
-        CoflModClient.displayModMessage(ChatComponent(command.ChatMessage));
+        // greenrobot EventBus posts synchronously on the calling thread (here: the
+        // WSClient network/read thread), but displayModMessage touches Minecraft's
+        // chat GUI, which is only safe to touch from the render thread.
+        runOnClientThread(() -> CoflModClient.displayModMessage(ChatComponent(command.ChatMessage)));
     }
 
     @Subscribe
@@ -87,7 +92,9 @@ public class EventSubscribers {
                 combinedMessage.append(styledPart);
             }
         }
-        CoflModClient.displayModMessage(combinedMessage);
+        // Building the Component tree above touches no live game state and is safe on
+        // any thread; posting it to chat is not (see WriteToChat above).
+        runOnClientThread(() -> CoflModClient.displayModMessage(combinedMessage));
     }
 
     @Subscribe
@@ -124,8 +131,24 @@ public class EventSubscribers {
 
     @Subscribe
     public void onReceiveCommand(ReceiveCommand event){
-        if (event == null || event.command == null || event.command.getType() == null) return;
+        if (event == null || event.command == null || event.command.getType() == null) {
+            return;
+        }
         CommandType type = event.command.getType();
+        if (type == CommandType.LoggedIn) {
+            try {
+                JsonElement parsed = JsonParser.parseString(event.command.getData());
+                JsonObject data = parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+                String tier = data != null && data.has("tier") && !data.get("tier").isJsonNull()
+                        ? data.get("tier").getAsString()
+                        : null;
+                com.coflnet.config.TradeGuiManager.setAccountTier(tier);
+            } catch (RuntimeException ignored) {
+                com.coflnet.config.TradeGuiManager.clearAccountTier();
+            }
+            return;
+        }
+
         // apply() moves HUD updates from the websocket thread onto the render thread.
         if (type == CommandType.InfoDisplay) {
             try {
@@ -136,6 +159,17 @@ public class EventSubscribers {
                 System.out.println("[InfoDisplay] Failed to parse pushed payload: " + e.getMessage());
             }
         }
+    }
+
+    // Websocket thread; clearAll() hops onto the render thread itself and never sends over the socket.
+    @Subscribe
+    public void onSocketClose(SocketClose event) {
+        CoflModClient.onBackendDisconnected();
+    }
+
+    @Subscribe
+    public void onSocketError(SocketError event) {
+        CoflModClient.onBackendDisconnected();
     }
 
     @Subscribe
@@ -212,18 +246,8 @@ public class EventSubscribers {
                     itemStacks.add(it.next().copy());
                 }
 
-                String[] visibleItems = CoflModClient.getItemIdsFromInventory(itemStacks);
-                String nbtString = CoflModClient.inventoryToNBT(itemStacks);
-                String currentUsername = Minecraft.getInstance().getUser().getName();
-                Position position = CoflModClient.posToUpload;
-
-                Thread.startVirtualThread(() -> DescriptionHandler.loadDescriptionForInventory(
-                        visibleItems,
-                        "Inventory",
-                        nbtString,
-                        currentUsername,
-                        position
-                ));
+                CoflModClient.invalidateDescriptionRequest();
+                CoflModClient.loadDescriptionsForItems("Inventory", itemStacks);
             } catch (Exception e){
                 System.out.println(e);
             }
@@ -244,6 +268,7 @@ public class EventSubscribers {
     public void onLoggedIn(OnLoggedIn event){
         System.out.println("Backend logged in event received, uploading scoreboard and tab list...");
         CoflModClient.uploadScoreboardAndTabList();
+        CoflModClient.refreshGoalAfterLogin();
     }
 
     @Subscribe

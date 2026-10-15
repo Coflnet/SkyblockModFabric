@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "scenarios": [
+    {
+      "id": "ender-chest-sequence",
+      "title": "Ender Chest Packet Sequence",
+      "seed": 260201,
+      "room": { "x": 0, "y": 96, "z": 0 },
+      "manual": true,
+      "automated": true
+    },
+    {
+      "id": "bazaar-menu",
+      "title": "Bazaar Menu Classification",
+      "seed": 260202,
+      "room": { "x": 64, "y": 96, "z": 0 },
+      "manual": true,
+      "automated": true
+    },
+    {
+      "id": "bazaar-orders",
+      "title": "Co-op Bazaar Orders Description Flow",
+      "seed": 260206,
+      "room": { "x": 96, "y": 96, "z": 64 },
+      "manual": true,
+      "automated": true
+    },
+    {
+      "id": "auction-house-menu",
+      "title": "Auction House Menu Classification",
+      "seed": 260203,
+      "room": { "x": 128, "y": 96, "z": 0 },
+      "manual": true,
+      "automated": true
+    },
+    {
+      "id": "trade-divider",
+      "title": "Trade Divider Layout",
+      "seed": 260204,
+      "room": { "x": 192, "y": 96, "z": 0 },
+      "manual": true,
+      "automated": true
+    },
+    {
+      "id": "world-signals",
+      "title": "World and HUD Signals",
+      "seed": 260205,
+      "room": { "x": 256, "y": 96, "z": 0 },
+      "manual": true,
+      "automated": true
+    }
+  ]
+}

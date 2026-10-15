@@ -2,12 +2,16 @@ package com.coflnet.mixin;
 
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
+import com.coflnet.PerfTracer;
+import com.coflnet.core.HighlightColor;
+import com.coflnet.gui.HighlightRegistry;
 import com.coflnet.gui.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -28,6 +32,15 @@ public abstract class ItemHighlightMixin {
 
     @Shadow @Nullable protected Slot hoveredSlot;
 
+    // Per-screen-instance cache for extractSlots (called every frame): a slot's
+    // highlight is only recomputed when its ItemStack identity changed or the
+    // shared descriptionsVersion counter moved, instead of re-scanning tooltip
+    // data and re-parsing the highlight color every frame for every slot.
+    private ItemStack[] cofl_lastStack;
+    private int[] cofl_highlightColor; // 0 means "no highlight"; real colors always have the alpha byte set (0xFF......)
+    private boolean[] cofl_highlightOutline;
+    private long cofl_lastDescriptionsVersion = -1;
+
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void onKeyPressed(KeyEvent input, CallbackInfoReturnable<Boolean> cir) {
         try {
@@ -44,31 +57,61 @@ public abstract class ItemHighlightMixin {
 
     @Inject(method = "extractSlots", at = @At("HEAD"))
     private void yourmodid_onDrawBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, CallbackInfo ci) {
+        long perfStart = PerfTracer.begin();
         try {
-            if (hoveredSlot != null && hoveredSlot.hasItem()) {
-                CoflModClient.maybeUploadHoveredMapContent(hoveredSlot.getItem());
-            }
-
             AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>)(Object)this;
-            for (Slot slot : screen.getMenu().slots) {
-                if (!slot.hasItem())
-                    continue;
-                DescriptionHandler.DescModification[] tooltips = DescriptionHandler.getTooltipData(CoflModClient.getIdFromStack(slot.getItem()));
-                if(tooltips == null)
-                    continue;
-                for (DescriptionHandler.DescModification tooltip : tooltips) {
-                    if (tooltip.type.equals("HIGHLIGHT")) {
-                        int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000;
-                        if (tooltip.line < 0) {
-                            RenderUtils.drawRectOutline(context, slot.x, slot.y, 16, 16, 2, 0x00000000, hexColor);
-                        } else {
-                            RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, hexColor);
+            var slots = screen.getMenu().slots;
+            int slotCount = slots.size();
+
+            long currentVersion = CoflModClient.descriptionsVersion.get();
+            boolean versionChanged = currentVersion != cofl_lastDescriptionsVersion;
+            if (cofl_lastStack == null || cofl_lastStack.length != slotCount) {
+                cofl_lastStack = new ItemStack[slotCount];
+                cofl_highlightColor = new int[slotCount];
+                cofl_highlightOutline = new boolean[slotCount];
+                versionChanged = true;
+            }
+            cofl_lastDescriptionsVersion = currentVersion;
+
+            for (int i = 0; i < slotCount; i++) {
+                Slot slot = slots.get(i);
+                ItemStack stack = slot.getItem();
+
+                if (versionChanged || cofl_lastStack[i] != stack) {
+                    cofl_lastStack[i] = stack;
+                    cofl_highlightColor[i] = 0;
+                    if (!stack.isEmpty()) {
+                        DescriptionHandler.DescModification[] tooltips = CoflModClient.getMappedTooltipData(
+                                CoflModClient.getIdFromStack(stack));
+                        if (tooltips != null) {
+                            for (DescriptionHandler.DescModification tooltip : tooltips) {
+                                if (tooltip.type.equals("HIGHLIGHT")) {
+                                    var color = HighlightColor.parse(tooltip.value);
+                                    if (color.isEmpty()) continue; // malformed colour: skip this slot, don't throw every frame
+                                    // The tooltip map is keyed by "name;count" and survives menu changes, so only
+                                    // show highlights that were confirmed for this menu and this item name.
+                                    if (HighlightRegistry.isStale(CoflModClient.getIdFromStack(stack),
+                                            screen.getTitle().getString(), stack.getHoverName().getString())) continue;
+                                    cofl_highlightColor[i] = color.getAsInt();
+                                    cofl_highlightOutline[i] = tooltip.line < 0;
+                                }
+                            }
                         }
+                    }
+                }
+
+                if (cofl_highlightColor[i] != 0) {
+                    if (cofl_highlightOutline[i]) {
+                        RenderUtils.drawRectOutline(context, slot.x, slot.y, 16, 16, 2, 0x00000000, cofl_highlightColor[i]);
+                    } else {
+                        RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, cofl_highlightColor[i]);
                     }
                 }
             }
         } catch (Exception e) {
             System.out.println("[ItemHighlightMixin] extractSlots failed: " + e.getMessage());
+        } finally {
+            PerfTracer.end("itemHighlightMixin.extractSlots", perfStart);
         }
     }
 }

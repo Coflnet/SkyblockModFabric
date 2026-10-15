@@ -1,12 +1,18 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
+import com.coflnet.PerfTracer;
 import com.coflnet.config.TextWidgetPositionConfig;
+import com.coflnet.core.InfoDisplayLayout;
 import com.coflnet.gui.RenderUtils;
+import com.coflnet.gui.hud.InfoDisplayRenderer;
+import net.minecraft.client.gui.screens.ChatScreen;
 import com.coflnet.models.TextElement;
 import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -25,20 +31,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
 
 import net.minecraft.client.gui.screens.Screen;
 
 @Mixin(AbstractContainerScreen.class)
 public abstract class HandledScreenMixin extends Screen {
-    
+
     // Need protected constructor for the Screen parent - used for mixin compilation only
     protected HandledScreenMixin(Component title) {
         super(title);
     }
-    
+
     private static final Gson gson = new Gson();
-    
+
     @Shadow
     protected int leftPos;
     @Shadow
@@ -50,13 +57,72 @@ public abstract class HandledScreenMixin extends Screen {
     protected MultiLineTextWidget sideTextWidget;
     // Always keep non-null; updates replace the reference with a fresh list. Volatile for visibility across threads.
     protected volatile List<MutableComponent> interactiveTextLines = new java.util.ArrayList<>();
-    
+
+    /**
+     * Precomputed per-frame-invariant data for one rendered line: its measured
+     * pixel width, its siblings (each with their own measured width, click
+     * event and precomputed hover tooltip), and a fallback click/hover for the
+     * line itself. Built once in {@link #updateTextWithJson} instead of being
+     * re-measured (font.width) and re-split (hover text) every single frame in
+     * {@link #renderMain} and on every click in {@link #onMouseClicked}.
+     */
+    private record HoverInfo(Component single, List<Component> multi) {
+        static HoverInfo of(net.minecraft.network.chat.Style style) {
+            if (style == null) return null;
+            HoverEvent hoverEvent = style.getHoverEvent();
+            if (!(hoverEvent instanceof HoverEvent.ShowText showTextEvent)) return null;
+            String hoverText = showTextEvent.value().getString();
+            String[] hoverLines = hoverText.split("\\\\n|\\n");
+            if (hoverLines.length == 1) {
+                return new HoverInfo(showTextEvent.value(), null);
+            }
+            List<Component> multiLineList = new java.util.ArrayList<>();
+            for (String hoverLine : hoverLines) {
+                multiLineList.add(Component.literal(hoverLine));
+            }
+            return new HoverInfo(null, multiLineList);
+        }
+
+        void apply(GuiGraphicsExtractor context, Font font, int mouseX, int mouseY) {
+            if (multi != null) {
+                context.setComponentTooltipForNextFrame(font, multi, mouseX, mouseY);
+            } else if (single != null) {
+                context.setTooltipForNextFrame(font, single, mouseX, mouseY);
+            }
+        }
+    }
+
+    private record SiblingInfo(MutableComponent component, int width, ClickEvent clickEvent, HoverInfo hover) {
+    }
+
+    private record LineInfo(MutableComponent line, int width, List<SiblingInfo> siblings,
+                             ClickEvent clickEvent, HoverInfo hover) {
+    }
+
+    // Cache invalidated/rebuilt only when updateTextWithJson runs (new/changed InfoDisplay data),
+    // not every frame.
+    private volatile List<LineInfo> lineInfos = List.of();
+
     // Dragging and position storage
     private boolean isDragging = false;
     private double dragStartX, dragStartY;
     private double widgetStartX, widgetStartY;
     private TextWidgetPositionConfig positionConfig;
     private int currentMaxWidth = 100;
+
+    @Inject(at = @At("HEAD"), method = "removed")
+    public void onRemoved(CallbackInfo ci){
+        try {
+            // Fires whenever this container view goes away for ANY reason: an ESC/close AND when
+            // Hypixel replaces it with another window (e.g. switching backpacks via the nav items,
+            // which does not trigger onClose). Resend the outgoing storage contents so edits made
+            // after the on-open upload aren't lost on navigation. Deduped by inventory and upload context, so an
+            // unchanged view is a no-op.
+            CoflModClient.resendStorageOnClose(this);
+        } catch (Exception e) {
+            System.out.println("[HandledScreenMixin] resend on removed failed: " + e.getMessage());
+        }
+    }
 
     @Inject(at = @At("TAIL"), method = "init")
     public void init(CallbackInfo ci){
@@ -71,12 +137,13 @@ public abstract class HandledScreenMixin extends Screen {
             if(sideTextWidget != null && !currentTitle.equals("Crafting")) {
                 sideTextWidget.setAlpha(0.3f); // make it transparent until properly loaded
             }
-            DescriptionHandler.setRefreshCallback((lines, title) -> {
+            com.coflnet.core.DescriptionState.setRefreshCallback((lines, title) -> {
                 try {
                     // Ensure UI update runs on the client (render) thread
                     Minecraft.getInstance().execute(() -> {
                         try {
-                            updateText(CoflModClient.getExtraSlotDescMod());
+                            if (Minecraft.getInstance().screen == this)
+                                updateText(CoflModClient.getExtraSlotDescMod());
                         } catch (Exception ex) {
                             System.out.println("[HandledScreenMixin] refresh callback (on client) failed: " + ex.getMessage());
                         }
@@ -95,6 +162,7 @@ public abstract class HandledScreenMixin extends Screen {
             sideTextWidget = null;
             // Keep list non-null; reset to empty
             interactiveTextLines = java.util.Collections.emptyList();
+            lineInfos = List.of();
             return;
         }
 
@@ -104,11 +172,14 @@ public abstract class HandledScreenMixin extends Screen {
     protected void updateTextWithJson(DescriptionHandler.DescModification[] lines) {
     interactiveTextLines = new java.util.ArrayList<>();
         int maxWidth = 0;
-        
+
         for (DescriptionHandler.DescModification descModification : lines) {
             if (!descModification.type.equals("APPEND") || descModification.value == null) {
                 if (descModification.type.equals("SUGGEST")) {
-                    MutableComponent suggestText = Component.literal("§7Will suggest: §r" + descModification.value.split(": ")[1].trim());
+                    if (descModification.value == null) continue;
+                    String[] suggestion = descModification.value.split(": ", 2);
+                    if (suggestion.length != 2) continue;
+                    MutableComponent suggestText = Component.literal("§7Will suggest: §r" + suggestion[1].trim());
                     interactiveTextLines.add(suggestText);
                     int width = Minecraft.getInstance().font.width(suggestText);
                     if (width > maxWidth) {
@@ -146,7 +217,7 @@ public abstract class HandledScreenMixin extends Screen {
                 for (int i = 0; i < textElements.length; i++) {
                     TextElement element = textElements[i];
                     MutableComponent elementText = Component.literal(element.text);
-                    
+
                     // Add click event
                     if (element.onClick != null && !element.onClick.isEmpty()) {
                         if (element.onClick.startsWith("http")) {
@@ -167,7 +238,7 @@ public abstract class HandledScreenMixin extends Screen {
                             elementText.withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand(element.onClick)));
                         }
                     }
-                    
+
                     // Add hover event
                     if (element.hover != null && !element.hover.isEmpty()) {
                         elementText.withStyle(style -> {
@@ -193,10 +264,10 @@ public abstract class HandledScreenMixin extends Screen {
                             }
                         });
                     }
-                    
+
                     lineText.append(elementText);
                 }
-                
+
                 interactiveTextLines.add(lineText);
                 int width = Minecraft.getInstance().font.width(lineText);
                 if (width > maxWidth) {
@@ -212,9 +283,11 @@ public abstract class HandledScreenMixin extends Screen {
                 }
             }
         }
-        
+
         // Create the widget for positioning but we'll render manually
-    if (interactiveTextLines == null || interactiveTextLines.isEmpty()) {
+        if (interactiveTextLines.isEmpty()) {
+            sideTextWidget = null;
+            lineInfos = List.of();
             return;
         }
 
@@ -224,125 +297,121 @@ public abstract class HandledScreenMixin extends Screen {
             if (i > 0) combinedText.append("\n");
             combinedText.append(linesSnapshot.get(i));
         }
-        
-        // Use custom position relative to GUI
-        int widgetX = leftPos + positionConfig.offsetX;
-        if(positionConfig.offsetX < 0) { // if it hasn't been respositioned move start over
-            widgetX = widgetX - maxWidth;
+
+        int widgetWidth = maxWidth + 10;
+        int widgetHeight = linesSnapshot.size() * Minecraft.getInstance().font.lineHeight;
+        int widgetX;
+        int widgetY;
+        if (positionConfig.offsetX == -5 && positionConfig.offsetY == 5) {
+            String title = ((AbstractContainerScreen<?>) (Object) this).getTitle().getString();
+            var container = new InfoDisplayLayout.Rect(leftPos, topPos, imageWidth, imageHeight);
+            var placement = InfoDisplayLayout.placeDefault(
+                    title, width, height, container, widgetWidth, widgetHeight);
+            widgetX = placement.x();
+            widgetY = placement.y();
+        } else {
+            widgetX = leftPos + positionConfig.offsetX;
+            if (positionConfig.offsetX < 0) {
+                widgetX -= maxWidth;
+            }
+            widgetY = topPos + positionConfig.offsetY;
         }
         currentMaxWidth = maxWidth;
-        int widgetY = topPos + positionConfig.offsetY;
-        
+
         sideTextWidget = new MultiLineTextWidget(
                 widgetX, widgetY,
                 combinedText,
                 Minecraft.getInstance().font
         );
-        sideTextWidget.setSize(maxWidth + 10, linesSnapshot.size() * Minecraft.getInstance().font.lineHeight);
+        sideTextWidget.setSize(widgetWidth, widgetHeight);
         sideTextWidget.setAlpha(0.9f);
+
+        // Precompute everything renderMain/onMouseClicked need per frame/click, once here.
+        lineInfos = buildLineInfos(linesSnapshot);
+    }
+
+    private static List<LineInfo> buildLineInfos(List<MutableComponent> lines) {
+        Font font = Minecraft.getInstance().font;
+        List<LineInfo> infos = new java.util.ArrayList<>(lines.size());
+        for (MutableComponent line : lines) {
+            int lineWidth = font.width(line);
+            HoverInfo lineHover = HoverInfo.of(line.getStyle());
+            ClickEvent lineClick = line.getStyle().getClickEvent();
+
+            List<SiblingInfo> siblings = new java.util.ArrayList<>();
+            for (Component sibling : line.getSiblings()) {
+                if (!(sibling instanceof MutableComponent mutableSibling)) {
+                    continue;
+                }
+                int siblingWidth = font.width(mutableSibling);
+                HoverInfo siblingHover = HoverInfo.of(mutableSibling.getStyle());
+                ClickEvent siblingClick = mutableSibling.getStyle().getClickEvent();
+                siblings.add(new SiblingInfo(mutableSibling, siblingWidth, siblingClick, siblingHover));
+            }
+            infos.add(new LineInfo(line, lineWidth, siblings, lineClick, lineHover));
+        }
+        return infos;
     }
 
     @Inject(at = @At("TAIL"), method = "extractRenderState")
     public void renderMain(GuiGraphicsExtractor context, int mouseX, int mouseY, float deltaTicks, CallbackInfo ci){
+        long perfStart = PerfTracer.begin();
         try {
             if(sideTextWidget == null) {
                 return;
             }
 
             // Snapshot to avoid races if another thread updates the list while rendering
-            List<MutableComponent> linesSnapshot = this.interactiveTextLines;
-            if(linesSnapshot == null || linesSnapshot.isEmpty()) {
+            List<LineInfo> infos = this.lineInfos;
+            if(infos == null || infos.isEmpty()) {
                 sideTextWidget.extractRenderState(context, mouseX, mouseY, deltaTicks);
                 return;
             }
 
-            // Render interactive text using proper text component rendering
+            Font font = Minecraft.getInstance().font;
             int startX = sideTextWidget.getX();
             int startY = sideTextWidget.getY();
-            int lineHeight = Minecraft.getInstance().font.lineHeight;
+            int lineHeight = font.lineHeight;
 
-            for (int i = 0; i < linesSnapshot.size(); i++) {
-                MutableComponent line = linesSnapshot.get(i);
+            for (int i = 0; i < infos.size(); i++) {
+                LineInfo info = infos.get(i);
                 int lineY = startY + (i * lineHeight);
 
                 // Use the screen's text rendering method to support hover/click events
-                context.text(Minecraft.getInstance().font, line, startX, lineY, 0xFFFFFF, true);
+                context.text(font, info.line(), startX, lineY, 0xFFFFFF, true);
 
                 // Handle hover tooltips immediately during rendering
-                int textWidth = Minecraft.getInstance().font.width(line);
-                if (mouseX < startX || mouseX > startX + textWidth ||
+                if (mouseX < startX || mouseX > startX + info.width() ||
                     mouseY < lineY || mouseY > lineY + lineHeight) {
                     continue;
                 }
 
-                // Check each sibling for hover events
+                // Check each sibling for hover events (widths already measured in buildLineInfos)
                 int currentX = startX;
                 boolean foundHover = false;
 
-                for (Component sibling : line.getSiblings()) {
-                    if (!(sibling instanceof MutableComponent mutableSibling)) {
-                        continue;
-                    }
-
-                    int siblingWidth = Minecraft.getInstance().font.width(mutableSibling);
-
-                    if (mouseX >= currentX && mouseX <= currentX + siblingWidth) {
-                        if (mutableSibling.getStyle().getHoverEvent() != null &&
-                            mutableSibling.getStyle().getHoverEvent() instanceof HoverEvent.ShowText showTextEvent) {
-
-                            // Check if the hover text contains newlines and render accordingly
-                            String hoverText = showTextEvent.value().getString();
-                            if (hoverText.contains("\n")) {
-                                // Multi-line tooltip - split into list
-                                String[] lines = hoverText.split("\n");
-                                java.util.List<Component> tooltipLines = new java.util.ArrayList<>();
-                                for (String hoverline : lines) {
-                                    tooltipLines.add(Component.literal(hoverline));
-                                }
-                                context.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
-                                                   tooltipLines,
-                                                   mouseX, mouseY);
-                            } else {
-                                // Single line tooltip
-                                context.setTooltipForNextFrame(Minecraft.getInstance().font,
-                                                   showTextEvent.value(),
-                                                   mouseX, mouseY);
-                            }
+                for (SiblingInfo sibling : info.siblings()) {
+                    if (mouseX >= currentX && mouseX <= currentX + sibling.width()) {
+                        if (sibling.hover() != null) {
+                            sibling.hover().apply(context, font, mouseX, mouseY);
                             foundHover = true;
                             break;
                         }
                     }
-                    currentX += siblingWidth;
+                    currentX += sibling.width();
                 }
 
                 // If no sibling had hover, check the main line
-                if (!foundHover && line.getStyle().getHoverEvent() != null &&
-                    line.getStyle().getHoverEvent() instanceof HoverEvent.ShowText showTextEvent) {
-
-                    // Check if the hover text contains newlines and render accordingly
-                    String hoverText = showTextEvent.value().getString();
-                    if (hoverText.contains("\n")) {
-                        // Multi-line tooltip - split into list
-                        String[] lines = hoverText.split("\n");
-                        java.util.List<Component> tooltipLines = new java.util.ArrayList<>();
-                        for (String tooltipLine : lines) {
-                            tooltipLines.add(Component.literal(tooltipLine));
-                        }
-                        context.setComponentTooltipForNextFrame(Minecraft.getInstance().font,
-                                           tooltipLines,
-                                           mouseX, mouseY);
-                    } else {
-                        // Single line tooltip
-                        context.setTooltipForNextFrame(Minecraft.getInstance().font,
-                                           showTextEvent.value(),
-                                           mouseX, mouseY);
-                    }
+                if (!foundHover && info.hover() != null) {
+                    info.hover().apply(context, font, mouseX, mouseY);
                 }
             }
             // for an unknown reason the single lines don't render anymore on 1.21.8+ so we render the widget as well
             sideTextWidget.extractRenderState(context, mouseX, mouseY, deltaTicks);
         } catch (Exception e) {
             System.out.println("[HandledScreenMixin] renderMain failed: " + e.getMessage());
+        } finally {
+            PerfTracer.end("handledScreenMixin.renderMain", perfStart);
         }
     }
 
@@ -354,11 +423,10 @@ public abstract class HandledScreenMixin extends Screen {
             double mouseX = click.x();
             double mouseY = click.y();
 
-            if (isDragging && button == 1) { // Right mouse button
+            if (isDragging && button == InputConstants.MOUSE_BUTTON_RIGHT) { // Right mouse button
                 // Update widget position based on drag
                 double newX = widgetStartX + (mouseX - dragStartX);
                 double newY = widgetStartY + (mouseY - dragStartY);
-                System.out.println("Dragging to: " + newX + ", " + newY);
 
                 // Calculate relative offsets to GUI
                 positionConfig.offsetX = (int) (newX - leftPos);
@@ -377,12 +445,12 @@ public abstract class HandledScreenMixin extends Screen {
             System.out.println("[HandledScreenMixin] mouseDragged failed: " + e.getMessage());
         }
     }
-    
-    @Inject(at = @At("HEAD"), method = "mouseReleased", cancellable = true)  
+
+    @Inject(at = @At("HEAD"), method = "mouseReleased", cancellable = true)
     public void onMouseReleased(net.minecraft.client.input.MouseButtonEvent click, CallbackInfoReturnable<Boolean> cir) {
         try {
             int button = click.button();
-            if (isDragging && button == 1) { // Right mouse button
+            if (isDragging && button == InputConstants.MOUSE_BUTTON_RIGHT) { // Right mouse button
                 isDragging = false;
                 positionConfig.save(); // Save the new position
                 cir.setReturnValue(true);
@@ -391,7 +459,7 @@ public abstract class HandledScreenMixin extends Screen {
             System.out.println("[HandledScreenMixin] mouseReleased failed: " + e.getMessage());
         }
     }
-    
+
     private void updateWidgetPosition() {
         if (sideTextWidget != null) {
             // Create a new widget at the new position
@@ -406,13 +474,13 @@ public abstract class HandledScreenMixin extends Screen {
                 // For legacy text, we need to recreate from current widget text
                 return; // Skip update for legacy text during drag
             }
-            
+
             int newX = leftPos + positionConfig.offsetX;
             if(positionConfig.offsetX < 0) {
                 newX = newX - currentMaxWidth;
             }
             int newY = topPos + positionConfig.offsetY;
-            
+
             sideTextWidget = new MultiLineTextWidget(
                     newX, newY,
                     currentText,
@@ -425,20 +493,21 @@ public abstract class HandledScreenMixin extends Screen {
 
     @Inject(at = @At("HEAD"), method = "mouseClicked", cancellable = true)
     public void onMouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubleClick, org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable<Boolean> cir) {
-        var hudStyle = com.coflnet.gui.hud.InfoDisplayRenderer.styleAt(click.x(), click.y(), width, height);
-        if (click.button() == 0 && hudStyle != null && hudStyle.getClickEvent() != null) {
-            handleInfoDisplayClickEvent(hudStyle.getClickEvent());
-            cir.setReturnValue(true);
-            return;
-        }
-
+        long perfStart = PerfTracer.begin();
         try {
+            var hudStyle = InfoDisplayRenderer.styleAt(click.x(), click.y(), width, height);
+            if (click.button() == InputConstants.MOUSE_BUTTON_LEFT && hudStyle != null && hudStyle.getClickEvent() != null) {
+                handleInfoDisplayClickEvent(hudStyle.getClickEvent());
+                cir.setReturnValue(true);
+                return;
+            }
+
             double mouseX = click.x();
             double mouseY = click.y();
             int button = click.button();
-            
-            List<MutableComponent> linesSnapshot = this.interactiveTextLines;
-            if (linesSnapshot == null || linesSnapshot.isEmpty() || sideTextWidget == null) {
+
+            List<LineInfo> infos = this.lineInfos;
+            if (infos == null || infos.isEmpty() || sideTextWidget == null) {
                 return;
             }
 
@@ -446,15 +515,14 @@ public abstract class HandledScreenMixin extends Screen {
             int startY = sideTextWidget.getY();
             int lineHeight = Minecraft.getInstance().font.lineHeight;
 
-            // Check if mouse is over the text widget area
+            // Check if mouse is over the text widget area (widths already measured in buildLineInfos)
             boolean overWidget = false;
             int widgetWidth = 0;
-            int widgetHeight = linesSnapshot.size() * lineHeight;
+            int widgetHeight = infos.size() * lineHeight;
 
-            for (MutableComponent line : linesSnapshot) {
-                int lineWidth = Minecraft.getInstance().font.width(line);
-                if (lineWidth > widgetWidth) {
-                    widgetWidth = lineWidth;
+            for (LineInfo info : infos) {
+                if (info.width() > widgetWidth) {
+                    widgetWidth = info.width();
                 }
             }
 
@@ -464,7 +532,7 @@ public abstract class HandledScreenMixin extends Screen {
             }
 
             // Handle right-click for dragging
-            if (button == 1 && overWidget) { // Right mouse button
+            if (button == InputConstants.MOUSE_BUTTON_RIGHT && overWidget) { // Right mouse button
                 isDragging = true;
                 dragStartX = mouseX;
                 dragStartY = mouseY;
@@ -475,42 +543,33 @@ public abstract class HandledScreenMixin extends Screen {
             }
 
             // Handle left-click for text interactions (existing functionality)
-            if (button == 0) { // Left mouse button
-                for (int i = 0; i < linesSnapshot.size(); i++) {
-                    MutableComponent line = linesSnapshot.get(i);
+            if (button == InputConstants.MOUSE_BUTTON_LEFT) { // Left mouse button
+                for (int i = 0; i < infos.size(); i++) {
+                    LineInfo info = infos.get(i);
                     int lineY = startY + (i * lineHeight);
-                    int textWidth = Minecraft.getInstance().font.width(line);
 
                     // Check if mouse is over this line
-                    if (mouseX < startX || mouseX > startX + textWidth ||
+                    if (mouseX < startX || mouseX > startX + info.width() ||
                         mouseY < lineY || mouseY > lineY + lineHeight) {
                         continue;
                     }
 
                     // Find which text component was clicked by checking character positions
                     int currentX = startX;
-                    for (Component sibling : line.getSiblings()) {
-                        if (!(sibling instanceof MutableComponent mutableSibling)) {
-                            continue;
-                        }
-
-                        int siblingWidth = Minecraft.getInstance().font.width(mutableSibling);
-
-                        if (mouseX >= currentX && mouseX <= currentX + siblingWidth) {
-                            ClickEvent clickEvent = mutableSibling.getStyle().getClickEvent();
-                            if (clickEvent != null) {
-                                handleInfoDisplayClickEvent(clickEvent);
+                    for (SiblingInfo sibling : info.siblings()) {
+                        if (mouseX >= currentX && mouseX <= currentX + sibling.width()) {
+                            if (sibling.clickEvent() != null) {
+                                handleInfoDisplayClickEvent(sibling.clickEvent());
                                 cir.setReturnValue(true);
                                 return;
                             }
                         }
-                        currentX += siblingWidth;
+                        currentX += sibling.width();
                     }
 
                     // If no sibling was clicked, try the main text
-                    ClickEvent lineClickEvent = line.getStyle().getClickEvent();
-                    if (lineClickEvent != null) {
-                        handleInfoDisplayClickEvent(lineClickEvent);
+                    if (info.clickEvent() != null) {
+                        handleInfoDisplayClickEvent(info.clickEvent());
                         cir.setReturnValue(true);
                         return;
                     }
@@ -518,12 +577,20 @@ public abstract class HandledScreenMixin extends Screen {
             }
         } catch (Exception e) {
             System.out.println("[HandledScreenMixin] mouseClicked failed: " + e.getMessage());
+        } finally {
+            PerfTracer.end("handledScreenMixin.onMouseClicked", perfStart);
         }
     }
 
     private void handleInfoDisplayClickEvent(ClickEvent clickEvent) {
         if (clickEvent instanceof ClickEvent.RunCommand runCommand) {
             String command = runCommand.command();
+            // Arm a sign fill instead of sending to the server, and auto-open the Custom Amount sign
+            // when unambiguous (mirrors the bazaar-search flow). Format: "fillsign:<4th line>: <value>".
+            if (command.startsWith("fillsign:")) {
+                com.coflnet.CoflModClient.armSignFillAndOpen(command.substring("fillsign:".length()));
+                return;
+            }
             var player = Minecraft.getInstance().player;
             if (player != null && player.connection != null) {
                 if (command.startsWith("/")) {
@@ -533,7 +600,7 @@ public abstract class HandledScreenMixin extends Screen {
                 }
             }
         } else if (clickEvent instanceof ClickEvent.SuggestCommand suggestion) {
-            Minecraft.getInstance().setScreen(new net.minecraft.client.gui.screens.ChatScreen(suggestion.command(), false));
+            Minecraft.getInstance().setScreen(new ChatScreen(suggestion.command(), false));
         } else {
             Screen.defaultHandleClickEvent(clickEvent, Minecraft.getInstance(), this);
         }

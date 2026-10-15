@@ -43,7 +43,7 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
-	implementation include("com.github.Coflnet:CoflSkyCore:74048c959f")
+	implementation include("com.github.Coflnet:CoflSkyCore:911eb057e4")
 	implementation include("org.greenrobot:eventbus-java:3.3.1")
 	implementation include("org.java-websocket:Java-WebSocket:1.5.2")
 	implementation include("com.google.code.gson:gson:2.10.1")
@@ -65,6 +65,13 @@ sourceSets {
 
 tasks.named("test", Test) {
 	useJUnitPlatform()
+}
+
+tasks.register("runDescriptionStub", JavaExec) {
+	group = "verification"
+	description = "Runs the loopback-only deterministic description backend used by client rehearsal."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "com.coflnet.core.DescriptionBackendStub"
 }
 
 processResources {
@@ -96,6 +103,29 @@ jar {
 
 	from("LICENSE") {
 		rename { "${it}_${inputs.properties.archivesName}"}
+	}
+}
+
+tasks.register("installMod") {
+	group = "build"
+	description = "Builds and atomically installs the mod into -PmodsDir=<Minecraft mods directory>."
+	dependsOn tasks.named("build")
+	doLast {
+		def modsDir = providers.gradleProperty("modsDir").orNull
+		if (!modsDir) {
+			throw new GradleException("Specify the Minecraft mods directory with -PmodsDir=<path>")
+		}
+		def destination = file(modsDir).toPath()
+		def artifact = tasks.named("jar", Jar).get().archiveFile.get().asFile.toPath()
+		def temporary = java.nio.file.Files.createTempFile(destination, ".skycofl-", ".tmp")
+		try {
+			java.nio.file.Files.copy(artifact, temporary, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+			// Keep a running client's open ZIP reader on the old, intact jar until restart.
+			java.nio.file.Files.move(temporary, destination.resolve(artifact.fileName),
+					java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+		} finally {
+			java.nio.file.Files.deleteIfExists(temporary)
+		}
 	}
 }
 

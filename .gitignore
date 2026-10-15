@@ -31,6 +31,9 @@ bin/
 # fabric
 
 run/
+/testserver/logs/
+/logs/
+.coflnet-client-run*/
 
 # java
 
