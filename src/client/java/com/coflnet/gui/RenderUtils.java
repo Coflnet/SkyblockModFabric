@@ -235,6 +235,7 @@ public class RenderUtils {
     //draws an ItemStack at a given position with a given scale
     public static void drawItemStack(GuiGraphicsExtractor context, ItemStack itemStack, int x, int y, float scale) {
         context.item(itemStack, x, y, 0);
+        context.itemDecorations(Minecraft.getInstance().font, itemStack, x, y);
     }
 
     /*

@@ -65,6 +65,11 @@ public final class ChestChangeDebouncer {
         return due - now;
     }
 
+    /** Whether a content change is still waiting for its reload. */
+    public synchronized boolean isPending() {
+        return pending;
+    }
+
     /** Drop pending work, e.g. when another menu became active. A running waiter exits on its next poll. */
     public synchronized void reset() {
         pending = false;

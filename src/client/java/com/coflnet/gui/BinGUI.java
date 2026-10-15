@@ -40,8 +40,9 @@ public abstract class BinGUI extends Screen {
     protected ItemWidget itemWidget;
     protected ItemStack currentItem = Items.AIR.getDefaultInstance();
     protected FlipData flipData;
-    private String auctionItemStateKey = "";
-    private String actionItemStateKey = "";
+    private ItemStack lastAuctionItem = ItemStack.EMPTY;
+    private ItemStack lastActionItem = ItemStack.EMPTY;
+    private int lastActionSlot = -1;
 
     protected AuctionStatus auctionStatus;
     protected ChestMenu gcsh;
@@ -72,6 +73,8 @@ public abstract class BinGUI extends Screen {
         clearAndInitWidgets(screenWidth, screenHeight);
     }
 
+    public ContainerScreen getBacking() { return gcs; }
+
     private void initSize(int screenWidth, int screenHeight){
         this.width = Minecraft.getInstance().gui.screen().width / 2;
         if (width < 300) this.width = 300;
@@ -95,15 +98,14 @@ public abstract class BinGUI extends Screen {
 
     protected boolean syncAuctionItemFromContainer() {
         ItemStack auctionItem = gcsh.getContainer().getItem(AUCTION_ITEM_SLOT);
-        String itemStateKey = getItemStateKey(auctionItem);
-        if (itemStateKey.equals(auctionItemStateKey)) {
+        if (ItemStack.matches(auctionItem, lastAuctionItem)) {
             if (itemWidget != null) {
                 itemWidget.item = currentItem;
             }
             return false;
         }
 
-        auctionItemStateKey = itemStateKey;
+        lastAuctionItem = auctionItem.copy();
         if (auctionItem.isEmpty() || auctionItem.getItem() == Items.AIR) {
             setItem(Items.AIR.getDefaultInstance());
             return false;
@@ -116,12 +118,12 @@ public abstract class BinGUI extends Screen {
     protected AuctionStatus syncAuctionStatusFromContainer() {
         int actionSlot = getCurrentActionSlot();
         ItemStack actionItem = gcsh.getContainer().getItem(actionSlot);
-        String itemStateKey = actionSlot + ":" + getItemStateKey(actionItem);
-        if (itemStateKey.equals(actionItemStateKey)) {
+        if (actionSlot == lastActionSlot && ItemStack.matches(actionItem, lastActionItem)) {
             return auctionStatus;
         }
 
-        actionItemStateKey = itemStateKey;
+        lastActionSlot = actionSlot;
+        lastActionItem = actionItem.copy();
         if (actionItem.isEmpty() || actionItem.getItem() == Items.AIR) {
             return auctionStatus;
         }
@@ -131,16 +133,6 @@ public abstract class BinGUI extends Screen {
 
     private int getCurrentActionSlot() {
         return auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0 ? AUCTION_CONFIRM_SLOT : AUCTION_BUY_SLOT;
-    }
-
-    protected String getItemStateKey(@NotNull ItemStack itemStack) {
-        if (itemStack.isEmpty() || itemStack.getItem() == Items.AIR) {
-            return "";
-        }
-
-        String hoverName = itemStack.getHoverName().getString();
-        var lore = itemStack.get(DataComponents.LORE);
-        return hoverName + "|" + itemStack.getCount() + "|" + (lore == null ? "" : lore);
     }
 
     @Override
@@ -188,7 +180,7 @@ public abstract class BinGUI extends Screen {
             return auctionStatus;
 
         String customName = itemStack.getCustomName().getString();
-        String loreString = itemStack.getComponents().get(DataComponents.LORE).toString();
+        String loreString = itemStack.getOrDefault(DataComponents.LORE, net.minecraft.world.item.component.ItemLore.EMPTY).toString();
 
         switch (customName){
             case "Buy Item Right Now":

@@ -1,7 +1,6 @@
 package com.coflnet.gui.cofl;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.gui.AuctionStatus;
 import com.coflnet.gui.BinActions;
 import com.coflnet.gui.BinGUI;
@@ -35,7 +34,7 @@ public class CoflBinGUI extends BinGUI {
 
     public CoflBinGUI(ContainerScreen gcs){
         super(Component.literal("Cofl Bin Gui"), gcs, 5, 4);
-        DescriptionHandler.setRefreshCallback((lines, title) -> Minecraft.getInstance().execute(() -> {
+        com.coflnet.core.DescriptionState.setRefreshCallback((lines, title) -> Minecraft.getInstance().execute(() -> {
             if (Minecraft.getInstance().gui.screen() == this) {
                 loreDirty = true;
             }

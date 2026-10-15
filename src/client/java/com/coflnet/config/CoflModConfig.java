@@ -1,6 +1,7 @@
 package com.coflnet.config;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 import com.coflnet.core.InfoDisplayDefaults;
 import net.minecraft.client.Minecraft;
 
@@ -13,7 +14,9 @@ import java.util.List;
 
 public class CoflModConfig {
     private static final Gson gson = new Gson();
-    private static final File CONFIG_FILE = new File(Minecraft.getInstance().gameDirectory, "config/CoflSky/coflmod.json");
+    private static File configFile() {
+        return new File(Minecraft.getInstance().gameDirectory, "config/CoflSky/coflmod.json");
+    }
     
     // Text widget position settings
     public int textWidgetOffsetX = -5;
@@ -145,21 +148,23 @@ public class CoflModConfig {
     }
 
     public static CoflModConfig load() {
-        try {
-            if (CONFIG_FILE.exists()) {
-                FileReader reader = new FileReader(CONFIG_FILE);
+        return load(configFile());
+    }
+
+    static CoflModConfig load(File file) {
+        if (file.exists()) {
+            try (FileReader reader = new FileReader(file)) {
                 CoflModConfig config = gson.fromJson(reader, CoflModConfig.class);
-                reader.close();
                 if (config != null) {
                     config.ensureInfoDisplays();
                     if (config.migrateInfoDisplays()) {
-                        config.save();
+                        config.save(file);
                     }
                     return config;
                 }
+            } catch (IOException | JsonParseException e) {
+                System.err.println("[SkyCofl] Cannot read " + file + "; using defaults: " + e.getMessage());
             }
-        } catch (IOException e) {
-            // Use default values if loading fails
         }
 
         // Return default config if loading fails or file doesn't exist
@@ -170,11 +175,15 @@ public class CoflModConfig {
     }
     
     public void save() {
+        save(configFile());
+    }
+
+    private void save(File file) {
         try {
-            CONFIG_FILE.getParentFile().mkdirs();
-            FileWriter writer = new FileWriter(CONFIG_FILE);
-            gson.toJson(this, writer);
-            writer.close();
+            file.getParentFile().mkdirs();
+            try (FileWriter writer = new FileWriter(file)) {
+                gson.toJson(this, writer);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }

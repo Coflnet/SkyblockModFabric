@@ -14,6 +14,21 @@ class GoalProgressTriggerTest {
     }
 
     @Test
+    void bazaarFillsAndCancellationsRefreshGoals() {
+        assertTrue(GoalProgressTrigger.isProgressMessage(
+                "[Bazaar] Your Buy Order for 1,280x Enchanted Diamond was filled!"));
+        assertTrue(GoalProgressTrigger.isProgressMessage(
+                "§e[Bazaar] Your Sell Offer for 8x Diamante's Handle was filled!"));
+        assertTrue(GoalProgressTrigger.isProgressMessage(
+                "[Bazaar] Cancelled! Refunded 52x Green Candy from cancelling Sell Offer!"));
+        assertTrue(GoalProgressTrigger.isProgressMessage("You cancelled your auction for ◆ Hot Rune I!"));
+        assertFalse(GoalProgressTrigger.isProgressMessage(
+                "[MVP+] Player: [Bazaar] Your Buy Order for 1x Diamond was filled!"));
+        assertFalse(GoalProgressTrigger.isProgressMessage(
+                "[Bazaar] Your Buy Order for Diamond is not filled!"));
+    }
+
+    @Test
     void formattingCodesAreStripped() {
         assertTrue(GoalProgressTrigger.isProgressMessage("\u00a7aYou \u00a7bpurchased Wither Leggings for 1 coins!"));
 
@@ -59,6 +74,37 @@ class GoalProgressTriggerTest {
         t.trigger(0);
         t.reset();
         assertFalse(t.pollDue(100_000));
+    }
+
+    @Test
+    void forcedLoginRefreshSurvivesWaitingForPlayerAndIgnoresFingerprint() {
+        var t = new GoalProgressTrigger();
+        Object menu = new Object();
+        t.observeInventory(menu, 42);
+        t.forceRefresh(1000);
+        assertTrue(t.hasForcedRefresh()); // caller can bypass the cleared goal HUD gate
+        assertFalse(t.observeInventory(menu, 42)); // no inventory change needed
+        // The client does not poll while the player or description context is unavailable.
+        assertTrue(t.hasForcedRefresh());
+        assertTrue(t.pollDue(20_000));
+        assertTrue(t.consumeForcedRefresh());
+        assertFalse(t.hasForcedRefresh());
+        assertFalse(t.pollDue(20_001));
+        assertFalse(t.consumeForcedRefresh());
+    }
+
+    @Test
+    void disconnectDropsForcedRefreshAndResetsPreviousSessionThrottle() {
+        var t = new GoalProgressTrigger(400, 2000);
+        t.forceRefresh(0);
+        assertTrue(t.pollDue(400));
+        t.forceRefresh(500);
+        t.reset();
+        assertFalse(t.hasForcedRefresh());
+        assertFalse(t.pollDue(10_000));
+        t.forceRefresh(600);
+        assertTrue(t.pollDue(1000)); // new session does not inherit the old minimum interval
+        assertTrue(t.consumeForcedRefresh());
     }
 
     @Test
@@ -135,10 +181,4 @@ class GoalProgressTriggerTest {
         assertFalse(t.isWatching(1));
     }
 
-    @Test
-    void repairOnlyAfterNoScreenUploadWithOpenContainer() {
-        assertTrue(GoalProgressTrigger.shouldRepairOpenScreen(true, true));
-        assertFalse(GoalProgressTrigger.shouldRepairOpenScreen(true, false));
-        assertFalse(GoalProgressTrigger.shouldRepairOpenScreen(false, true));
-    }
 }

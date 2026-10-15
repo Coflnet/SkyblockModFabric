@@ -141,7 +141,6 @@ public class CoflModClient implements ClientModInitializer {
     public static Pair<String, String> lastScoreboardUploaded = new Pair<>("","0");
     private String username = "";
     private String lastCheckedUsername = ""; // Track last username to detect account switches
-    private static final java.util.concurrent.atomic.AtomicReference<String> lastNbtRequest = new java.util.concurrent.atomic.AtomicReference<>("");
     private boolean uploadedScoreboard = false;
     private static net.minecraft.world.inventory.AbstractContainerMenu highlightMenu = null;
     private static boolean popupShown = false;
@@ -182,10 +181,10 @@ public class CoflModClient implements ClientModInitializer {
     // lastDescriptionLoadRequestByMenu in particular is keyed by title + menu identity
     // hash, so it gains one entry per container instance ever opened in the session -
     // truly unbounded otherwise. Only recent menus matter for the debounce these exist for.
-    private static final BoundedLruMap<String, Long> lastRefreshTimePerInventory = new BoundedLruMap<>(500);
     private static final BoundedLruMap<String, Long> lastDescriptionLoadRequestByMenu = new BoundedLruMap<>(500);
     private static final com.coflnet.core.LogDedupe invalidLineLogDedupe = new com.coflnet.core.LogDedupe(256);
-    private static final long REFRESH_THROTTLE_MS = 500; // 0.5 seconds minimum between requests
+    private static final com.coflnet.core.DescriptionQueue descriptionQueue =
+            new com.coflnet.core.DescriptionQueue(task -> Minecraft.getInstance().execute(task), 500);
     private static final long DESCRIPTION_LOAD_TRIGGER_DEBOUNCE_MS = 250;
     private static final AtomicBoolean connectionStartInProgress = new AtomicBoolean(false);
     private static final ExecutorService connectionLifecycleExecutor =
@@ -386,7 +385,7 @@ public class CoflModClient implements ClientModInitializer {
                 scheduleAutoStartAfterJoin();
             }
             // reset cached data for different island
-            DescriptionHandler.emptyTooltipData();
+            resetDescriptions();
             uploadedScoreboard = false;
             EventSubscribers.positions = null;
         });
@@ -394,9 +393,9 @@ public class CoflModClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             com.coflnet.config.TradeGuiManager.clearAccountTier();
             applyServerContext(ServerContext.UNKNOWN);
-            com.coflnet.gui.hud.InfoDisplayManager.clearAll();
+            onBackendDisconnected();
             WSClientWrapper wrapper = CoflCore.Wrapper;
-            if (wrapper != null && wrapper.isRunning) {
+            if (wrapper != null || connectionStartInProgress.get()) {
                 System.out.println("Disconnected from server");
                 stopConnectionAsync();
             }
@@ -531,11 +530,12 @@ public class CoflModClient implements ClientModInitializer {
                 // AFTER_INIT also fires on resize; only a different menu invalidates highlight records.
                 if (hs.getMenu() != highlightMenu) {
                     highlightMenu = hs.getMenu();
+                    invalidateDescriptionRequest();
                     com.coflnet.gui.HighlightRegistry.clear();
                 }
                 // A fresh order view confirms state even when its items have not changed.
                 if (com.coflnet.core.MenuClassifier.isBazaarOrders(hs.getTitle().getString())) {
-                    lastNbtRequest.set("");
+                    invalidateDescriptionRequest();
                 }
                 loadDescriptionsForInv(hs);
                 if(!uploadedScoreboard)
@@ -1203,6 +1203,7 @@ public class CoflModClient implements ClientModInitializer {
                     // Preserve CoflSkyCore's original bare /cofl dev command, which
                     // switches both the API and ModSocket between local and production.
                     if (args.length == 1 && args[0].equalsIgnoreCase("dev")) {
+                        onBackendDisconnected();
                         String usernameSnapshot = username;
                         runConnectionLifecycleTask("toggle developer connection", () -> {
                             if (Config.BaseUrl.contains("localhost")) {
@@ -1385,6 +1386,9 @@ public class CoflModClient implements ClientModInitializer {
                         return 1;
                     }
 
+                    // Core stop/start clear socket listeners, so they cannot raise SocketClose.
+                    if (args[0].equalsIgnoreCase("stop") || args[0].equalsIgnoreCase("start"))
+                        onBackendDisconnected();
                     // Pass to CoflSkyCommand for other commands
                     String usernameSnapshot = username;
                     backgroundQueue.submit(() -> CoflSkyCommand.processCommand(args, usernameSnapshot));
@@ -1689,89 +1693,60 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public void loadDescriptionsForInv(AbstractContainerScreen screen) {
-        if (screen == null || !shouldTriggerDescriptionLoad(screen)) {
+        if (screen == null || Minecraft.getInstance().player == null
+                || !isDescriptionContext()) return;
+        String title = screen.getTitle().getString();
+        if (com.coflnet.core.MenuClassifier.isBazaarOrders(title)) {
+            if (com.coflnet.core.MenuClassifier.shouldLoadDescriptionsOnOpen(title,
+                    screen instanceof ContainerScreen chest && chest.getMenu().getContainer().isEmpty()))
+                onChestContentChanged(screen);
             return;
         }
+        if (!shouldTriggerDescriptionLoad(screen)) return;
+        refreshOpenDescriptions(screen);
+    }
 
-        if (!isDescriptionContext())
-            return;
-        Thread.startVirtualThread(() -> {
-            NonNullList<ItemStack> itemStacks = screen.getMenu().getItems();
-            String title = screen.getTitle().getString();
-            try {
-                Thread.sleep(100);
-                for (int i = 0; i < 20; i++) {
-                    if(itemStacks.size() <= InventorysizeWithOffHand || !itemStacks.get(itemStacks.size() - InventorysizeWithOffHand).isEmpty())
-                        break;
-                    Thread.sleep(50); // wait for the screen to load
-                    System.out.println("Waiting for item stacks to load...");
-                    itemStacks = screen.getMenu().getItems();
-                }
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            try {
-                AbstractContainerScreen currentScreen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen ? (AbstractContainerScreen) Minecraft.getInstance().gui.screen() : null;
-                if (currentScreen == null || currentScreen.getMenu() != screen.getMenu()){
-                    System.out.println("Inventory changed already, not refreshing descriptions");
-                    return; // inventory changed, don't refresh
-                }
-                String[] visibleItems = getItemIdsFromInventory(itemStacks);
-                loadDescriptionsForItems(title, itemStacks);
-                boolean refresh = com.coflnet.core.MenuClassifier.isBazaarOrders(title);
-                if(title.contains("Auctions"))
-                {
-                    for (ItemStack itemStack : itemStacks) {
-                        if(itemStack.get(DataComponents.LORE) == null)
-                            continue;
-                        for (Component line : itemStack.get(DataComponents.LORE).lines()) {
-                            if(line.getString().contains("Refreshing..."))
-                            {
-                                refresh = true;
-                                break;
-                            }
-                        }
-                    }
-                    if(refresh)
-                        Thread.sleep(500); // wait extra for names to load
-                }
-                Thread.sleep(1000);
-                // check all items in the inventory for descriptions
-                String[] itemIds = getItemIdsFromInventory(screen.getMenu().getItems());
-                List<String> visibleList = Arrays.asList(visibleItems);
-                for (String itemId : itemIds) {
-                    if (!visibleList.contains(itemId) && !itemId.startsWith("EMPTY_SLOT_")) {
-                        refresh = true;
-                        break;
-                    }
-                }
-                if (refresh) {
-                    currentScreen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen ? (AbstractContainerScreen) Minecraft.getInstance().gui.screen() : null;
-                    if (currentScreen == null || currentScreen.getMenu() != screen.getMenu()){
-                        System.out.println("Inventory changed, not refreshing descriptions");
-                        return; // inventory changed, don't refresh 
-                        }
-                    if(!title.equals(screen.getTitle().getString()))
-                    {
-                        System.out.println("Title changed, not refreshing descriptions");
-                        return;
-                    }
-                    System.out.println("Refreshing descriptions for inventory: " + title);
-                    loadDescriptionsForItems(title, screen.getMenu().getItems());
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.out.println("Failed to load descriptions for inventory: " + e + " "
-                        + inventoryToNBT(itemStacks));
-            }
-        });
+    /** Full content packets can populate any container after its screen has already opened. */
+    public static void refreshDescriptionContainer(int containerId) {
+        var screen = descriptionScreen(Minecraft.getInstance().gui.screen());
+        if (screen != null && screen.getMenu().containerId == containerId
+                && !com.coflnet.core.MenuClassifier.isTradeTitle(screen.getMenu().slots.size() - 36,
+                        screen.getTitle().getString()))
+            instance.onChestContentChanged(screen);
+    }
+
+    private static AbstractContainerScreen<?> descriptionScreen(net.minecraft.client.gui.screens.Screen screen) {
+        return screen instanceof AbstractContainerScreen<?> container ? container
+                : screen instanceof com.coflnet.gui.BinGUI bin ? bin.getBacking()
+                : screen instanceof com.coflnet.gui.trade.TradeGUI trade ? trade.getBacking()
+                : screen instanceof com.coflnet.gui.trade.CoinInputGUI coins ? coins.getBacking() : null;
+    }
+
+    private static void refreshOpenDescriptions(AbstractContainerScreen<?> screen) {
+        var current = descriptionScreen(Minecraft.getInstance().gui.screen());
+        if (Minecraft.getInstance().player != null && current != null
+                && current.getMenu() == screen.getMenu() && isDescriptionContext())
+            loadDescriptionsForItems(screen.getTitle().getString(), screen.getMenu().getItems());
     }
 
     // Goal progress: a confirming chat line or a changed main inventory re-uploads the inventory so
     // the backend moves the tracked goal on without the player having to open a screen.
     private static final com.coflnet.core.GoalProgressTrigger goalTrigger = new com.coflnet.core.GoalProgressTrigger();
-    private static final AtomicBoolean goalForceUpload = new AtomicBoolean(false);
     private static final int GOAL_INFO_DISPLAY_ID = 3;
+
+    /** Login is the core's ready event, including reconnects; the old goal HUD may be empty. */
+    public static void refreshGoalAfterLogin() {
+        runOnClientThread(() -> goalTrigger.forceRefresh(System.currentTimeMillis()));
+    }
+
+    public static void onBackendDisconnected() {
+        runOnClientThread(() -> {
+            goalTrigger.reset();
+            com.coflnet.core.ExpectedCommandState.clear();
+            resetDescriptions();
+            com.coflnet.gui.hud.InfoDisplayManager.clearAll();
+        });
+    }
 
     /** True while the backend holds a non-empty, non-expired goal step on the HUD display. */
     private static boolean isGoalTracked() {
@@ -1782,10 +1757,9 @@ public class CoflModClient implements ClientModInitializer {
     private static void onPossibleGoalProgressMessage(String messageText) {
         if (!com.coflnet.core.GoalProgressTrigger.isProgressMessage(messageText) || !isGoalTracked())
             return;
-        goalForceUpload.set(true);
         long now = System.currentTimeMillis();
         goalTrigger.openWatch(now);
-        goalTrigger.trigger(now);
+        goalTrigger.forceRefresh(now);
     }
 
     private static long mainInventoryFingerprint(LocalPlayer player) {
@@ -1805,14 +1779,17 @@ public class CoflModClient implements ClientModInitializer {
         return com.coflnet.core.GoalProgressTrigger.fingerprint(keys, counts);
     }
 
-    /** Client tick, cheap when no goal is tracked (one atomic read and a null check). */
+    /** Client tick; inventory work stays idle without a goal or a forced login refresh. */
     private static void goalProgressTick(Minecraft client) {
-        if (client.player == null || !isGoalTracked()) {
+        // Login may arrive before the player inventory is ready. Retain the pending refresh.
+        if (client.player == null) return;
+        if (!isGoalTracked() && !goalTrigger.hasForcedRefresh()) {
             goalTrigger.reset();
             return;
         }
         long now = System.currentTimeMillis();
-        Object watchedMenu = client.gui.screen() instanceof AbstractContainerScreen<?> screen ? screen.getMenu()
+        var open = descriptionScreen(client.gui.screen());
+        Object watchedMenu = open != null ? open.getMenu()
                 : goalTrigger.isWatching(now) ? com.coflnet.core.GoalProgressTrigger.NO_SCREEN : null;
         if (watchedMenu != null) {
             if (goalTrigger.shouldCheckFingerprint(now)
@@ -1821,28 +1798,30 @@ public class CoflModClient implements ClientModInitializer {
         } else {
             goalTrigger.menuClosed();
         }
-        if (!goalTrigger.pollDue(now))
-            return;
         if (!isDescriptionContext())
             return;
-        if (goalForceUpload.getAndSet(false))
-            lastNbtRequest.set(""); // the confirmation itself is news even if the items look unchanged
-        // loadDescriptionsForItems dedups on lastNbtRequest, so a screen-open upload of the same
-        // content is not sent twice; the network request itself runs on a virtual thread.
-        if (client.gui.screen() instanceof AbstractContainerScreen<?> screen) {
-            loadDescriptionsForItems(screen.getTitle().getString(), screen.getMenu().getItems());
+        if (open != null && com.coflnet.core.MenuClassifier.isBazaarOrders(open.getTitle().getString())) {
+            // Keep forced goal refreshes pending until the order snapshot has settled too.
+            if (!com.coflnet.core.MenuClassifier.shouldLoadDescriptionsOnOpen(open.getTitle().getString(),
+                    open instanceof ContainerScreen chest && chest.getMenu().getContainer().isEmpty())
+                    || (chestChangeScreen != null && chestChangeScreen.getMenu() == open.getMenu()
+                            && chestChangeDebouncer.isPending()))
+                return;
+        }
+        if (!goalTrigger.pollDue(now))
+            return;
+        boolean forceRefresh = goalTrigger.consumeForcedRefresh();
+        if (forceRefresh) {
+            invalidateDescriptionRequest(); // login/chat is news even if inventory is unchanged
+            com.coflnet.gui.trade.TradePriceCache.requestCurrentTrade(client.player.containerMenu.containerId);
+        }
+        if (open != null) {
+            loadDescriptionsForItems(open.getTitle().getString(), open.getMenu().getItems(), forceRefresh);
         } else {
             // Same title and slot layout as the player's own inventory screen (InventoryScreen).
-            // The response replaces the shared panel/tooltip data; if a container was opened meanwhile,
-            // request that screen again so it ends with its own panel.
+            // Description application rejects this result if another menu opens while it loads.
             loadDescriptionsForItems(Component.translatable("container.crafting").getString(),
-                    client.player.inventoryMenu.getItems(), () -> {
-                        if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> open
-                                && com.coflnet.core.GoalProgressTrigger.shouldRepairOpenScreen(true, true)) {
-                            lastNbtRequest.set("");
-                            loadDescriptionsForItems(open.getTitle().getString(), open.getMenu().getItems());
-                        }
-                    });
+                    client.player.inventoryMenu.getItems(), forceRefresh);
         }
     }
 
@@ -1879,12 +1858,10 @@ public class CoflModClient implements ClientModInitializer {
                     Thread.sleep(wait);
                 if (wait < 0)
                     return;
-                AbstractContainerScreen<?> target = chestChangeScreen;
-                if (target == null || !(Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> current)
-                        || current.getMenu() != target.getMenu())
-                    return; // menu closed or replaced meanwhile
-                // lastNbtRequest dedups when the contents did not actually change
-                loadDescriptionsForItems(target.getTitle().getString(), target.getMenu().getItems());
+                Minecraft.getInstance().execute(() -> {
+                    AbstractContainerScreen<?> target = chestChangeScreen;
+                    if (target != null) refreshOpenDescriptions(target);
+                });
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
@@ -1933,53 +1910,66 @@ public class CoflModClient implements ClientModInitializer {
         descriptionsVersion.incrementAndGet();
     }
 
+    /** Force a fresh upload while preserving other storage destinations waiting to be sent. */
+    public static void invalidateDescriptionRequest() {
+        descriptionQueue.invalidateDeduplication();
+    }
+
+    /** Fence requests captured in an earlier world/account session. Call on the client thread. */
+    public static void resetDescriptions() {
+        descriptionQueue.reset();
+        com.coflnet.gui.trade.TradePriceCache.clear();
+        com.coflnet.core.DescriptionState.reset();
+        knownIds.clear();
+        lastDescriptionLoadRequestByMenu.clear();
+        chestChangeScreen = null;
+        chestChangeDebouncer.reset();
+        descriptionsVersion.incrementAndGet();
+    }
+
     /** A confirmed lore upload invalidates cached descriptions for the next inventory refresh. */
     public static void invalidateLoreDescriptions() {
         DescriptionHandler.emptyTooltipData();
         knownIds.clear();
-        lastNbtRequest.set("");
+        descriptionQueue.reserveResponse();
         descriptionsVersion.incrementAndGet();
     }
 
-    /** Captures inventory data now and performs the HTTP request on a worker. */
-    public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items) {
-        loadDescriptionsForItems(title, items, null);
-    }
+    public static long reserveDescriptionResponse() { return descriptionQueue.reserveResponse(); }
 
-    /** As above; {@code onApplied} (nullable) runs on the client thread after the response was applied. */
-    public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items, Runnable onApplied) {
-        String nbtString = inventoryToNBT(items);
-        if (nbtString.equals(lastNbtRequest.getAndSet(nbtString))) {
-            return;
-        }
+    public static boolean isDescriptionResponseCurrent(long sequence) { return descriptionQueue.isCurrent(sequence); }
 
-        // Capture before a closing screen is replaced or its chest position is cleared.
-        var request = new DescriptionRequest(title, getItemIdsFromInventory(items), nbtString,
+    /** Capture live inventory data on the client thread before queuing network work. */
+    public static DescriptionRequest captureDescriptionRequest(String title, NonNullList<ItemStack> items) {
+        return new DescriptionRequest(title, getItemIdsFromInventory(items), inventoryToNBT(items),
                 Minecraft.getInstance().getUser().getName(), posToUpload);
-        long currentTime = System.currentTimeMillis();
-        Long lastRefreshTime = lastRefreshTimePerInventory.get(title);
-        long delayMs = lastRefreshTime == null ? 0
-                : Math.max(0, REFRESH_THROTTLE_MS - (currentTime - lastRefreshTime));
-        lastRefreshTimePerInventory.put(title, currentTime + delayMs);
-        request.submit(delayMs, () -> Minecraft.getInstance().execute(() -> {
-                    onDescriptionsApplied(title);
-                    if (onApplied != null) onApplied.run();
-                }),
-                () -> lastNbtRequest.compareAndSet(nbtString, ""));
     }
 
-    /**
-     * Loads descriptions synchronously on the calling worker thread.
-     * Trade pricing has its own change gate and debounce, so it must wait for
-     * this response before publishing values instead of using the generic
-     * delayed throttle above.
-     */
-    public static DescriptionHandler.DescModification[][] loadDescriptionsForItemsBlocking(String title, NonNullList<ItemStack> items) {
-        var bySlot = new DescriptionRequest(title, getItemIdsFromInventory(items), inventoryToNBT(items),
-                Minecraft.getInstance().getUser().getName(), posToUpload).loadBySlot();
-        // Record highlight keys for this response too, or ItemHighlightMixin would hide its highlights.
-        Minecraft.getInstance().execute(() -> onDescriptionsApplied(title));
-        return bySlot;
+    /** Upload every destination, but display a response only in the menu that requested it. */
+    public static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items) {
+        loadDescriptionsForItems(title, items, false);
+    }
+
+    private static void loadDescriptionsForItems(String title, NonNullList<ItemStack> items, boolean forceGoalRefresh) {
+        var client = Minecraft.getInstance();
+        var player = client.player;
+        var screen = client.gui.screen();
+        var backing = descriptionScreen(screen);
+        var menu = backing == null ? null : backing.getMenu();
+        boolean ownsDisplay = backing != null ? backing.getTitle().getString().equals(title) : screen == null;
+        var captured = captureDescriptionRequest(title, items);
+        var request = forceGoalRefresh ? captured.withGoalRefresh() : captured;
+        descriptionQueue.submit(request, response -> {
+            var current = descriptionScreen(client.gui.screen());
+            var currentMenu = current == null ? null : current.getMenu();
+            if (!ownsDisplay || client.player != player || currentMenu != menu
+                    || (menu == null && client.gui.screen() != screen)) return false;
+            com.coflnet.core.DescriptionState.apply(request, response);
+            onDescriptionsApplied(title);
+            return true;
+        }, () -> client.execute(() -> {
+            if (client.player == player) knownIds.clear();
+        }));
     }
 
     /**
@@ -1987,7 +1977,7 @@ public class CoflModClient implements ClientModInitializer {
      * move items in or out afterwards (e.g. putting a weapon into a backpack). Those slot changes are
      * not re-uploaded for storage menus, so the stored view would be stale. When such a container is
      * closed, re-read its final contents and dispatch again. {@link #loadDescriptionsForItems} dedups
-     * via {@code lastNbtRequest}, so this is a no-op when nothing changed since the last upload.
+     * by inventory and upload context, so this is a no-op when nothing changed since the last upload.
      * Must run before {@code posToUpload} is cleared so island-chest positions are still included.
      */
     public static void resendStorageOnClose(Object screen) {
@@ -2379,7 +2369,7 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static DescriptionHandler.DescModification[] getExtraSlotDescMod(){
-        return DescriptionHandler.getInfoDisplay();
+        return com.coflnet.core.DescriptionState.panel();
     }
 
     public static void setHotKeys(HotkeyRegister[] keys) {
@@ -2850,11 +2840,11 @@ public class CoflModClient implements ClientModInitializer {
     private static void stopConnectionAsync() {
         runConnectionLifecycleTask("stop CoflCore connection", () -> {
             WSClientWrapper currentWrapper = CoflCore.Wrapper;
-            if (currentWrapper != null && currentWrapper.isRunning) {
+            if (currentWrapper != null) {
                 currentWrapper.stop();
             }
             // A manual stop may not always raise SocketClose; never leave stale displays behind.
-            com.coflnet.gui.hud.InfoDisplayManager.clearAll();
+            onBackendDisconnected();
         });
     }
 
@@ -2868,6 +2858,7 @@ public class CoflModClient implements ClientModInitializer {
         
         // Check if username has changed
         if (!currentUsername.equals(lastCheckedUsername) && !lastCheckedUsername.isEmpty()) {
+            onBackendDisconnected();
             System.out.println("Detected account switch from " + lastCheckedUsername + " to " + currentUsername);
             
             // If CoflCore is running, we need to restart it with the new username

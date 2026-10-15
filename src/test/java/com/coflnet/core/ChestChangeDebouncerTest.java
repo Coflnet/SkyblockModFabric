@@ -33,13 +33,18 @@ class ChestChangeDebouncerTest {
     @Test
     void burstIsCoalescedIntoOneReload() {
         var d = new ChestChangeDebouncer(150, 600);
+        assertFalse(d.isPending());
         assertTrue(d.markChanged(0));
+        assertTrue(d.isPending());
         assertFalse(d.markChanged(50));
         assertFalse(d.markChanged(100));
         assertEquals(150, d.poll(100));      // quiet period restarted by the last packet
+        assertTrue(d.isPending());
         assertEquals(0, d.poll(250));        // due exactly once
+        assertFalse(d.isPending());
         assertEquals(-1, d.poll(300));       // nothing pending, waiter ends
         assertTrue(d.markChanged(400));      // next change starts a fresh waiter
+        assertTrue(d.isPending());
     }
 
     @Test
@@ -51,13 +56,16 @@ class ChestChangeDebouncerTest {
             assertTrue(d.poll(t) > 0);
         }
         assertEquals(0, d.poll(600));
+        assertFalse(d.isPending());
     }
 
     @Test
     void resetDropsPendingReload() {
         var d = new ChestChangeDebouncer(150, 600);
         d.markChanged(0);
+        assertTrue(d.isPending());
         d.reset();
+        assertFalse(d.isPending());
         assertEquals(-1, d.poll(1000));
     }
 }

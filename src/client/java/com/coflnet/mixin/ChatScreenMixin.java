@@ -69,7 +69,7 @@ public class ChatScreenMixin {
 
     @Inject(method = "handleChatInput", at = @At("HEAD"))
     private void coflnet$clearExpectedCommand(String message, boolean addToHistory, CallbackInfo ci) {
-        ExpectedCommandState.clear();
+        ExpectedCommandState.consume(message, System.currentTimeMillis());
     }
 
     @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)

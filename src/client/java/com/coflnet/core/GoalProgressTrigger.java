@@ -20,6 +20,8 @@ public final class GoalProgressTrigger {
             "[Bazaar] Sold ",
             "[Bazaar] Buy Order Setup!",
             "[Bazaar] Sell Offer Setup!",
+            "[Bazaar] Cancelled!",
+            "You cancelled your auction for ",
             "BIN Auction started for ",
             "Auction started for ");
 
@@ -32,9 +34,13 @@ public final class GoalProgressTrigger {
     /** Slots 0-35 of the player inventory (hotbar + main). */
     public static final int MAIN_INVENTORY_SLOTS = 36;
 
+    private static final java.util.regex.Pattern FILLED_ORDER = java.util.regex.Pattern.compile(
+            "^\\[Bazaar\\] Your (?:Buy Order|Sell Offer) for [\\d,]+x .+ was filled!$");
+
     private final long delayMs;
     private final long minIntervalMs;
     private boolean pending;
+    private boolean forcedRefresh;
     private long lastTriggerAt;
     private boolean hasRefreshed;
     private long lastRefreshAt;
@@ -64,13 +70,29 @@ public final class GoalProgressTrigger {
         for (String prefix : PREFIXES) {
             if (text.startsWith(prefix)) return true;
         }
-        return false;
+        return FILLED_ORDER.matcher(text).matches();
     }
 
     /** Record that a refresh is wanted; bursts collapse into one. */
     public synchronized void trigger(long now) {
         pending = true;
         lastTriggerAt = now;
+    }
+
+    /** A backend login or confirmed action requires a refresh even with identical inventory. */
+    public synchronized void forceRefresh(long now) {
+        forcedRefresh = true;
+        trigger(now);
+    }
+
+    public synchronized boolean hasForcedRefresh() {
+        return forcedRefresh;
+    }
+
+    public synchronized boolean consumeForcedRefresh() {
+        boolean forced = forcedRefresh;
+        forcedRefresh = false;
+        return forced;
     }
 
     /** Start (or extend) the window in which inventory changes are watched without an open screen. */
@@ -80,14 +102,6 @@ public final class GoalProgressTrigger {
 
     public synchronized boolean isWatching(long now) {
         return watchUntil != Long.MIN_VALUE && now < watchUntil;
-    }
-
-    /**
-     * Whether an upload made without an open screen must re-request the screen that is open once
-     * its response is applied (the response replaces the shared panel and tooltip data).
-     */
-    public static boolean shouldRepairOpenScreen(boolean uploadedWithoutScreen, boolean containerScreenOpenNow) {
-        return uploadedWithoutScreen && containerScreenOpenNow;
     }
 
     /** @return true exactly once per due refresh (the caller must then perform it) */
@@ -105,6 +119,8 @@ public final class GoalProgressTrigger {
     /** Drop pending work, e.g. when the goal is no longer tracked. */
     public synchronized void reset() {
         pending = false;
+        forcedRefresh = false;
+        hasRefreshed = false;
         baselineMenu = null;
         watchUntil = Long.MIN_VALUE;
         lastFingerprintCheckAt = Long.MIN_VALUE;

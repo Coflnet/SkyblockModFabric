@@ -89,7 +89,9 @@ public final class TradePriceCache {
         revision++;
         if (offered.stream().noneMatch(item -> shouldPrice(item) && findPrice(item) == null)) return;
 
-        queued.set(new Request(screen.getTitle().getString(), copyItems(screen.getMenu().getItems()),
+        NonNullList<ItemStack> items = copyItems(screen.getMenu().getItems());
+        queued.set(new Request(CoflModClient.captureDescriptionRequest(screen.getTitle().getString(), items), items,
+                screen.getMenu(), Minecraft.getInstance().player, CoflModClient.reserveDescriptionResponse(),
                 generation.get(), requestSequence));
         drain();
     }
@@ -196,17 +198,17 @@ public final class TradePriceCache {
     private static void load(Request request) {
         try {
             if (!isCurrent(request)) return;
-            var tips = CoflModClient.loadDescriptionsForItemsBlocking(request.title, request.items);
+            var tips = request.description.fetch();
             List<PricedItem> loaded = new ArrayList<>();
             readPrices(loaded, request.items, tips, CoflModClient.TRADE_YOUR_SLOTS);
             readPrices(loaded, request.items, tips, CoflModClient.TRADE_THEIR_SLOTS);
             Minecraft.getInstance().execute(() -> {
-                if (isCurrent(request)) {
-                    String[] ids = CoflModClient.getItemIdsFromInventory(request.items);
-                    for (int slot = 0; slot < ids.length; slot++) {
-                        DescriptionHandler.tooltipItemIdMap.put(ids[slot], tips[slot]);
+                if (isCurrent(request) && Minecraft.getInstance().player == request.player
+                        && request.player.containerMenu == request.menu) {
+                    if (CoflModClient.isDescriptionResponseCurrent(request.displaySequence)) {
+                        com.coflnet.core.DescriptionState.apply(request.description, tips);
+                        CoflModClient.onDescriptionsApplied(request.description.title());
                     }
-                    CoflModClient.descriptionsVersion.incrementAndGet();
                     prices = List.copyOf(loaded);
                     revision++;
                 }
@@ -276,8 +278,11 @@ public final class TradePriceCache {
     }
 
     private record Request(
-            String title,
+            com.coflnet.core.DescriptionRequest description,
             NonNullList<ItemStack> items,
+            net.minecraft.world.inventory.AbstractContainerMenu menu,
+            net.minecraft.client.player.LocalPlayer player,
+            long displaySequence,
             long generation,
             long sequence) {
     }

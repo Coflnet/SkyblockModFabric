@@ -27,14 +27,15 @@ public class NewItemInChestMixin {
         // Track UUID changes before the slot is updated
         long perfStart = PerfTracer.begin();
         try {
-            if (Minecraft.getInstance().player == null || Minecraft.getInstance().player.containerMenu == null)
+            Minecraft client = Minecraft.getInstance();
+            if (!client.isSameThread() || client.player == null)
                 return;
-            
+            var menu = client.player.containerMenu;
             int slot = packet.getSlot();
-            if (slot < 0 || slot >= Minecraft.getInstance().player.containerMenu.slots.size())
+            if (menu == null || menu.containerId != packet.getContainerId() || slot < 0 || slot >= menu.slots.size())
                 return;
-                
-            ItemStack previousStack = Minecraft.getInstance().player.containerMenu.getSlot(slot).getItem();
+
+            ItemStack previousStack = menu.getSlot(slot).getItem();
             ItemStack newStack = packet.getItem();
             
             if (previousStack.isEmpty() || newStack.isEmpty())
@@ -93,7 +94,6 @@ public class NewItemInChestMixin {
     private void onPacketReceive(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
         long perfStart = PerfTracer.begin();
         try {
-            refreshBazaarOrders(packet.getContainerId());
             int slot = packet.getSlot();
             // Offer slots are 0-35; slot 40 may be the final divider update
             // that makes the full trade layout verifiable.
@@ -132,13 +132,7 @@ public class NewItemInChestMixin {
     private void onContainerContent(ClientboundContainerSetContentPacket packet, CallbackInfo ci) {
         long perfStart = PerfTracer.begin();
         try {
-            refreshBazaarOrders(packet.containerId());
-            // A full content packet may be the answer to an inventory click in the listing menu.
-            if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs
-                    && hs.getMenu().containerId == packet.containerId()
-                    && MenuClassifier.isCreateAuction(hs.getTitle().getString())) {
-                CoflModClient.instance.onChestContentChanged(hs);
-            }
+            CoflModClient.refreshDescriptionContainer(packet.containerId());
             TradePriceCache.requestCurrentTrade(packet.containerId());
             CoflModClient.openTradeOverlayIfReady(packet.containerId());
         } finally {
@@ -146,11 +140,4 @@ public class NewItemInChestMixin {
         }
     }
 
-    private static void refreshBazaarOrders(int containerId) {
-        if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> screen
-                && screen.getMenu().containerId == containerId
-                && com.coflnet.core.MenuClassifier.isBazaarOrders(screen.getTitle().getString())) {
-            CoflModClient.instance.loadDescriptionsForInv(screen);
-        }
-    }
 }

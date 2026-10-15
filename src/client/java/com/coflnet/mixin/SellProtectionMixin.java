@@ -9,7 +9,6 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -19,7 +18,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(AbstractContainerScreen.class)
 public abstract class SellProtectionMixin {
 
-    @Shadow @Nullable protected Slot hoveredSlot;
+    @Shadow
+    private Slot getHoveredSlot(double mouseX, double mouseY) {
+        throw new AssertionError();
+    }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onSellProtectionMouseClicked(MouseButtonEvent click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
@@ -42,7 +44,7 @@ public abstract class SellProtectionMixin {
             }
 
             // Get the slot being clicked
-            Slot clickedSlot = hoveredSlot;
+            Slot clickedSlot = getHoveredSlot(click.x(), click.y());
             if (clickedSlot == null || !clickedSlot.hasItem()) {
                 return;
             }

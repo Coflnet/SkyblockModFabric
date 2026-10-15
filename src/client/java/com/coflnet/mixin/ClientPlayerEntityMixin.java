@@ -44,10 +44,9 @@ public class ClientPlayerEntityMixin {
             String toSuggest = CoflModClient.findPriceSuggestion();
             System.out.println("Value to suggest: '"+toSuggest+"'");
             List<Component> lines = new ArrayList<>(sign.getText(slot).getMessages(Minecraft.getInstance().isTextFilteringEnabled()));
-            String[] suggestionParts = toSuggest.split(": ");
+            String[] suggestionParts = toSuggest == null ? new String[0] : toSuggest.split(": ", 2);
 
-            if(toSuggest == "") return;
-            if(suggestionParts.length == 0) return;
+            if(suggestionParts.length != 2) return;
             if(lines.size() < 4) return;
             if(!suggestionParts[0].equals(lines.get(3).getString())) return;
 

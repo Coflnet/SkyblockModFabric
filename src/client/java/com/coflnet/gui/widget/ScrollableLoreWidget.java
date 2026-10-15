@@ -51,13 +51,6 @@ public class ScrollableLoreWidget extends AbstractScrollArea {
     }
 
     @Override
-    public boolean isMouseOver(double mouseX, double mouseY) {
-        // Only report mouse-over for the scrollbar area so clicks on
-        // the text pass through to the click-anywhere buy widget
-        return scrollable() && isOverScrollbar(mouseX, mouseY);
-    }
-
-    @Override
     protected void extractWidgetRenderState(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
         context.enableScissor(getX(), getY(), getRight(), getBottom());
 

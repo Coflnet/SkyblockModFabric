@@ -37,7 +37,8 @@ public class SignEditScreenMixin {
         if (coflPriceSelectionInitialized) return;
         coflPriceSelectionInitialized = true;
 
-        String[] suggestion = CoflModClient.findPriceSuggestion().split(": ", 2);
+        String priceSuggestion = CoflModClient.findPriceSuggestion();
+        String[] suggestion = priceSuggestion == null ? new String[0] : priceSuggestion.split(": ", 2);
         if (suggestion.length == 2 && messages.length == 4
                 && suggestion[0].equals(messages[3])
                 && suggestion[1].trim().equals(messages[0])) {

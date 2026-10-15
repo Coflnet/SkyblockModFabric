@@ -18,22 +18,24 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /** Runs the sign mixin's init callbacks with vanilla's real input helper, without a GL client. */
 class SignPriceSuggestionTest {
-    private Field infoDisplay;
-    private Object previousInfoDisplay;
+    private DescriptionHandler.DescModification[] previousInfoDisplay;
 
     @BeforeEach
     void suggestPrice() throws Exception {
-        infoDisplay = DescriptionHandler.class.getDeclaredField("infoDisplay");
-        infoDisplay.setAccessible(true);
-        previousInfoDisplay = infoDisplay.get(null);
-        infoDisplay.set(null, new Gson().fromJson(
+        previousInfoDisplay = com.coflnet.core.DescriptionState.panel();
+        setPanel(new Gson().fromJson(
                 "[{\"type\":\"SUGGEST\",\"value\":\"Enter price: 1,234\"}]",
                 DescriptionHandler.DescModification[].class));
     }
 
     @AfterEach
-    void restoreSuggestions() throws Exception {
-        infoDisplay.set(null, previousInfoDisplay);
+    void restoreSuggestions() {
+        setPanel(previousInfoDisplay);
+    }
+
+    private static void setPanel(DescriptionHandler.DescModification[] panel) {
+        var request = new com.coflnet.core.DescriptionRequest("", new String[0], "", "", null);
+        com.coflnet.core.DescriptionState.apply(request, new DescriptionHandler.DescModification[][]{panel});
     }
 
     @Test
@@ -66,11 +68,26 @@ class SignPriceSuggestionTest {
 
     @Test
     void absentSuggestionKeepsNormalTyping() throws Exception {
-        infoDisplay.set(null, new DescriptionHandler.DescModification[0]);
+        setPanel(new DescriptionHandler.DescModification[0]);
         Editor editor = new Editor("1,234", "Enter price");
         editor.init();
         editor.type('5');
         assertEquals("1,2345", editor.messages[0]);
+    }
+
+    @Test
+    void malformedAndNullSuggestionsKeepNormalTyping() throws Exception {
+        for (String value : new String[]{"Enter price", "Enter price: ", null}) {
+            DescriptionHandler.DescModification[] descriptions = new Gson().fromJson(
+                    "[{\"type\":\"SUGGEST\",\"value\":\"placeholder\"}]",
+                    DescriptionHandler.DescModification[].class);
+            descriptions[0].value = value;
+            setPanel(descriptions);
+            Editor editor = new Editor("99", "Enter price");
+            editor.init();
+            editor.type('5');
+            assertEquals("995", editor.messages[0]);
+        }
     }
 
     @Test

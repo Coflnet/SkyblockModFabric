@@ -26,6 +26,16 @@ class MenuClassifierTest {
         assertFalse(MenuClassifier.isCreateAuction("Auction House"));
     }
 
+    @Test void orderViewsWaitForInitialContentsAndRefreshOnAllOfferChanges() {
+        for (String title : new String[]{"Your Bazaar Orders", "Co-op Bazaar Orders"}) {
+            assertFalse(MenuClassifier.shouldLoadDescriptionsOnOpen(title, true));
+            assertTrue(MenuClassifier.shouldLoadDescriptionsOnOpen(title, false));
+            assertTrue(MenuClassifier.shouldReloadOnChestChange(title, "BUY item"));
+            assertTrue(MenuClassifier.shouldReloadOnChestChange(title, null));
+        }
+        assertTrue(MenuClassifier.shouldLoadDescriptionsOnOpen("Chest", true));
+    }
+
     @Test void storageAndOrdinaryMenusDoNotTriggerOnPlainChange() {
         assertFalse(MenuClassifier.shouldReloadOnChestChange("Ender Chest (1/9)", "§aSome Item"));
         assertFalse(MenuClassifier.shouldReloadOnChestChange("Ender Chest (1/9)", "Combine Items"));

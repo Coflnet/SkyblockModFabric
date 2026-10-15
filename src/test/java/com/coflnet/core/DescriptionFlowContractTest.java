@@ -26,7 +26,7 @@ class DescriptionFlowContractTest {
     void resetEndpoint() {
         System.clearProperty(DescriptionEndpointOverride.PROPERTY);
         CoflCore.configuration.Config.BaseUrl = "https://sky.coflnet.com";
-        DescriptionHandler.emptyTooltipData();
+        DescriptionState.reset();
     }
 
     @Test
@@ -41,7 +41,7 @@ class DescriptionFlowContractTest {
     }
 
     @Test
-    void immediateAndThrottledRequestsReturnWhileBackendIsStalled(@TempDir Path sessionDirectory)
+    void queuedRequestsReturnWhileBackendIsStalled(@TempDir Path sessionDirectory)
             throws Exception {
         CoflCore.misc.SessionManager.setMainPath(sessionDirectory);
         for (long delayMs : new long[]{0, 50}) {
@@ -76,7 +76,11 @@ class DescriptionFlowContractTest {
                 var request = new DescriptionRequest("Chest", new String[]{"outgoing-item"},
                         "outgoing-inventory", "scenario-user", new Position(12, 64, 34));
                 Thread.startVirtualThread(() -> {
-                    request.submit(delayMs, loaded::countDown);
+                    new DescriptionQueue(Runnable::run, delayMs).submit(request, response -> {
+                        DescriptionState.apply(request, response);
+                        loaded.countDown();
+                        return true;
+                    }, () -> {});
                     returned.countDown();
                 });
                 assertTrue(received.await(2, TimeUnit.SECONDS), "request did not reach the backend");
@@ -117,10 +121,11 @@ class DescriptionFlowContractTest {
             var failed = new CountDownLatch(1);
             var loaded = new CountDownLatch(1);
             var request = new DescriptionRequest("Co-op Bazaar Orders", new String[]{"order"}, "same-inventory", "scenario-user", null);
-            request.submit(0, loaded::countDown, failed::countDown);
+            var queue = new DescriptionQueue(Runnable::run, 0);
+            queue.submit(request, response -> { loaded.countDown(); return true; }, failed::countDown);
             assertTrue(failed.await(3, TimeUnit.SECONDS));
             assertEquals(1, loaded.getCount(), "failed upload must not report successful loading");
-            request.submit(0, loaded::countDown, () -> {});
+            queue.submit(request, response -> { loaded.countDown(); return true; }, () -> {});
             assertTrue(loaded.await(3, TimeUnit.SECONDS));
             assertEquals(2, attempts.get());
         } finally {
@@ -129,7 +134,7 @@ class DescriptionFlowContractTest {
     }
 
     @Test
-    void positionalTradePricesSurviveDuplicateItemNamesWithoutLeakingAliases(@TempDir Path sessionDirectory)
+    void detachedTradePricesPreserveDuplicateItemNamesWithoutChangingDisplay(@TempDir Path sessionDirectory)
             throws Exception {
         CoflCore.misc.SessionManager.setMainPath(sessionDirectory);
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -146,7 +151,9 @@ class DescriptionFlowContractTest {
             CoflCore.configuration.Config.BaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
             var request = new DescriptionRequest("You     Trader", new String[]{"Enchanted Book;1", "Enchanted Book;1"},
                     "inventory", "scenario-user", null);
-            var prices = request.loadBySlot();
+            DescriptionHandler.DescModification[] previousPanel = DescriptionState.panel();
+            var prices = request.fetch();
+            assertTrue(previousPanel == DescriptionState.panel(), "fetch must not update the shared panel");
             assertEquals("Med: 1m", prices[0][0].value);
             assertEquals("Med: 250m", prices[1][0].value);
             assertTrue(DescriptionHandler.tooltipItemIdMap.isEmpty(),
@@ -157,7 +164,7 @@ class DescriptionFlowContractTest {
     }
 
     @Test
-    void malformedTradeResponseCleansUpPartiallyLoadedAliases(@TempDir Path sessionDirectory) throws Exception {
+    void malformedTradeResponseCannotPartiallyPublishTooltips(@TempDir Path sessionDirectory) throws Exception {
         CoflCore.misc.SessionManager.setMainPath(sessionDirectory);
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/mod/description/modifications", exchange -> {
@@ -172,7 +179,7 @@ class DescriptionFlowContractTest {
             CoflCore.configuration.Config.BaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
             var request = new DescriptionRequest("You     Trader", new String[]{"first", "second"},
                     "inventory", "scenario-user", null);
-            assertThrows(RuntimeException.class, request::loadBySlot);
+            assertThrows(RuntimeException.class, request::fetch);
             assertTrue(DescriptionHandler.tooltipItemIdMap.isEmpty());
         } finally {
             server.stop(0);
@@ -193,8 +200,9 @@ class DescriptionFlowContractTest {
             visibleItems[DescriptionBackendStub.ORDER_SLOT] = orderId;
             String fullInventoryNbt = DescriptionBackendStub.orderInventoryNbt();
 
-            DescriptionHandler.loadDescriptionForInventory(visibleItems, DescriptionBackendStub.CHEST_NAME,
-                    fullInventoryNbt, "scenario-user");
+            var description = new DescriptionRequest(DescriptionBackendStub.CHEST_NAME, visibleItems,
+                    fullInventoryNbt, "scenario-user", null);
+            DescriptionState.apply(description, description.fetch());
 
             var request = stub.awaitRequest();
             assertEquals(DescriptionBackendStub.CHEST_NAME, request.get("chestName").getAsString());
@@ -202,12 +210,12 @@ class DescriptionFlowContractTest {
             assertEquals(fullInventoryNbt, request.get("fullInventoryNbt").getAsString());
             assertEquals(DescriptionBackendStub.ITEM_DESCRIPTION,
                     DescriptionHandler.getTooltipData(orderId)[0].value);
-            assertEquals(5, DescriptionHandler.getInfoDisplay().length);
-            assertEquals(DescriptionBackendStub.TOTAL_BUY, DescriptionHandler.getInfoDisplay()[0].value);
-            assertEquals("", DescriptionHandler.getInfoDisplay()[1].value);
-            assertEquals(DescriptionBackendStub.TOTAL_SELL, DescriptionHandler.getInfoDisplay()[2].value);
-            assertEquals("", DescriptionHandler.getInfoDisplay()[3].value);
-            assertEquals(DescriptionBackendStub.ITEM_DESCRIPTION, DescriptionHandler.getInfoDisplay()[4].value);
+            assertEquals(5, DescriptionState.panel().length);
+            assertEquals(DescriptionBackendStub.TOTAL_BUY, DescriptionState.panel()[0].value);
+            assertEquals("", DescriptionState.panel()[1].value);
+            assertEquals(DescriptionBackendStub.TOTAL_SELL, DescriptionState.panel()[2].value);
+            assertEquals("", DescriptionState.panel()[3].value);
+            assertEquals(DescriptionBackendStub.ITEM_DESCRIPTION, DescriptionState.panel()[4].value);
         }
     }
 }
