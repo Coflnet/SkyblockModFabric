@@ -2,6 +2,7 @@ package com.coflnet.gui.tfm;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.gui.AuctionStatus;
+import com.coflnet.gui.BinActions;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
@@ -80,22 +81,8 @@ public class TfmBinGUI extends BinGUI {
             net.minecraft.client.input.MouseButtonEvent c = new net.minecraft.client.input.MouseButtonEvent(mouseX, mouseY, mi);
             cancelClickableWidget.onClick(c, true);
         } else {
-                    switch (auctionStatus){
-                        case INIT:
-                        case AUCTION_BUYING:
-                        case AUCTION_WAITING:
-                            clickSlot(AUCTION_BUY_SLOT);
-                            break;
-                        case AUCTION_CONFIRMING:
-                            clickSlot(AUCTION_CONFIRM_SLOT);
-                            break;
-                        case OWN_AUCTION_CLAIMING:
-                            clickSlot(OWN_AUCTION_CLAIM_SLOT);
-                            break;
-                        case OWN_AUCTION_CANCELING:
-                            clickSlot(OWN_AUCTION_CANCEL_SLOT);
-                            break;
-                    }
+                    int slot = BinActions.primarySlot(auctionStatus);
+                    if (slot >= 0) clickSlot(slot);
                 }
             }
 
@@ -121,6 +108,9 @@ public class TfmBinGUI extends BinGUI {
                         getWidth(), getHeight(),
                         p, TfmColConfig.CANCEL, TfmColConfig.BORDER
                 );
+                if (BinActions.secondaryCancelsOwnAuction(auctionStatus)) {
+                    RenderUtils.drawString(context, "Cancel Auction", getX() + getWidth() / 2 - 32, getY() + getHeight() + 4, 0xFFFFFFFF);
+                }
             }
             @Override
             protected void updateWidgetNarration(NarrationElementOutput builder) {}
@@ -129,8 +119,7 @@ public class TfmBinGUI extends BinGUI {
             public void onClick(net.minecraft.client.input.MouseButtonEvent click, boolean fromScreen) {
                 double mouseX = click.x();
                 double mouseY = click.y();
-                if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
-                else clickSlot(AUCTION_CONFIRMATION_CANCEL_SLOT);
+                clickSlot(BinActions.secondarySlot(auctionStatus));
             }
 
             @Override

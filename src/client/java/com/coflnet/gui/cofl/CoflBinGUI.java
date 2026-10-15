@@ -3,6 +3,7 @@ package com.coflnet.gui.cofl;
 import com.mojang.blaze3d.platform.InputConstants;
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.gui.AuctionStatus;
+import com.coflnet.gui.BinActions;
 import com.coflnet.gui.BinGUI;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.widget.ItemWidget;
@@ -70,8 +71,7 @@ public class CoflBinGUI extends BinGUI {
             public void onClick(net.minecraft.client.input.MouseButtonEvent click, boolean fromScreen) {
                 double mouseX = click.x();
                 double mouseY = click.y();
-                if (auctionStatus != AuctionStatus.AUCTION_CONFIRMING) clickSlot(AUCTION_CANCEL_SLOT);
-                else clickSlot(AUCTION_CONFIRMATION_CANCEL_SLOT);
+                clickSlot(BinActions.secondarySlot(auctionStatus));
             }
 
             @Override
@@ -125,22 +125,8 @@ public class CoflBinGUI extends BinGUI {
                     net.minecraft.client.input.MouseButtonInfo mi = new net.minecraft.client.input.MouseButtonInfo(InputConstants.MOUSE_BUTTON_LEFT, 0);
                     leftClickableWidget.onClick(new net.minecraft.client.input.MouseButtonEvent(mouseX, mouseY, mi), true);
                 } else {
-                    switch (auctionStatus){
-                        case INIT:
-                        case AUCTION_BUYING:
-                        case AUCTION_WAITING:
-                            clickSlot(AUCTION_BUY_SLOT);
-                            break;
-                        case AUCTION_CONFIRMING:
-                            clickSlot(AUCTION_CONFIRM_SLOT);
-                            break;
-                        case OWN_AUCTION_CLAIMING:
-                            clickSlot(OWN_AUCTION_CLAIM_SLOT);
-                            break;
-                        case OWN_AUCTION_CANCELING:
-                            clickSlot(OWN_AUCTION_CANCEL_SLOT);
-                            break;
-                    }
+                    int slot = BinActions.primarySlot(auctionStatus);
+                    if (slot >= 0) clickSlot(slot);
                 }
             }
 
@@ -170,6 +156,7 @@ public class CoflBinGUI extends BinGUI {
         );
 
         if(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0) setRightButtonConfig(auctionStatus);
+        else if (BinActions.secondaryCancelsOwnAuction(auctionStatus)) setRightButtonConfig(auctionStatus); // keep labels after a resize
 
         this.addRenderableWidget(titleTextWidget);
         this.addRenderableWidget(loreScrollableTextWidget);
@@ -203,12 +190,13 @@ public class CoflBinGUI extends BinGUI {
                 ));
                 break;
             case OWN_AUCTION_CANCELING:
+                // primary only goes back; cancelling needs the explicit button on the left
                 rightButtonCol = new Pair<>(CoflColConfig.UNAVAILABLE, CoflColConfig.UNAVAILABLE);
-                rightClickableWidget.setMessage(Component.literal(
-                        "Cancel Auction"
-                ));
+                rightClickableWidget.setMessage(Component.literal("Close (You can click anywhere)"));
                 break;
         }
+        leftClickableWidget.setMessage(Component.literal(
+                BinActions.secondaryCancelsOwnAuction(auctionStatus) ? "Cancel Auction" : "Cancel"));
     }
 
     public MutableComponent convertTextList(List<Component> collection){
