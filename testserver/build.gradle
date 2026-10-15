@@ -150,11 +150,11 @@ tasks.register("verifyScenarioJar") {
 				],
 				custom: [
 					coflnet_scenario_schema: 1,
-					coflnet_target_branch: 'main'
+					coflnet_target_branch: '26.2'
 				]
 			]
 			if (metadata != expectedMetadata) {
-				throw new GradleException("scenario Fabric metadata is outside the reviewed main/26.2 runtime contract")
+				throw new GradleException("scenario Fabric metadata is outside the reviewed 26.2 runtime contract")
 			}
 		}
 	}

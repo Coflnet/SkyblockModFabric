@@ -1,7 +1,9 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.config.AngryCoopProtectionManager;
 import com.coflnet.protection.auction.AuctionScreenMode;
+import com.coflnet.core.AuctionActorParser;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -10,8 +12,6 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -24,7 +24,10 @@ import java.util.Optional;
 @Mixin(AbstractContainerScreen.class)
 public abstract class AuctionProtectionMixin {
 
-    @Shadow @Nullable protected Slot hoveredSlot;
+    @Shadow
+    private Slot getHoveredSlot(double mouseX, double mouseY) {
+        throw new AssertionError();
+    }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onAngryCoopMouseClicked(MouseButtonEvent click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
@@ -34,7 +37,7 @@ public abstract class AuctionProtectionMixin {
             }
 
             int button = click.button();
-            if (button != 0 && button != 1) {
+            if (button != InputConstants.MOUSE_BUTTON_LEFT && button != InputConstants.MOUSE_BUTTON_RIGHT) {
                 return;
             }
 
@@ -50,7 +53,7 @@ public abstract class AuctionProtectionMixin {
                 return;
             }
 
-            Slot clickedSlot = hoveredSlot;
+            Slot clickedSlot = getHoveredSlot(click.x(), click.y());
             if (clickedSlot == null || !clickedSlot.hasItem()) {
                 return;
             }
@@ -60,8 +63,8 @@ public abstract class AuctionProtectionMixin {
                 return;
             }
 
-            boolean ctrlPressed = GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS
-                    || GLFW.glfwGetKey(client.getWindow().handle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+            boolean ctrlPressed = InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), InputConstants.KEY_LCONTROL)
+                    || InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), InputConstants.KEY_RCONTROL);
 
             String playerNameLower = client.player.getGameProfile().name().toLowerCase(Locale.ROOT);
             String clickedName = stripFormatting(clickedStack.getHoverName().getString()).trim();
@@ -121,8 +124,8 @@ public abstract class AuctionProtectionMixin {
                 }
 
                 if (lower.startsWith("seller:")) {
-                    if (!lower.contains(playerNameLower)) {
-                        String seller = raw.substring("Seller:".length()).trim();
+                    String seller = raw.substring("Seller:".length()).trim();
+                    if (!AuctionActorParser.isOwnActor(seller, playerNameLower, mode)) {
                         return Optional.of(seller.isEmpty() ? "Unknown" : seller);
                     } else {
                         return Optional.empty();
@@ -130,11 +133,8 @@ public abstract class AuctionProtectionMixin {
                 }
             } else {
                 if (lower.startsWith("bidder:")) {
-                    if (lower.startsWith("bidder: you")) {
-                        return Optional.empty();
-                    }
-                    if (!lower.contains(playerNameLower)) {
-                        String bidder = raw.substring("Bidder:".length()).trim();
+                    String bidder = raw.substring("Bidder:".length()).trim();
+                    if (!AuctionActorParser.isOwnActor(bidder, playerNameLower, mode)) {
                         return Optional.of(bidder.isEmpty() ? "Unknown" : bidder);
                     } else {
                         return Optional.empty();

@@ -1,5 +1,6 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
 import com.coflnet.PerfTracer;
@@ -115,7 +116,7 @@ public abstract class HandledScreenMixin extends Screen {
             // Fires whenever this container view goes away for ANY reason: an ESC/close AND when
             // Hypixel replaces it with another window (e.g. switching backpacks via the nav items,
             // which does not trigger onClose). Resend the outgoing storage contents so edits made
-            // after the on-open upload aren't lost on navigation. Deduped via lastNbtRequest, so an
+            // after the on-open upload aren't lost on navigation. Deduped by inventory and upload context, so an
             // unchanged view is a no-op.
             CoflModClient.resendStorageOnClose(this);
         } catch (Exception e) {
@@ -136,14 +137,13 @@ public abstract class HandledScreenMixin extends Screen {
             if(sideTextWidget != null && !currentTitle.equals("Crafting")) {
                 sideTextWidget.setAlpha(0.3f); // make it transparent until properly loaded
             }
-            DescriptionHandler.setRefreshCallback((lines, title) -> {
+            com.coflnet.core.DescriptionState.setRefreshCallback((lines, title) -> {
                 try {
                     // Ensure UI update runs on the client (render) thread
                     Minecraft.getInstance().execute(() -> {
                         try {
-                            updateText(CoflModClient.getExtraSlotDescMod());
-                            // Descriptions changed - invalidate per-slot caches (e.g. ItemHighlightMixin).
-                            CoflModClient.descriptionsVersion.incrementAndGet();
+                            if (Minecraft.getInstance().gui.screen() == this)
+                                updateText(CoflModClient.getExtraSlotDescMod());
                         } catch (Exception ex) {
                             System.out.println("[HandledScreenMixin] refresh callback (on client) failed: " + ex.getMessage());
                         }
@@ -176,7 +176,10 @@ public abstract class HandledScreenMixin extends Screen {
         for (DescriptionHandler.DescModification descModification : lines) {
             if (!descModification.type.equals("APPEND") || descModification.value == null) {
                 if (descModification.type.equals("SUGGEST")) {
-                    MutableComponent suggestText = Component.literal("§7Will suggest: §r" + descModification.value.split(": ")[1].trim());
+                    if (descModification.value == null) continue;
+                    String[] suggestion = descModification.value.split(": ", 2);
+                    if (suggestion.length != 2) continue;
+                    MutableComponent suggestText = Component.literal("§7Will suggest: §r" + suggestion[1].trim());
                     interactiveTextLines.add(suggestText);
                     int width = Minecraft.getInstance().font.width(suggestText);
                     if (width > maxWidth) {
@@ -282,7 +285,8 @@ public abstract class HandledScreenMixin extends Screen {
         }
 
         // Create the widget for positioning but we'll render manually
-    if (interactiveTextLines == null || interactiveTextLines.isEmpty()) {
+        if (interactiveTextLines.isEmpty()) {
+            sideTextWidget = null;
             lineInfos = List.of();
             return;
         }
@@ -419,7 +423,7 @@ public abstract class HandledScreenMixin extends Screen {
             double mouseX = click.x();
             double mouseY = click.y();
 
-            if (isDragging && button == 1) { // Right mouse button
+            if (isDragging && button == InputConstants.MOUSE_BUTTON_RIGHT) { // Right mouse button
                 // Update widget position based on drag
                 double newX = widgetStartX + (mouseX - dragStartX);
                 double newY = widgetStartY + (mouseY - dragStartY);
@@ -446,7 +450,7 @@ public abstract class HandledScreenMixin extends Screen {
     public void onMouseReleased(net.minecraft.client.input.MouseButtonEvent click, CallbackInfoReturnable<Boolean> cir) {
         try {
             int button = click.button();
-            if (isDragging && button == 1) { // Right mouse button
+            if (isDragging && button == InputConstants.MOUSE_BUTTON_RIGHT) { // Right mouse button
                 isDragging = false;
                 positionConfig.save(); // Save the new position
                 cir.setReturnValue(true);
@@ -492,7 +496,7 @@ public abstract class HandledScreenMixin extends Screen {
         long perfStart = PerfTracer.begin();
         try {
             var hudStyle = InfoDisplayRenderer.styleAt(click.x(), click.y(), width, height);
-            if (click.button() == 0 && hudStyle != null && hudStyle.getClickEvent() != null) {
+            if (click.button() == InputConstants.MOUSE_BUTTON_LEFT && hudStyle != null && hudStyle.getClickEvent() != null) {
                 handleInfoDisplayClickEvent(hudStyle.getClickEvent());
                 cir.setReturnValue(true);
                 return;
@@ -528,7 +532,7 @@ public abstract class HandledScreenMixin extends Screen {
             }
 
             // Handle right-click for dragging
-            if (button == 1 && overWidget) { // Right mouse button
+            if (button == InputConstants.MOUSE_BUTTON_RIGHT && overWidget) { // Right mouse button
                 isDragging = true;
                 dragStartX = mouseX;
                 dragStartY = mouseY;
@@ -539,7 +543,7 @@ public abstract class HandledScreenMixin extends Screen {
             }
 
             // Handle left-click for text interactions (existing functionality)
-            if (button == 0) { // Left mouse button
+            if (button == InputConstants.MOUSE_BUTTON_LEFT) { // Left mouse button
                 for (int i = 0; i < infos.size(); i++) {
                     LineInfo info = infos.get(i);
                     int lineY = startY + (i * lineHeight);

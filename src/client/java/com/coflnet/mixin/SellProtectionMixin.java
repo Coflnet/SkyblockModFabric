@@ -1,5 +1,6 @@
 package com.coflnet.mixin;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.config.SellProtectionManager;
 import com.coflnet.utils.SellAmountParser;
 import net.minecraft.client.Minecraft;
@@ -8,8 +9,6 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.network.chat.Component;
-import org.jetbrains.annotations.Nullable;
-import org.lwjgl.glfw.GLFW;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
@@ -19,7 +18,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(AbstractContainerScreen.class)
 public abstract class SellProtectionMixin {
 
-    @Shadow @Nullable protected Slot hoveredSlot;
+    @Shadow
+    private Slot getHoveredSlot(double mouseX, double mouseY) {
+        throw new AssertionError();
+    }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
     private void onSellProtectionMouseClicked(MouseButtonEvent click, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
@@ -31,7 +33,7 @@ public abstract class SellProtectionMixin {
 
             // Only check left and right clicks
             int button = click.button();
-            if (button != 0 && button != 1) {
+            if (button != InputConstants.MOUSE_BUTTON_LEFT && button != InputConstants.MOUSE_BUTTON_RIGHT) {
                 return;
             }
 
@@ -42,7 +44,7 @@ public abstract class SellProtectionMixin {
             }
 
             // Get the slot being clicked
-            Slot clickedSlot = hoveredSlot;
+            Slot clickedSlot = getHoveredSlot(click.x(), click.y());
             if (clickedSlot == null || !clickedSlot.hasItem()) {
                 return;
             }
@@ -58,8 +60,8 @@ public abstract class SellProtectionMixin {
             }
 
             // Check if ctrl is pressed
-            boolean ctrlPressed = GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), GLFW.GLFW_KEY_LEFT_CONTROL) == GLFW.GLFW_PRESS ||
-                                  GLFW.glfwGetKey(Minecraft.getInstance().getWindow().handle(), GLFW.GLFW_KEY_RIGHT_CONTROL) == GLFW.GLFW_PRESS;
+            boolean ctrlPressed = InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), InputConstants.KEY_LCONTROL) ||
+                                  InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), InputConstants.KEY_RCONTROL);
 
             // Check for sell protection patterns and extract amounts
             boolean shouldBlock = false;
@@ -68,7 +70,7 @@ public abstract class SellProtectionMixin {
 
             if (itemName.contains("Sell Instantly")) {
                 sellAmount = SellAmountParser.extractSellInstantlyAmount(clickedItem);
-                if (button == 0 && !ctrlPressed && sellAmount > SellProtectionManager.getMaxAmount()) { // Left click without ctrl
+                if (button == InputConstants.MOUSE_BUTTON_LEFT && !ctrlPressed && sellAmount > SellProtectionManager.getMaxAmount()) { // Left click without ctrl
                     shouldBlock = true;
                     protection = "Sell Instantly";
                 }

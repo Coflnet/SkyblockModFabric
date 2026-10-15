@@ -40,11 +40,10 @@ public class ClientPlayerEntityMixin {
             // Handle existing price suggestion logic
             String toSuggest = CoflModClient.findPriceSuggestion();
             System.out.println("Value to suggest: '"+toSuggest+"'");
-            Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
-            String[] suggestionParts = toSuggest.split(": ");
+            Component[] lines = sign.getText(front).getMessages(Minecraft.getInstance().isTextFilteringEnabled()).clone();
+            String[] suggestionParts = toSuggest == null ? new String[0] : toSuggest.split(": ", 2);
 
-            if(toSuggest == "") return;
-            if(suggestionParts.length == 0) return;
+            if(suggestionParts.length != 2) return;
             if(lines.length < 4) return;
             if(!suggestionParts[0].equals(lines[3].getString())) return;
 
@@ -53,7 +52,7 @@ public class ClientPlayerEntityMixin {
                     lines, lines,
                     signText.getColor(),
                     signText.hasGlowingText()
-            ), true);
+            ), front);
         } catch (Exception e) {
             System.out.println("[ClientPlayerEntityMixin] openEditSignScreen failed: " + e.getMessage());
         }
@@ -68,6 +67,12 @@ public class ClientPlayerEntityMixin {
     private void handleSignFill(SignBlockEntity sign, boolean front) {
         String payload = CoflModClient.pendingSignFill;
         CoflModClient.pendingSignFill = null; // consume once, regardless of match
+        if (com.coflnet.core.BazaarOrderCommand.isExpired(CoflModClient.pendingSignFillExpiresAt, System.currentTimeMillis())) {
+            CoflModClient.pendingSignFillExpiresAt = 0;
+            CoflModClient.suppressSignRender = false;
+            return; // stale armed fill - leave this sign alone
+        }
+        CoflModClient.pendingSignFillExpiresAt = 0;
 
         String matchLine = null;
         String value = null;
@@ -85,7 +90,7 @@ public class ClientPlayerEntityMixin {
             return;
         }
 
-        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
+        Component[] lines = sign.getText(front).getMessages(Minecraft.getInstance().isTextFilteringEnabled()).clone();
         if (lines.length < 4 || !matchLine.equals(lines[3].getString())) {
             CoflModClient.suppressSignRender = false; // not the sign this suggestion is for
             return;
@@ -110,7 +115,7 @@ public class ClientPlayerEntityMixin {
         String amount = CoflModClient.pendingCoinAmount;
         System.out.println("Filling trade coins with: " + amount);
 
-        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
+        Component[] lines = sign.getText(front).getMessages(Minecraft.getInstance().isTextFilteringEnabled()).clone();
         lines[0] = Component.literal(amount);
         lines[1] = Component.literal("");
         lines[2] = Component.literal("");
@@ -164,7 +169,7 @@ public class ClientPlayerEntityMixin {
     private void handleBazaarSearch(SignBlockEntity sign, boolean front) {
         System.out.println("Filling bazaar search with: " + CoflModClient.pendingBazaarSearch);
         
-        Component[] lines = sign.getFrontText().getMessages(Minecraft.getInstance().isTextFilteringEnabled());
+        Component[] lines = sign.getText(front).getMessages(Minecraft.getInstance().isTextFilteringEnabled()).clone();
         
         // Fill the first line with the search term
         lines[0] = Component.literal(CoflModClient.pendingBazaarSearch);

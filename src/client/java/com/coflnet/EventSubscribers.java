@@ -20,7 +20,6 @@ import static com.coflnet.Utils.ChatComponent;
 import CoflCore.CoflCore;
 import CoflCore.commands.models.ChatMessageData;
 import CoflCore.commands.models.FlipData;
-import CoflCore.handlers.DescriptionHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.sounds.SoundSource;
@@ -162,6 +161,17 @@ public class EventSubscribers {
         }
     }
 
+    // Websocket thread; clearAll() hops onto the render thread itself and never sends over the socket.
+    @Subscribe
+    public void onSocketClose(SocketClose event) {
+        CoflModClient.onBackendDisconnected();
+    }
+
+    @Subscribe
+    public void onSocketError(SocketError event) {
+        CoflModClient.onBackendDisconnected();
+    }
+
     @Subscribe
     public void onCountdownReceive(OnCountdownReceive event){
         countdownData = event.CountdownData;
@@ -236,18 +246,8 @@ public class EventSubscribers {
                     itemStacks.add(it.next().copy());
                 }
 
-                String[] visibleItems = CoflModClient.getItemIdsFromInventory(itemStacks);
-                String nbtString = CoflModClient.inventoryToNBT(itemStacks);
-                String currentUsername = Minecraft.getInstance().getUser().getName();
-                Position position = CoflModClient.posToUpload;
-
-                Thread.startVirtualThread(() -> DescriptionHandler.loadDescriptionForInventory(
-                        visibleItems,
-                        "Inventory",
-                        nbtString,
-                        currentUsername,
-                        position
-                ));
+                CoflModClient.invalidateDescriptionRequest();
+                CoflModClient.loadDescriptionsForItems("Inventory", itemStacks);
             } catch (Exception e){
                 System.out.println(e);
             }
@@ -268,6 +268,7 @@ public class EventSubscribers {
     public void onLoggedIn(OnLoggedIn event){
         System.out.println("Backend logged in event received, uploading scoreboard and tab list...");
         CoflModClient.uploadScoreboardAndTabList();
+        CoflModClient.refreshGoalAfterLogin();
     }
 
     @Subscribe

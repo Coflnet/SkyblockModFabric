@@ -5,7 +5,7 @@ It provides in-game access to [sky.coflnet.com](https://sky.coflnet.com) auction
 
 For the Forge edition, see [Coflnet/Skyblockmod](https://github.com/Coflnet/Skyblockmod).
 
-Current version: **1.9.3** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
+Current version: **2.0.0** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
 
 ## License
 
@@ -13,7 +13,7 @@ Current version: **1.9.3** | [Releases](https://github.com/Coflnet/SkyblockModFa
 
 ## Compatibility
 
-Tested with the following mods as of 2026-06-01:
+Earlier Minecraft versions were tested with the following mods as of 2026-06-01; this is not a 26.3 compatibility guarantee:
 
 | Mod | Version | Status |
 | --- | --- | --- |
@@ -44,10 +44,13 @@ This replaces the jar atomically. Copying over a jar while Minecraft is running 
 resource loading, including the zero-width Text Tunnels marker font, with `invalid LOC header`.
 Restart Minecraft after installing to load the new build.
 
-Requirements:
-- Minecraft 1.21.5+ - 26.2
+Requirements for `26.2`:
+
+- Minecraft 26.2 (use the `main` branch for Minecraft 26.3)
+- Java 25+
 - Fabric Loader 0.19.3+
-- Fabric API 0.152.2+
+- Fabric API 0.152.2+26.2
+- Optional settings GUI: YACL 3.9.4+26.2-fabric.
 
 ## Usage
 
@@ -69,7 +72,7 @@ Gradle downloads and bundles the published CoflSkyCore dependency; no sibling ch
 With SkyModCommands, `/cofl test display` sends a test panel to slot 1 for 60 seconds;
 `/cofl test display clear` clears it through the same protocol.
 
-**Bazaar orders (2.0.0-pre1):** placing a buy order or sell offer introduces the order display. 
+**Bazaar orders (2.0.0):** placing a buy order or sell offer introduces the order display.
 
 
 Click **Disable display**, or run `/cofl set modhideBazaarOrderDisplay true`, to save a preference
