@@ -68,6 +68,12 @@ public class ClientPlayerEntityMixin {
     private void handleSignFill(SignBlockEntity sign, boolean front) {
         String payload = CoflModClient.pendingSignFill;
         CoflModClient.pendingSignFill = null; // consume once, regardless of match
+        if (com.coflnet.core.BazaarOrderCommand.isExpired(CoflModClient.pendingSignFillExpiresAt, System.currentTimeMillis())) {
+            CoflModClient.pendingSignFillExpiresAt = 0;
+            CoflModClient.suppressSignRender = false;
+            return; // stale armed fill - leave this sign alone
+        }
+        CoflModClient.pendingSignFillExpiresAt = 0;
 
         String matchLine = null;
         String value = null;

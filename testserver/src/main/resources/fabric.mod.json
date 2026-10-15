@@ -15,6 +15,6 @@
   },
   "custom": {
     "coflnet_scenario_schema": 1,
-    "coflnet_target_branch": "main"
+    "coflnet_target_branch": "26.2"
   }
 }

@@ -129,6 +129,57 @@ class DescriptionFlowContractTest {
     }
 
     @Test
+    void positionalTradePricesSurviveDuplicateItemNamesWithoutLeakingAliases(@TempDir Path sessionDirectory)
+            throws Exception {
+        CoflCore.misc.SessionManager.setMainPath(sessionDirectory);
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/mod/description/modifications", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] response = "[[{\"type\":\"APPEND\",\"value\":\"Med: 1m\"}],[{\"type\":\"APPEND\",\"value\":\"Med: 250m\"}],[]]"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            CoflCore.configuration.Config.BaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            var request = new DescriptionRequest("You     Trader", new String[]{"Enchanted Book;1", "Enchanted Book;1"},
+                    "inventory", "scenario-user", null);
+            var prices = request.loadBySlot();
+            assertEquals("Med: 1m", prices[0][0].value);
+            assertEquals("Med: 250m", prices[1][0].value);
+            assertTrue(DescriptionHandler.tooltipItemIdMap.isEmpty(),
+                    "positional results must not update shared tooltips before the trade checks request freshness");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void malformedTradeResponseCleansUpPartiallyLoadedAliases(@TempDir Path sessionDirectory) throws Exception {
+        CoflCore.misc.SessionManager.setMainPath(sessionDirectory);
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/mod/description/modifications", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] response = "[[]]".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            CoflCore.configuration.Config.BaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            var request = new DescriptionRequest("You     Trader", new String[]{"first", "second"},
+                    "inventory", "scenario-user", null);
+            assertThrows(RuntimeException.class, request::loadBySlot);
+            assertTrue(DescriptionHandler.tooltipItemIdMap.isEmpty());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void realDescriptionRequestMapsOrderDescriptionAndTrailingInfoDisplay(@TempDir Path sessionDirectory)
             throws Exception {
         try (var stub = new DescriptionBackendStub()) {

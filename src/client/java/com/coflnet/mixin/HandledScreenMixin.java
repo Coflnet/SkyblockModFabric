@@ -143,7 +143,7 @@ public abstract class HandledScreenMixin extends Screen {
                         try {
                             updateText(CoflModClient.getExtraSlotDescMod());
                             // Descriptions changed - invalidate per-slot caches (e.g. ItemHighlightMixin).
-                            CoflModClient.descriptionsVersion.incrementAndGet();
+                            CoflModClient.onDescriptionsApplied(title);
                         } catch (Exception ex) {
                             System.out.println("[HandledScreenMixin] refresh callback (on client) failed: " + ex.getMessage());
                         }

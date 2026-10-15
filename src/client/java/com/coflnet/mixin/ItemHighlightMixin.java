@@ -3,6 +3,8 @@ package com.coflnet.mixin;
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
 import com.coflnet.PerfTracer;
+import com.coflnet.core.HighlightColor;
+import com.coflnet.gui.HighlightRegistry;
 import com.coflnet.gui.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
@@ -84,8 +86,13 @@ public abstract class ItemHighlightMixin {
                         if (tooltips != null) {
                             for (DescriptionHandler.DescModification tooltip : tooltips) {
                                 if (tooltip.type.equals("HIGHLIGHT")) {
-                                    int hexColor = Integer.parseInt(tooltip.value, 16) | 0xFF000000;
-                                    cofl_highlightColor[i] = hexColor;
+                                    var color = HighlightColor.parse(tooltip.value);
+                                    if (color.isEmpty()) continue; // malformed colour: skip this slot, don't throw every frame
+                                    // The tooltip map is keyed by "name;count" and survives menu changes, so only
+                                    // show highlights that were confirmed for this menu and this item name.
+                                    if (HighlightRegistry.isStale(CoflModClient.getIdFromStack(stack),
+                                            screen.getTitle().getString(), stack.getHoverName().getString())) continue;
+                                    cofl_highlightColor[i] = color.getAsInt();
                                     cofl_highlightOutline[i] = tooltip.line < 0;
                                 }
                             }

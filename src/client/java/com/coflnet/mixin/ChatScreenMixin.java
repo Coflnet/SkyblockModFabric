@@ -2,7 +2,11 @@ package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
 import CoflCore.CoflSkyCommand;
+import com.coflnet.core.ExpectedCommandState;
+import com.coflnet.core.GhostText;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.ChatScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -16,6 +20,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ChatScreen.class)
 public class ChatScreenMixin {
+
+    @Shadow
+    protected EditBox input;
 
     @Shadow
     private boolean handleComponentClicked(Style style, boolean insertion) {
@@ -34,6 +41,34 @@ public class ChatScreenMixin {
         if (style != null && style.getClickEvent() != null && handleComponentClicked(style, false)) {
             cir.setReturnValue(true);
         }
+    }
+
+    /** Vanilla's CommandSuggestions.updateCommandInfo() resets the suggestion on every edit; re-apply ours. */
+    @Inject(method = "onEdited", at = @At("TAIL"))
+    private void coflnet$ghostText(String text, CallbackInfo ci) {
+        var expected = ExpectedCommandState.current(System.currentTimeMillis());
+        if (expected.isEmpty()) return;
+        String suffix = GhostText.compute(text, expected.get()).suggestionSuffix();
+        if (!suffix.isEmpty()) input.setSuggestion(suffix);
+    }
+
+    /** Draws the part of the typed text that diverges from the expected command in red. */
+    @Inject(method = "extractRenderState", at = @At("TAIL"))
+    private void coflnet$ghostMismatch(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
+        var expected = ExpectedCommandState.current(System.currentTimeMillis());
+        if (expected.isEmpty()) return;
+        String typed = input.getValue();
+        int mismatch = GhostText.compute(typed, expected.get()).mismatchIndex();
+        if (mismatch < 0 || mismatch >= typed.length()) return;
+        var font = Minecraft.getInstance().font;
+        int x = input.getScreenX(mismatch);
+        int y = input.isBordered() ? input.getY() + (input.getHeight() - 8) / 2 : input.getY();
+        graphics.text(font, typed.substring(mismatch), x, y, 0xFFFF5555, true);
+    }
+
+    @Inject(method = "handleChatInput", at = @At("HEAD"))
+    private void coflnet$clearExpectedCommand(String message, boolean addToHistory, CallbackInfo ci) {
+        ExpectedCommandState.clear();
     }
 
     @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)

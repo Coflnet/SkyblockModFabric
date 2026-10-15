@@ -18,8 +18,8 @@ import net.minecraft.world.inventory.ContainerInput;
 
 /**
  * Coins input dialog for the trade overlay. Lets the user type any amount
- * (2m, 1.5b, 80000000) OR pick one of two suggestion buttons (their side total
- * at full LBIN value, or full Median value). On confirm, the chosen amount is
+ * (2m, 1.5b, 80000000) OR pick LBIN, Median, or AI Estimate suggestions.
+ * On confirm, the chosen amount is
  * stashed in {@link CoflModClient#pendingCoinAmount} and the real trade
  * Coins-transaction slot (36) is clicked, which opens Hypixel's coin sign;
  * the {@code openTextEdit} mixin then auto-fills that sign with the amount.
@@ -37,13 +37,21 @@ public class CoinInputGUI extends Screen {
 
     private long lbinSuggestion;
     private long medianSuggestion;
+    private long aiSuggestion;
     // Worth of items already on MY side (per basis), subtracted from suggestions.
     private long myItemsLbin;
     private long myItemsMedian;
+    private long myItemsAi;
+    private boolean lbinComplete;
+    private boolean medianComplete;
+    private boolean aiComplete;
+    private int suggestionsTick = Integer.MIN_VALUE;
+    private long suggestionsRevision = -1;
 
     private EditBox input;
     private int panelX, panelY, panelW, panelH;
     private int lbinBtnX, lbinBtnY, medBtnX, medBtnY, sugBtnW, sugBtnH;
+    private int aiBtnX, aiBtnY, aiBtnW;
     private int confirmX, confirmY, confirmW, confirmH;
     private int cancelX, cancelY, cancelW, cancelH;
 
@@ -61,7 +69,6 @@ public class CoinInputGUI extends Screen {
         this.backing = backing;
         this.menu = backing.getMenu();
         this.parent = parent;
-        refreshSuggestions();
     }
 
     public ContainerScreen getBacking() {
@@ -69,21 +76,35 @@ public class CoinInputGUI extends Screen {
     }
 
     private void refreshSuggestions() {
+        TradePriceCache.retryIfNeeded(backing);
+        Player player = Minecraft.getInstance().player;
+        int tick = player == null ? suggestionsTick + 1 : player.tickCount;
+        long revision = TradePriceCache.revision();
+        if (tick == suggestionsTick && revision == suggestionsRevision) return;
+        suggestionsTick = tick;
+        suggestionsRevision = revision;
         var container = menu.getContainer();
-        lbinSuggestion = TradePriceCache.valueSlots(
-                container, CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.LBIN, true).total();
-        medianSuggestion = TradePriceCache.valueSlots(
-                container, CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.MEDIAN, true).total();
-        myItemsLbin = TradePriceCache.valueSlots(
-                container, CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.LBIN, false).total();
-        myItemsMedian = TradePriceCache.valueSlots(
-                container, CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.MEDIAN, false).total();
+        var theirLbin = TradePriceCache.valueSlots(container, CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.LBIN, true);
+        var theirMedian = TradePriceCache.valueSlots(container, CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.MEDIAN, true);
+        var yourLbin = TradePriceCache.valueSlots(container, CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.LBIN, false);
+        var yourMedian = TradePriceCache.valueSlots(container, CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.MEDIAN, false);
+        var theirAi = TradePriceCache.valueSlots(container, CoflModClient.TRADE_THEIR_SLOTS, WorthBasis.AI_ESTIMATE, true);
+        var yourAi = TradePriceCache.valueSlots(container, CoflModClient.TRADE_YOUR_SLOTS, WorthBasis.AI_ESTIMATE, false);
+        aiSuggestion = theirAi.total();
+        myItemsAi = yourAi.total();
+        aiComplete = theirAi.unpriced() + yourAi.unpriced() == 0;
+        lbinSuggestion = theirLbin.total();
+        medianSuggestion = theirMedian.total();
+        myItemsLbin = yourLbin.total();
+        myItemsMedian = yourMedian.total();
+        lbinComplete = theirLbin.unpriced() + yourLbin.unpriced() == 0;
+        medianComplete = theirMedian.unpriced() + yourMedian.unpriced() == 0;
     }
 
     @Override
     protected void init() {
         panelW = 220;
-        panelH = 164;
+        panelH = 188;
         panelX = this.width / 2 - panelW / 2;
         panelY = this.height / 2 - panelH / 2;
 
@@ -108,6 +129,9 @@ public class CoinInputGUI extends Screen {
         lbinBtnY = panelY + 90;
         medBtnX = lbinBtnX + sugBtnW + PAD;
         medBtnY = lbinBtnY;
+        aiBtnX = lbinBtnX;
+        aiBtnY = lbinBtnY + sugBtnH + 4;
+        aiBtnW = panelW - PAD * 2;
 
         confirmW = (panelW - PAD * 3) / 2;
         confirmH = 18;
@@ -132,11 +156,16 @@ public class CoinInputGUI extends Screen {
 
     @Override
     public void extractBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, float delta) {
+        Player player = Minecraft.getInstance().player;
+        if (player == null || player.containerMenu != menu) {
+            returnToTrade();
+            return;
+        }
         boolean premium = com.coflnet.config.TradeGuiManager.hasPremium();
         if (!premium) {
             draggingSlider = false;
         }
-        refreshSuggestions();
+        if (premium) refreshSuggestions();
 
         RenderUtils.drawRoundedRect(context, panelX, panelY, panelW, panelH, RADIUS, CoflColConfig.BACKGROUND_PRIMARY);
         RenderUtils.drawString(context, "§lAdd Coins", panelX + PAD, panelY + PAD, CoflColConfig.TEXT_PRIMARY);
@@ -150,12 +179,27 @@ public class CoinInputGUI extends Screen {
             RenderUtils.drawRoundedRect(context, knobX, sliderY - 2, 6, sliderH + 4, 2, CoflColConfig.CONFIRM);
 
             drawButton(context, lbinBtnX, lbinBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
-                    "lbin " + fmt(scaled(lbinSuggestion, myItemsLbin)), CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.CONFIRM_HOVER);
+                    lbinComplete ? "lbin " + fmt(scaled(lbinSuggestion, myItemsLbin)) : "lbin ?",
+                    lbinComplete ? CoflColConfig.BACKGROUND_SECONDARY : LOCKED_TINT,
+                    lbinComplete ? CoflColConfig.CONFIRM_HOVER : LOCKED_TINT);
             drawButton(context, medBtnX, medBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
-                    "med " + fmt(scaled(medianSuggestion, myItemsMedian)), CoflColConfig.BACKGROUND_SECONDARY, CoflColConfig.CONFIRM_HOVER);
+                    medianComplete ? "med " + fmt(scaled(medianSuggestion, myItemsMedian)) : "med ?",
+                    medianComplete ? CoflColConfig.BACKGROUND_SECONDARY : LOCKED_TINT,
+                    medianComplete ? CoflColConfig.CONFIRM_HOVER : LOCKED_TINT);
 
-            RenderUtils.drawString(context, "§8premium suggestions enabled",
-                    panelX + PAD, panelY + 116, CoflColConfig.TEXT_PRIMARY);
+            drawButton(context, aiBtnX, aiBtnY, aiBtnW, sugBtnH, mouseX, mouseY,
+                    aiComplete ? "AI Estimate " + fmt(scaled(aiSuggestion, myItemsAi)) : "AI Estimate ?",
+                    aiComplete ? CoflColConfig.BACKGROUND_SECONDARY : LOCKED_TINT,
+                    aiComplete ? CoflColConfig.CONFIRM_HOVER : LOCKED_TINT);
+            if (inRect(mouseX, mouseY, aiBtnX, aiBtnY, aiBtnW, sugBtnH)) {
+                context.setComponentTooltipForNextFrame(font, java.util.List.of(
+                        Component.literal("§7Uses the AI Estimate from item lore."),
+                        Component.literal("§7Unavailable if any offered item has no AI estimate.")), mouseX, mouseY);
+            }
+
+            RenderUtils.drawString(context,
+                    lbinComplete && medianComplete && aiComplete ? "§8premium suggestions enabled" : "§e? = estimate unavailable",
+                    panelX + PAD, panelY + 140, CoflColConfig.TEXT_PRIMARY);
         } else {
             RenderUtils.drawString(context, "§7lowball: §8locked", sliderX, sliderY - 10, CoflColConfig.TEXT_PRIMARY);
             RenderUtils.drawRoundedRect(context, sliderX, sliderY, sliderW, sliderH, 2, LOCKED_TINT);
@@ -163,17 +207,20 @@ public class CoinInputGUI extends Screen {
                     "§8lbin locked", LOCKED_TINT, LOCKED_TINT);
             drawButton(context, medBtnX, medBtnY, sugBtnW, sugBtnH, mouseX, mouseY,
                     "§8med locked", LOCKED_TINT, LOCKED_TINT);
+            drawButton(context, aiBtnX, aiBtnY, aiBtnW, sugBtnH, mouseX, mouseY,
+                    "§8AI Estimate locked", LOCKED_TINT, LOCKED_TINT);
             RenderUtils.drawString(context, "§8premium suggestions locked",
-                    panelX + PAD, panelY + 116, CoflColConfig.TEXT_PRIMARY);
+                    panelX + PAD, panelY + 140, CoflColConfig.TEXT_PRIMARY);
 
             boolean overLocked = inRect(mouseX, mouseY, sliderX, sliderY - 12, sliderW, sliderH + 14)
                     || inRect(mouseX, mouseY, lbinBtnX, lbinBtnY, sugBtnW, sugBtnH)
-                    || inRect(mouseX, mouseY, medBtnX, medBtnY, sugBtnW, sugBtnH);
+                    || inRect(mouseX, mouseY, medBtnX, medBtnY, sugBtnW, sugBtnH)
+                    || inRect(mouseX, mouseY, aiBtnX, aiBtnY, aiBtnW, sugBtnH);
             if (overLocked) {
                 context.setComponentTooltipForNextFrame(font, java.util.List.of(
                         Component.literal("§6requires skycofl premium"),
                         Component.literal("§7suggests lowball prices for you, adjustable"),
-                        Component.literal("§7with the lowball slider and lbin or med buttons."),
+                        Component.literal("§7with the slider and LBIN, Med, or AI buttons."),
                         Component.literal("§7get it with §e/cofl buy premium§7."),
                         Component.literal("§8premium access is read from login.")),
                         mouseX, mouseY);
@@ -210,7 +257,8 @@ public class CoinInputGUI extends Screen {
             return true;
         }
         if (inRect(mx, my, lbinBtnX, lbinBtnY, sugBtnW, sugBtnH)) {
-            if (premium) {
+            if (premium) refreshSuggestions();
+            if (premium && lbinComplete) {
                 long value = scaled(lbinSuggestion, myItemsLbin);
                 if (value > 0L) {
                     input.setValue(String.valueOf(value));
@@ -219,11 +267,20 @@ public class CoinInputGUI extends Screen {
             return true;
         }
         if (inRect(mx, my, medBtnX, medBtnY, sugBtnW, sugBtnH)) {
-            if (premium) {
+            if (premium) refreshSuggestions();
+            if (premium && medianComplete) {
                 long value = scaled(medianSuggestion, myItemsMedian);
                 if (value > 0L) {
                     input.setValue(String.valueOf(value));
                 }
+            }
+            return true;
+        }
+        if (inRect(mx, my, aiBtnX, aiBtnY, aiBtnW, sugBtnH)) {
+            if (premium) refreshSuggestions();
+            if (premium && aiComplete) {
+                long value = scaled(aiSuggestion, myItemsAi);
+                if (value > 0L) input.setValue(String.valueOf(value));
             }
             return true;
         }
@@ -270,19 +327,22 @@ public class CoinInputGUI extends Screen {
         if (amount == null || amount <= 0) {
             return; // invalid input — leave dialog open
         }
+        Minecraft client = Minecraft.getInstance();
+        Player player = client.player;
+        if (player == null || player.containerMenu != menu) {
+            returnToTrade();
+            return;
+        }
         CoflModClient.pendingCoinAmount = String.valueOf(amount);
         // Return to trade first so the sign editor (opened by the click) layers
         // over the trade, then click the real coins-transaction slot.
-        Minecraft client = Minecraft.getInstance();
-        Player player = client.player;
         returnToTrade();
-        if (player != null) {
-            client.gameMode.handleContainerInput(menu.containerId, COINS_SLOT, 0, ContainerInput.PICKUP, player);
-        }
+        client.gameMode.handleContainerInput(menu.containerId, COINS_SLOT, 0, ContainerInput.PICKUP, player);
     }
 
     private void returnToTrade() {
-        Minecraft.getInstance().gui.setScreen(parent);
+        Player player = Minecraft.getInstance().player;
+        Minecraft.getInstance().gui.setScreen(player != null && player.containerMenu == menu ? parent : null);
     }
 
     /** Accepts plain digits and k/m/b suffixes (2m, 1.5b, 80000000). */
