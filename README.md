@@ -123,6 +123,23 @@ saved as fractions of the screen, so they hold up across resolution and GUI-scal
 "Permanent" means the displays stay up while a container/other GUI is open too, not just with nothing (or
 chat) open — toggle this with "Show info displays while a GUI is open" in `/cofl` → SkyCofl settings.
 
+## Readable Bazaar charts
+
+Native Bazaar price and volume graph tooltips are drawn as labelled charts using only the samples
+already supplied by Hypixel. Unknown graph formats retain the original tooltip. Hold **Shift** to
+inspect the original text plot, or disable **Readable Bazaar charts** in `/cofl` → SkyCofl settings.
+
+Hover a Bazaar-tradeable item in your inventory or a container and press **G** to search for that
+item, select its exact result and open **Graphs**. Single-enchantment books retain their level.
+On a product page, G opens **View Graphs** directly. Rebind it under Controls → SkyCofl keys.
+Cofl's existing bindings take precedence if shared. Navigation waits for server menu contents,
+never clicks with an item on the cursor, and expires after ten seconds. It only selects a matching
+search result and the named graph control; it does not place orders or buy items.
+
+Chart cells and time labels retain the server's rounding; the charts do not provide higher-resolution
+history, fetch additional data or interpolate transactions. Native left/right clicks still change the
+span/zoom.
+
 ## Links
 
 - [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)

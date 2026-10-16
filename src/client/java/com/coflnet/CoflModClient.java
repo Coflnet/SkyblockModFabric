@@ -296,6 +296,8 @@ public class CoflModClient implements ClientModInitializer {
             InputConstants.KEY_O,
             SKYCOFL_CATEGORY));
 
+        com.coflnet.gui.bazaar.BazaarCharts.initialize(SKYCOFL_CATEGORY);
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Feeds the dev-mode render-thread stall watchdog; cheap even when off.
             PerfTracer.recordFrame();
