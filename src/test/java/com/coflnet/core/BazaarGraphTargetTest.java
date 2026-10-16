@@ -11,10 +11,9 @@ class BazaarGraphTargetTest {
         assertTrue(coal.matches(BazaarGraphTarget.from("", "Coal", Map.of())));
         assertFalse(coal.matches(BazaarGraphTarget.from("ENCHANTED_COAL", "Enchanted Coal", Map.of())));
         assertEquals("Coal", BazaarGraphTarget.from("COAL", "§aBUY §fCoal", Map.of()).query());
-        resolvesBookLevelsAndRejectsAmbiguousBooksAndMenuControls();
     }
 
-    private static void resolvesBookLevelsAndRejectsAmbiguousBooksAndMenuControls() {
+    @Test void resolvesBookLevelsAndRejectsAmbiguousBooksAndMenuControls() {
         var rend = BazaarGraphTarget.from("ENCHANTED_BOOK", "Enchanted Book", Map.of("rend", 4));
         assertEquals("Rend IV", rend.query());
         assertEquals("ENCHANTMENT_REND_4", rend.id());

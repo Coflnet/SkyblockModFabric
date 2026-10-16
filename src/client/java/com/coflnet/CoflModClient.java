@@ -27,6 +27,7 @@ import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.configuration.Config;
 import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
+import com.coflnet.gui.bazaar.BazaarCharts;
 import com.coflnet.core.DescriptionEndpointOverride;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -296,12 +297,13 @@ public class CoflModClient implements ClientModInitializer {
             InputConstants.KEY_O,
             SKYCOFL_CATEGORY));
 
-        com.coflnet.gui.bazaar.BazaarCharts.initialize(SKYCOFL_CATEGORY);
+        BazaarCharts.initialize(SKYCOFL_CATEGORY);
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Feeds the dev-mode render-thread stall watchdog; cheap even when off.
             PerfTracer.recordFrame();
             goalProgressTick(client);
+            BazaarCharts.tick(client);
 
             // Process scoreboard updates if dirty flag is set (set by ScoreboardMixin)
             if (scoreboardDirty && client.player != null) {

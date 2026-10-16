@@ -30,10 +30,9 @@ class BazaarGraphButtonTest {
         names.set(10, "Create Buy Order");
         names.set(12, "Create Sell Offer");
         assertEquals(40, BazaarGraphButton.find(54, names));
-        ignoresOrdinaryItemsPartialMenusAndAmbiguousButtons();
     }
 
-    private static void ignoresOrdinaryItemsPartialMenusAndAmbiguousButtons() {
+    @Test void ignoresOrdinaryItemsPartialMenusAndAmbiguousButtons() {
         assertEquals(-1, BazaarGraphButton.find(27, product()));
         assertEquals(-1, BazaarGraphButton.find(54, List.of("View Graphs")));
         var names = product();

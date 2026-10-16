@@ -8,7 +8,8 @@ public final class BazaarGraphButton {
     private static final Set<String> BUY = Set.of("Buy Instantly", "Instant Buy", "Create Buy Order");
     private static final Set<String> SELL = Set.of("Sell Instantly", "Instant Sell", "Create Sell Offer", "Create Sell Order");
 
-    private BazaarGraphButton() { }
+    private BazaarGraphButton() {
+    }
 
     public static int find(int containerSize, List<String> names) {
         if ((containerSize != 36 && containerSize != 54) || names.size() != containerSize) return -1;

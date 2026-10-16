@@ -22,7 +22,8 @@ public record BazaarChart(List<Point> points, List<Label> labels, List<String> t
             "Instant Buy Moving Coins", "Instant Sell Moving Coins", "Buy Price", "Sell Price");
 
     public static String clean(String text) {
-        return text == null ? "" : FORMAT.matcher(text).replaceAll("");
+        if (text == null) return "";
+        return text.indexOf('§') < 0 ? text : FORMAT.matcher(text).replaceAll("");
     }
 
     public static boolean isChart(String title) {

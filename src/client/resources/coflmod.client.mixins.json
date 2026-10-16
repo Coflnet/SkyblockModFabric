@@ -3,7 +3,6 @@
   "package": "com.coflnet.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
-    "BazaarGraphKeyMixin",
     "BazaarChartTooltipMixin",
     "BazaarChartComponentMixin",
     "LoreSettingsMixin",

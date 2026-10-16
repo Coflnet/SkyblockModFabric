@@ -11,7 +11,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class BazaarChartTest {
-    @Test void parsesNativeChartsAndPreservesFallbacks() throws Exception {
+    @Test void parsesNativeChartSamplesAndAxes() throws Exception {
         try (var stream = getClass().getResourceAsStream("/bazaar/native-charts.json")) {
             assertNotNull(stream);
             var fixtures = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonArray();
@@ -35,15 +35,13 @@ class BazaarChartTest {
                 assertThrows(UnsupportedOperationException.class, () -> chart.points().clear());
             }
         }
-        keepsNonzeroBaselineAndCurrentSpan();
-        leavesUnknownAndMalformedTooltipsUntouched();
     }
 
     private static List<String> plot() {
         return List.of("Quantity", "│ 100+..x....... │", "│    |...x...... │", "│  25+---------- │", "│     24h 12h now │");
     }
 
-    private static void keepsNonzeroBaselineAndCurrentSpan() {
+    @Test void keepsNonzeroBaselineAndCurrentSpan() {
         var chart = BazaarChart.parse("Buy Orders Volume 24h", plot());
         assertNotNull(chart);
         assertEquals(25, chart.labels().getLast().value());
@@ -55,7 +53,7 @@ class BazaarChartTest {
         assertEquals("100", BazaarChart.shortNumber(100));
     }
 
-    private static void leavesUnknownAndMalformedTooltipsUntouched() {
+    @Test void leavesUnknownAndMalformedTooltipsUntouched() {
         assertNull(BazaarChart.parse("Ordinary item", plot()));
         assertNull(BazaarChart.parse("Buy Price", List.of("broken server graph")));
         assertNull(BazaarChart.parse("Buy Price", null));

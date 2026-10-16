@@ -5,6 +5,7 @@ import com.coflnet.CoflModClient;
 import com.coflnet.PerfTracer;
 import com.coflnet.core.HighlightColor;
 import com.coflnet.gui.HighlightRegistry;
+import com.coflnet.gui.bazaar.BazaarCharts;
 import com.coflnet.gui.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
@@ -44,6 +45,11 @@ public abstract class ItemHighlightMixin {
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void onKeyPressed(KeyEvent input, CallbackInfoReturnable<Boolean> cir) {
         try {
+            if (BazaarCharts.handleKey((AbstractContainerScreen<?>) (Object) this, input,
+                    hoveredSlot == null ? ItemStack.EMPTY : hoveredSlot.getItem())) {
+                cir.setReturnValue(true);
+                return;
+            }
             // The keyPressed method now receives a KeyInput record object.
             if (CoflModClient.uploadItemKeyBinding.matches(input)) {
                 if (hoveredSlot != null && hoveredSlot.hasItem()) {
