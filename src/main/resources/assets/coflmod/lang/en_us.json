@@ -1,4 +1,11 @@
 {
+  "keybinding.coflmod.bazaargraphs": "Open Hovered Item's Bazaar Graphs",
+  "option.coflmod.readableBazaarCharts": "Readable Bazaar charts",
+  "option.coflmod.readableBazaarCharts.description": "Draw the existing server graph samples as a chart. Hold Shift for the original tooltip.",
+  "tooltip.coflmod.chart.quantity": "Quantity",
+  "tooltip.coflmod.chart.coins": "Coins",
+  "tooltip.coflmod.chart.samples": "Rounded server samples",
+  "tooltip.coflmod.chart.controls": "Left-click: span | Right-click: zoom | Shift: original",
   "keybinding.coflmod.bestflips": "Open Best/Next Flip",
   "keybinding.coflmod.uploaditem": "Upload Selected Item",
   "keybinding.coflmod.opensettings": "Open Settings Menu",
