@@ -673,19 +673,11 @@ public class CoflModClient implements ClientModInitializer {
             captureTradePartner(messageText);
             // Skip backend processing for our own display messages to avoid a feedback loop.
             if (!messageText.startsWith(TEXT_TUNNELS_MESSAGE_PREFIX)) {
-                EventRegistry.onChatMessage(messageText);
-                // iterate over all components of the message
-                String previousHover = null;
-                for (Component component : message.getSiblings()) {
-                    if(component.getStyle().getHoverEvent() != null
-                            && component.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest) {
-                        String text = hest.value().getString();
-                        if (text.equals(previousHover))
-                            continue; // skip if the text is the same as the previous one, different colored text often has the same hover text
-                        previousHover = text;
-                        EventRegistry.onChatMessage(hest.value().getString());
-                    }
-                }
+                List<String> lines = chatLinesForBackend(message, messageText);
+                Runnable forward = () -> lines.forEach(EventRegistry::onChatMessage);
+                // The backend stores a trade from the last trade-window upload before this line.
+                if (!com.coflnet.gui.trade.TradePriceCache.holdUntilUploaded(messageText, forward))
+                    forward.run();
                 if(EventRegistry.shouldBlockChatMessage(messageText))
                     return false;
             }
@@ -899,6 +891,23 @@ public class CoflModClient implements ClientModInitializer {
                 .map(tip -> tip == null ? null : tip.value).toArray(String[]::new);
         return com.coflnet.core.TradeValuation.parseWorthFromTips(values,
                 com.coflnet.core.TradeValuation.WorthBasis.valueOf(basis.name()));
+    }
+
+    /** The chat line followed by its distinct hover texts, as the backend receives them. */
+    private static List<String> chatLinesForBackend(Component message, String messageText) {
+        List<String> lines = new ArrayList<>();
+        lines.add(messageText);
+        String previousHover = null;
+        for (Component component : message.getSiblings()) {
+            if (component.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest) {
+                String text = hest.value().getString();
+                if (text.equals(previousHover))
+                    continue; // skip if the text is the same as the previous one, different colored text often has the same hover text
+                previousHover = text;
+                lines.add(text);
+            }
+        }
+        return lines;
     }
 
     /**
