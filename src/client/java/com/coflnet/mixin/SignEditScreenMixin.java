@@ -2,6 +2,7 @@ package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
 import com.coflnet.core.SignGuidance;
+import com.coflnet.gui.BazaarAssist;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -62,7 +63,7 @@ public class SignEditScreenMixin {
         String fill = fillExpiresAt != 0 && System.currentTimeMillis() > fillExpiresAt
                 ? null : CoflModClient.pendingSignFill;
         String expected = SignGuidance.expectedValue(fill, CoflModClient.pendingBazaarSearch,
-                CoflModClient.findPriceSuggestion(), messages[3]);
+                CoflModClient.findPriceSuggestion(), messages[3], BazaarAssist.expectedSignValue(messages[3]));
         SignGuidance.Guidance guidance = SignGuidance.compute(messages[0], expected);
         if (guidance.state() == SignGuidance.State.NONE) return;
 

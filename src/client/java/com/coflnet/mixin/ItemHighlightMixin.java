@@ -4,12 +4,14 @@ import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
 import com.coflnet.PerfTracer;
 import com.coflnet.core.HighlightColor;
+import com.coflnet.gui.BazaarAssist;
 import com.coflnet.gui.HighlightRegistry;
 import com.coflnet.gui.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
@@ -55,6 +57,15 @@ public abstract class ItemHighlightMixin {
         }
     }
 
+    @Inject(method = "slotClicked", at = @At("HEAD"))
+    private void cofl_onSlotClicked(Slot slot, int slotId, int button, ContainerInput input, CallbackInfo ci) {
+        try {
+            BazaarAssist.onSlotClicked(((AbstractContainerScreen<?>) (Object) this).getMenu(), slot);
+        } catch (Exception e) {
+            System.out.println("[ItemHighlightMixin] slotClicked failed: " + e.getMessage());
+        }
+    }
+
     @Inject(method = "extractSlots", at = @At("HEAD"))
     private void yourmodid_onDrawBackground(GuiGraphicsExtractor context, int mouseX, int mouseY, CallbackInfo ci) {
         long perfStart = PerfTracer.begin();
@@ -72,6 +83,7 @@ public abstract class ItemHighlightMixin {
                 versionChanged = true;
             }
             cofl_lastDescriptionsVersion = currentVersion;
+            boolean backendHighlight = false;
 
             for (int i = 0; i < slotCount; i++) {
                 Slot slot = slots.get(i);
@@ -100,13 +112,22 @@ public abstract class ItemHighlightMixin {
                     }
                 }
 
+                int bazaarMark = BazaarAssist.markColor(screen.getMenu(), i);
+                if (bazaarMark != 0) RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, bazaarMark);
                 if (cofl_highlightColor[i] != 0) {
+                    backendHighlight = true;
                     if (cofl_highlightOutline[i]) {
                         RenderUtils.drawRectOutline(context, slot.x, slot.y, 16, 16, 2, 0x00000000, cofl_highlightColor[i]);
                     } else {
                         RenderUtils.drawRect(context, slot.x, slot.y, 16, 16, cofl_highlightColor[i]);
                     }
                 }
+            }
+            BazaarAssist.reportBackendHighlight(screen.getMenu(), backendHighlight);
+            int next = BazaarAssist.outlineSlot(screen.getMenu());
+            if (!backendHighlight && next >= 0 && next < slotCount) {
+                Slot slot = slots.get(next);
+                RenderUtils.drawRectOutline(context, slot.x, slot.y, 16, 16, 2, 0x00000000, BazaarAssist.outlineColor());
             }
         } catch (Exception e) {
             System.out.println("[ItemHighlightMixin] extractSlots failed: " + e.getMessage());

@@ -2,6 +2,7 @@ package com.coflnet.mixin;
 
 import com.coflnet.CoflModClient;
 import com.coflnet.PerfTracer;
+import com.coflnet.gui.BazaarAssist;
 import com.coflnet.gui.trade.TradePriceCache;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -107,6 +108,7 @@ public class NewItemInChestMixin {
             // Must not be skipped for slots < 36 - the listing slot is one of them.
             boolean changed = skycofl$chestSlotChanged;
             skycofl$chestSlotChanged = false;
+            if (changed) BazaarAssist.invalidate();
             // Cheap gates first; title/name work only for real changes of chest slots.
             if (changed && Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?> hs
                     && hs.getMenu().containerId == packet.getContainerId()) {
@@ -133,6 +135,7 @@ public class NewItemInChestMixin {
         long perfStart = PerfTracer.begin();
         try {
             CoflModClient.refreshDescriptionContainer(packet.containerId());
+            BazaarAssist.invalidate();
             TradePriceCache.requestCurrentTrade(packet.containerId());
             CoflModClient.openTradeOverlayIfReady(packet.containerId());
         } finally {

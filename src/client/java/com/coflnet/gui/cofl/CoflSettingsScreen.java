@@ -179,6 +179,27 @@ public class CoflSettingsScreen {
                 .build());
 
         categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Bazaar Order Guidance"))
+                .description(OptionDescription.of(Component.literal(
+                        "Outlines the next button while placing a Bazaar order or relisting a suggested one.")))
+                .binding(cfg.bazaarOrderGuidanceEnabled,
+                        com.coflnet.config.BazaarAssistManager::isGuidanceEnabled,
+                        com.coflnet.config.BazaarAssistManager::setGuidanceEnabled)
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Bazaar Relist Suggestions"))
+                .description(OptionDescription.of(Component.literal(
+                        "Marks outbid orders in Your Bazaar Orders with the queue ahead and the time to fill, "
+                                + "and suggests relisting those that likely take longer than an hour.")))
+                .binding(cfg.bazaarRelistSuggestionsEnabled,
+                        com.coflnet.config.BazaarAssistManager::isRelistEnabled,
+                        com.coflnet.config.BazaarAssistManager::setRelistEnabled)
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        categoryBuilder.option(Option.<Boolean>createBuilder()
                 .name(Component.literal("Sell Protection Enabled"))
                 .description(OptionDescription.of(Component.literal(
                         "Warns before selling an item worth more than the threshold below.")))

@@ -60,4 +60,11 @@ class SignGuidanceTest {
         assertNull(SignGuidance.expectedValue("not json", null, "", "x"));
         assertNull(SignGuidance.expectedValue(null, null, null, "x"));
     }
+
+    @Test void localGuideValueOnlyWhenNoGoalOrBackendValue() {
+        String goalFill = "{\"line\":\"to order\",\"value\":\"640\"}";
+        assertEquals("640", SignGuidance.expectedValue(goalFill, null, null, "to order", "13"));
+        assertEquals("99", SignGuidance.expectedValue(null, null, "to order: 99", "to order", "13"));
+        assertEquals("13", SignGuidance.expectedValue(null, null, null, "to order", "13"));
+    }
 }
