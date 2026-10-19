@@ -66,6 +66,12 @@ public final class SignGuidance {
      */
     public static String expectedValue(String pendingSignFillJson, String pendingBazaarSearch,
                                        String priceSuggestion, String fourthLine) {
+        return expectedValue(pendingSignFillJson, pendingBazaarSearch, priceSuggestion, fourthLine, null);
+    }
+
+    /** As above, with the local Bazaar guide's value as the last resort, so backend and goal fills win. */
+    public static String expectedValue(String pendingSignFillJson, String pendingBazaarSearch,
+                                       String priceSuggestion, String fourthLine, String localGuideValue) {
         if (pendingSignFillJson != null && !pendingSignFillJson.isBlank()) {
             try {
                 JsonObject fill = JsonParser.parseString(pendingSignFillJson).getAsJsonObject();
@@ -81,6 +87,6 @@ public final class SignGuidance {
             String[] parts = priceSuggestion.split(": ", 2);
             if (parts.length == 2 && parts[0].equals(fourthLine)) return parts[1].trim();
         }
-        return null;
+        return localGuideValue;
     }
 }

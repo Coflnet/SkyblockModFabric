@@ -36,6 +36,11 @@ public class CoflModConfig {
     // window. Independent of dev mode (which only controls the Copy Dump button).
     public boolean tradeGuiEnabled = false;
 
+    // Bazaar order guidance: outlines the next click while placing or relisting an order. Opt-in.
+    public boolean bazaarOrderGuidanceEnabled = false;
+    // Marks outbid own orders in the orders menu and suggests relisting slow ones. Opt-in.
+    public boolean bazaarRelistSuggestionsEnabled = false;
+
     // TradeGUI item-list column count (1-3). Persisted so the user's choice
     // sticks across trades and restarts. Default 1 (the original look).
     public int tradeListColumns = 1;
