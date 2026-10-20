@@ -1712,7 +1712,17 @@ public class CoflModClient implements ClientModInitializer {
             return;
         }
         if (!shouldTriggerDescriptionLoad(screen)) return;
-        refreshOpenDescriptions(screen);
+        // Hypixel sends slot contents after the open packet: an all-empty chest part is deferred to
+        // the debouncer (one upload after the quiet period, empty or filled) instead of uploaded now.
+        var slots = screen.getMenu().slots;
+        boolean[] slotEmpty = new boolean[slots.size()];
+        for (int i = 0; i < slotEmpty.length; i++) slotEmpty[i] = slots.get(i).getItem().isEmpty();
+        boolean playerInv = screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen;
+        boolean trade = com.coflnet.core.MenuClassifier.isTradeTitle(slots.size() - 36, title);
+        if (com.coflnet.core.ChestOpenPolicy.shouldUploadOnOpen(slotEmpty, playerInv, trade))
+            refreshOpenDescriptions(screen);
+        else
+            onChestContentChanged(screen);
     }
 
     /** Full content packets can populate any container after its screen has already opened. */
@@ -1938,7 +1948,7 @@ public class CoflModClient implements ClientModInitializer {
 
     /** A confirmed lore upload invalidates cached descriptions for the next inventory refresh. */
     public static void invalidateLoreDescriptions() {
-        DescriptionHandler.emptyTooltipData();
+        com.coflnet.core.DescriptionState.reset();
         knownIds.clear();
         descriptionQueue.reserveResponse();
         descriptionsVersion.incrementAndGet();
