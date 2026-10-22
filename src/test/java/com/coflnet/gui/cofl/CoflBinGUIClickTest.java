@@ -13,8 +13,11 @@ import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.client.sounds.SoundEngine;
 import net.minecraft.client.sounds.SoundManager;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentMap;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -67,8 +70,9 @@ class CoflBinGUIClickTest {
     static void bootstrap() throws Exception {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        if (!Items.AIR.builtInRegistryHolder().areComponentsBound()) {
-            Items.AIR.builtInRegistryHolder().bindComponents(DataComponentMap.EMPTY); // the overlay's empty item slot
+        Holder.Reference<Item> air = BuiltInRegistries.ITEM.getOrThrow(BuiltInRegistries.ITEM.getResourceKey(Items.AIR).orElseThrow());
+        if (!air.areComponentsBound()) {
+            air.bindComponents(DataComponentMap.EMPTY); // the overlay's empty item slot
         }
         previousInstance = Minecraft.getInstance();
         Minecraft minecraft = allocate(Minecraft.class);
