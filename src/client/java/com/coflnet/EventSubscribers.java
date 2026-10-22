@@ -108,16 +108,7 @@ public class EventSubscribers {
     public void onPlaySoundReceive(OnPlaySoundReceive event){
         if(event.Sound == null || event.Sound.getSoundName() == null) return;
 
-        String soundName = "";
-        switch (event.Sound.getSoundName()){
-            case "note.bass" -> soundName = "BLOCK_NOTE_BLOCK_BASS";
-            case "note.pling" -> soundName = "BLOCK_NOTE_BLOCK_PLING";
-            case "note.hat" -> soundName = "BLOCK_NOTE_BLOCK_HAT";
-            case "random.orb" -> soundName = "ENTITY_EXPERIENCE_ORB_PICKUP";
-            default -> soundName = "";
-        }
-
-        String finalSoundName = soundName;
+        String finalSoundName = event.Sound.getSoundName();
         Minecraft.getInstance().execute(() -> {
             Player player = Minecraft.getInstance().player;
             if (player != null) {

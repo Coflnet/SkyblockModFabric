@@ -54,9 +54,9 @@ public final class InfoDisplayPayloadParser {
         if (!obj.has("id") || obj.get("id").isJsonNull() || !obj.get("id").isJsonPrimitive()) {
             throw new ParseException("Missing required field 'id'");
         }
-        int id;
+        long id;
         try {
-            id = obj.get("id").getAsInt();
+            id = obj.get("id").getAsLong();
         } catch (NumberFormatException | UnsupportedOperationException e) {
             throw new ParseException("'id' must be an integer");
         }
@@ -66,10 +66,7 @@ public final class InfoDisplayPayloadParser {
 
         boolean clear = obj.has("clear") && !obj.get("clear").isJsonNull() && asBoolean(obj.get("clear"));
 
-        String title = null;
-        if (obj.has("title") && !obj.get("title").isJsonNull()) {
-            title = obj.get("title").getAsString();
-        }
+        String title = stringOrNull(obj, "title");
 
         List<InfoDisplayPayload.InfoDisplayLine> lines = new ArrayList<>();
         if (obj.has("lines") && !obj.get("lines").isJsonNull()) {
@@ -88,17 +85,10 @@ public final class InfoDisplayPayloadParser {
 
         int ttl = 0;
         if (obj.has("ttl") && !obj.get("ttl").isJsonNull()) {
-            try {
-                ttl = obj.get("ttl").getAsInt();
-            } catch (NumberFormatException | UnsupportedOperationException e) {
-                throw new ParseException("'ttl' must be an integer number of seconds");
-            }
-            if (ttl < 0) {
-                ttl = 0;
-            }
+            ttl = parseTtl(obj.get("ttl"));
         }
 
-        return new InfoDisplayPayload(id, title, lines, ttl, clear);
+        return new InfoDisplayPayload((int) id, title, lines, ttl, clear);
     }
 
     private static InfoDisplayPayload.InfoDisplayLine parseLine(JsonElement el) throws ParseException {
@@ -115,8 +105,25 @@ public final class InfoDisplayPayloadParser {
         throw new ParseException("Each line must be a string or an object with a 'text' field");
     }
 
-    private static String stringOrNull(JsonObject obj, String key) {
-        return obj.has(key) && !obj.get(key).isJsonNull() ? obj.get(key).getAsString() : null;
+    /** Reads the seconds as a long so a value past the int range stays long-lived instead of wrapping to 0 (permanent). */
+    private static int parseTtl(JsonElement el) throws ParseException {
+        long ttl;
+        try {
+            ttl = el.getAsLong();
+        } catch (NumberFormatException | UnsupportedOperationException | IllegalStateException e) {
+            throw new ParseException("'ttl' must be an integer number of seconds");
+        }
+        return (int) Math.max(0, Math.min(Integer.MAX_VALUE, ttl));
+    }
+
+    private static String stringOrNull(JsonObject obj, String key) throws ParseException {
+        if (!obj.has(key) || obj.get(key).isJsonNull()) {
+            return null;
+        }
+        if (!obj.get(key).isJsonPrimitive()) {
+            throw new ParseException("'" + key + "' must be a string");
+        }
+        return obj.get(key).getAsString();
     }
 
     private static boolean asBoolean(JsonElement el) {
