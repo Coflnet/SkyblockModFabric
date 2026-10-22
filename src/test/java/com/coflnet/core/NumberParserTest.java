@@ -10,4 +10,12 @@ class NumberParserTest {
         assertEquals(1_500_000_000L, NumberParser.parseAmount("1.5b"));
         assertThrows(NumberFormatException.class, () -> NumberParser.parseAmount("12 coins"));
     }
+
+    @Test void scalesDecimalAmountsWithoutBinaryRoundingLoss() {
+        assertEquals(8_200_000L, NumberParser.parseAmount("8.2m"));
+        assertEquals(4_100_000L, NumberParser.parseCoinNumber("4.1m"));
+        assertEquals(1_100L, NumberParser.parseAmount("1.1k"));
+        assertEquals(1L, NumberParser.parseAmount("1.9"));
+        assertEquals(Long.MAX_VALUE, NumberParser.parseCoinNumber("99999999999999999999"));
+    }
 }

@@ -807,17 +807,7 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     private static String getStringFromDouble(double seconds, int currentPrecision) {
-        String render;
-
-        if (seconds > 100) {
-            render = String.valueOf((int) seconds);
-        } else {
-            render = String.format(Locale.US, "%.3f", seconds).substring(0, currentPrecision);
-            if(render.charAt(render.length() - 1) == '.')
-                render = render.substring(0, currentPrecision -1);
-        }
-
-        return render + "s";
+        return com.coflnet.core.CountdownFormatter.format(seconds, currentPrecision);
     }
 
     // ===== Hypixel trade window (confirmed via dev Copy Dump) =====
@@ -1565,7 +1555,9 @@ public class CoflModClient implements ClientModInitializer {
         return fd;
     }
 
-    public static SoundEvent findByName(String name) {
+    /** Resolves a sound name sent by the backend; unknown names play the bell. */
+    public static SoundEvent findByName(String backendName) {
+        String name = com.coflnet.core.BackendSounds.soundEventField(backendName);
         SoundEvent result = SoundEvents.NOTE_BLOCK_BELL.value();
 
         for (Field f : SoundEvents.class.getDeclaredFields()) {
