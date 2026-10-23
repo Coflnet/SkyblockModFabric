@@ -3,27 +3,22 @@ package com.coflnet.gui.bazaar;
 import com.coflnet.CoflModClient;
 import com.coflnet.config.CoflModConfig;
 import com.coflnet.core.BazaarChart;
-import com.coflnet.core.BazaarGraphButton;
 import com.coflnet.core.BazaarGraphTarget;
+import com.coflnet.core.BazaarHistoryClient;
+import net.fabricmc.loader.api.FabricLoader;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.gui.screens.inventory.ContainerScreen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemLore;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
@@ -33,27 +28,11 @@ public final class BazaarCharts {
     private record Cached(Component name, ItemLore lore, BazaarChartTooltip chart) { }
     private static KeyMapping graphsKey;
     private static boolean held;
-    private static Pending pending;
-    private static final class Pending {
-        final BazaarGraphTarget target;
-        final LocalPlayer player;
-        final ClientPacketListener connection;
-        final AbstractContainerScreen<?> origin;
-        final long deadline = System.nanoTime() + 10_000_000_000L;
-        boolean selected;
-
-        Pending(BazaarGraphTarget target, Minecraft client, AbstractContainerScreen<?> origin) {
-            this.target = target;
-            player = client.player;
-            connection = client.getConnection();
-            this.origin = origin;
-        }
-    }
-
     private BazaarCharts() {
     }
 
     public static void initialize(KeyMapping.Category category) {
+        BazaarHistoryClient.warmup(FabricLoader.getInstance().getConfigDir());
         graphsKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "keybinding.coflmod.bazaargraphs", InputConstants.Type.KEYBOARD, InputConstants.KEY_G, category));
     }
@@ -64,30 +43,19 @@ public final class BazaarCharts {
             if (bound.getType() == InputConstants.Type.KEYBOARD && !InputConstants.isKeyDown(bound.getValue())) held = false;
         }
         while (graphsKey.consumeClick()) { }
-        navigate(client);
     }
 
     public static boolean handleKey(AbstractContainerScreen<?> screen, KeyEvent event, ItemStack hovered) {
         Minecraft client = Minecraft.getInstance();
-        if (!graphsKey.matches(event) || conflicts(event) || !onHypixel(client)
+        if (!graphsKey.matches(event) || conflicts(event)
                 || screen.getFocused() instanceof EditBox edit && edit.canConsumeInput()
                 || client.player == null || client.gameMode == null || client.getConnection() == null
                 || client.player.containerMenu != screen.getMenu() || !screen.getMenu().getCarried().isEmpty()) return false;
         if (held) return true;
-        var target = target(hovered);
-        if (screen instanceof ContainerScreen chest) {
-            int graph = graphSlot(chest);
-            if (graph >= 0 && (target == null || contains(chest, target))) {
-                held = true;
-                pending = null;
-                click(client, chest, graph);
-                return true;
-            }
-        }
+        var target = BazaarHistoryClient.resolve(target(hovered));
         if (target == null) return false;
         held = true;
-        pending = new Pending(target, client, screen);
-        client.player.connection.sendCommand("bz " + target.query());
+        client.gui.setScreen(new BazaarHistoryScreen(screen, target));
         return true;
     }
 
@@ -96,13 +64,6 @@ public final class BazaarCharts {
                 || CoflModClient.uploadItemKeyBinding.matches(event)
                 || CoflModClient.openSettingsKeyBinding.matches(event)
                 || CoflModClient.additionalKeyBindings.stream().anyMatch(key -> key.matches(event));
-    }
-
-    private static boolean onHypixel(Minecraft client) {
-        var server = client.getCurrentServer();
-        if (server == null) return false;
-        String host = server.ip.toLowerCase(Locale.ROOT).split(":")[0];
-        return host.equals("hypixel.net") || host.endsWith(".hypixel.net");
     }
 
     private static BazaarGraphTarget target(ItemStack stack) {
@@ -118,63 +79,6 @@ public final class BazaarCharts {
             for (String name : data.keySet()) enchants.put(name, data.getIntOr(name, 0));
         }
         return BazaarGraphTarget.from(id, stack.getHoverName().getString(), enchants);
-    }
-
-    private static int graphSlot(ContainerScreen screen) {
-        var container = screen.getMenu().getContainer();
-        int size = container.getContainerSize();
-        var names = new ArrayList<String>(size);
-        for (int i = 0; i < size; i++) names.add(container.getItem(i).getHoverName().getString());
-        return BazaarGraphButton.find(size, names);
-    }
-
-    private static boolean contains(ContainerScreen screen, BazaarGraphTarget wanted) {
-        var container = screen.getMenu().getContainer();
-        for (int i = 0; i < container.getContainerSize(); i++) {
-            var candidate = target(container.getItem(i));
-            // Product-menu icons can carry a contextual ID instead of the traded item's ID.
-            if (wanted.matches(candidate) || candidate != null && wanted.query().equalsIgnoreCase(candidate.query())) return true;
-        }
-        return false;
-    }
-
-    private static void navigate(Minecraft client) {
-        Pending request = pending;
-        if (request == null) return;
-        if (System.nanoTime() > request.deadline || client.player != request.player
-                || client.getConnection() != request.connection || !onHypixel(client)) {
-            pending = null;
-            return;
-        }
-        if (!(client.gui.screen() instanceof ContainerScreen screen) || screen == request.origin) return;
-        // A navigation click predicts a carried icon until the server replaces the menu.
-        // Wait through that transient state; never issue another click with a carried stack.
-        if (client.gameMode == null || client.player.containerMenu != screen.getMenu()
-                || !screen.getMenu().getCarried().isEmpty()) return;
-        int graph = graphSlot(screen);
-        if (graph >= 0) {
-            if (!contains(screen, request.target)) return;
-            pending = null;
-            click(client, screen, graph);
-            return;
-        }
-        String title = BazaarChart.clean(screen.getTitle().getString());
-        if (!title.startsWith("Bazaar") || request.selected) return;
-        var container = screen.getMenu().getContainer();
-        int candidate = -1;
-        for (int i = 0; i < container.getContainerSize(); i++) {
-            if (!request.target.matches(target(container.getItem(i)))) continue;
-            if (candidate >= 0) return;
-            candidate = i;
-        }
-        if (candidate >= 0) {
-            request.selected = true;
-            click(client, screen, candidate);
-        }
-    }
-
-    private static void click(Minecraft client, ContainerScreen screen, int slot) {
-        client.gameMode.handleContainerInput(screen.getMenu().containerId, slot, 0, ContainerInput.PICKUP, client.player);
     }
 
     public static BazaarChartTooltip chart(ItemStack stack) {

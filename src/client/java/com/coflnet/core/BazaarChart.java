@@ -10,7 +10,27 @@ import java.util.regex.Pattern;
 /** Decodes the rounded cells already supplied by the server, without inventing extra samples. */
 public record BazaarChart(List<Point> points, List<Label> labels, List<String> times, int columns, int rows) {
     public record Point(double x, double y) { }
+    public record Segment(Point from, Point to) { }
     public record Label(double y, String text, double value) { }
+
+    /** Connect only adjacent, ordered observations; leave unavailable time spans visibly empty. */
+    public static List<Segment> segments(List<Point> points, double maximumGap) {
+        if (!Double.isFinite(maximumGap) || maximumGap <= 0) return List.of();
+        var segments = new ArrayList<Segment>();
+        for (int i = 1; i < points.size(); i++) {
+            var left = points.get(i - 1);
+            var right = points.get(i);
+            if (!validPoint(left) || !validPoint(right)) continue;
+            double gap = right.x() - left.x();
+            if (gap >= 0 && gap <= maximumGap) segments.add(new Segment(left, right));
+        }
+        return List.copyOf(segments);
+    }
+
+    private static boolean validPoint(Point point) {
+        return Double.isFinite(point.x()) && Double.isFinite(point.y())
+                && point.x() >= 0 && point.x() <= 1 && point.y() >= 0 && point.y() <= 1;
+    }
 
     private static final Pattern VALUE = Pattern.compile(
             "^[\\s·│┃║|]*([0-9][0-9, .│┃║|]*(?:[kKmMbB])?)\\s*[+┼├╋]",

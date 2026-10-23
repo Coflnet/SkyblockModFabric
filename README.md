@@ -129,16 +129,34 @@ Native Bazaar price and volume graph tooltips are drawn as labelled charts using
 already supplied by Hypixel. Unknown graph formats retain the original tooltip. Hold **Shift** to
 inspect the original text plot, or disable **Readable Bazaar charts** in `/cofl` → SkyCofl settings.
 
-Hover a Bazaar-tradeable item in your inventory or a container and press **G** to search for that
-item, select its exact result and open **Graphs**. Single-enchantment books retain their level.
-On a product page, G opens **View Graphs** directly. Rebind it under Controls → SkyCofl keys.
-Cofl's existing bindings take precedence if shared. Navigation waits for server menu contents,
-never clicks with an item on the cursor, and expires after ten seconds. It only selects a matching
-search result and the named graph control; it does not place orders or buy items.
+Hover a Bazaar-tradeable item in your inventory or a container and press **G** to open its
+history. Non-Bazaar or unresolved items leave the key alone. No Booster Cookie or Hypixel API key
+is needed. Choose **1h**, **24h**, **7d** or **31d**, select prices or volumes, and use **Compare**
+to overlay the other side. Hover for exact local timestamps and values; right-click or scroll to
+zoom. Single-enchantment books retain their level. Rebind G under Controls → SkyCofl keys;
+existing Cofl bindings take precedence.
 
-Chart cells and time labels retain the server's rounding; the charts do not provide higher-resolution
-history, fetch additional data or interpolate transactions. Native left/right clicks still change the
-span/zoom.
+Buy/sell prices, instant activity, and outstanding orders are paired in three columns. History
+uses thin lines between adjacent observations, without averaging away real drops or joining
+across missing sections. This avoids switching between thick streaks and isolated dots when
+recovered sections contain more detailed samples.
+
+The screen uses the same public Cofl history as the website: prices, outstanding buy/sell orders
+and rolling seven-day trade counters. The instant-volume buttons keep their short names;
+their footer and hover help explain that
+each value is Hypixel's preceding seven days of trades plus open orders. The range buttons
+change the dates shown, not the definition of that value. Exact fills within the selected
+chart interval cannot be calculated from those totals alone. Exact fill counts and historical
+coins moved are not exposed by this endpoint. The native-menu tooltip rendering still supports
+all eight server-provided graph types.
+
+An hourly cached product catalog resolves the hotkey locally. Histories load on demand with gzip
+compression; graph-type changes and zoom reuse the loaded samples. Missing sections in all four
+ranges are recovered using bounded, progressively finer public history requests. The selected dates
+stay fixed instead of following a stale last sample; remaining gaps are labelled **History incomplete**.
+Complete histories need no extra requests. Recovery is limited to 20 requests, three at a time, and
+recovered charts refresh within five minutes. Switching back can show the cached chart while refreshing. Native tooltip charts
+still use the rounded server samples; their left/right-click span and zoom controls are unchanged.
 
 ## Links
 

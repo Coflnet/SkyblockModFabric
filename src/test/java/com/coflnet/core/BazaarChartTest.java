@@ -37,6 +37,24 @@ class BazaarChartTest {
         }
     }
 
+    @Test void joinsAdjacentHistorySamplesButPreservesSharpDropsAndRealGaps() {
+        var points = List.of(new BazaarChart.Point(0, 0.1), new BazaarChart.Point(0.01, 0.15),
+                new BazaarChart.Point(0.02, 0.95), new BazaarChart.Point(0.5, 0.2), new BazaarChart.Point(0.51, 0.25));
+        var segments = BazaarChart.segments(points, 0.04);
+        assertEquals(3, segments.size());
+        assertEquals(new BazaarChart.Segment(points.get(1), points.get(2)), segments.get(1));
+        assertFalse(segments.stream().anyMatch(segment -> segment.from().equals(points.get(2))));
+        assertEquals(0.95, points.get(2).y());
+        assertTrue(BazaarChart.segments(List.of(points.getFirst()), 0.04).isEmpty());
+    }
+
+    @Test void neverJoinsBackwardsOrInvalidHistoryPoints() {
+        var points = List.of(new BazaarChart.Point(0.5, 0.2), new BazaarChart.Point(0.1, 0.3),
+                new BazaarChart.Point(Double.NaN, 0.2), new BazaarChart.Point(0.6, -1));
+        assertTrue(BazaarChart.segments(points, 1).isEmpty());
+        assertTrue(BazaarChart.segments(points, 0).isEmpty());
+    }
+
     private static List<String> plot() {
         return List.of("Quantity", "│ 100+..x....... │", "│    |...x...... │", "│  25+---------- │", "│     24h 12h now │");
     }
