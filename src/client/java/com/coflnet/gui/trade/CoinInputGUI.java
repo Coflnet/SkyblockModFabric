@@ -2,6 +2,7 @@ package com.coflnet.gui.trade;
 
 import com.coflnet.CoflModClient;
 import com.coflnet.CoflModClient.WorthBasis;
+import com.coflnet.core.NumberParser;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.cofl.CoflColConfig;
 import net.minecraft.client.Minecraft;
@@ -357,16 +358,16 @@ public class CoinInputGUI extends Screen {
             }
             if (in.matches("^[0-9]*\\.?[0-9]+[kmb]$")) {
                 char suf = in.charAt(in.length() - 1);
-                double val = Double.parseDouble(in.substring(0, in.length() - 1));
+                String number = in.substring(0, in.length() - 1);
                 return switch (suf) {
-                    case 'k' -> (long) (val * 1_000L);
-                    case 'm' -> (long) (val * 1_000_000L);
-                    case 'b' -> (long) (val * 1_000_000_000L);
+                    case 'k' -> NumberParser.scale(number, 1_000L);
+                    case 'm' -> NumberParser.scale(number, 1_000_000L);
+                    case 'b' -> NumberParser.scale(number, 1_000_000_000L);
                     default -> null;
                 };
             }
             if (in.matches("^[0-9]+\\.[0-9]+$")) {
-                return (long) Double.parseDouble(in);
+                return NumberParser.scale(in, 1);
             }
         } catch (NumberFormatException e) {
             return null;
