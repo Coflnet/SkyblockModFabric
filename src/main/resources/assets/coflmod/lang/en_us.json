@@ -13,6 +13,8 @@
   "key.category.coflnet.skycofl_unchangeable": "SkyCofl keys",
   "screen.coflmod.history.loading": "Loading Bazaar history...",
   "screen.coflmod.history.error": "History unavailable. Try again later.",
+  "screen.coflmod.history.stale": "Refresh failed; cached data is over 1h old",
+  "screen.coflmod.history.retry": "Retry",
   "screen.coflmod.history.empty": "No Bazaar history for this item.",
   "screen.coflmod.history.hour": "1h",
   "screen.coflmod.history.day": "24h",

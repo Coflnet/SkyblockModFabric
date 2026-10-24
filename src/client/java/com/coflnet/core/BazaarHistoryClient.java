@@ -36,10 +36,33 @@ public final class BazaarHistoryClient {
         final int status;
         HttpFailure(int status) { super("HTTP " + status); this.status = status; }
     }
-    private static final class Cached {
+    static final class Cached {
         volatile long expires = Long.MAX_VALUE;
+        volatile BazaarHistory history;
+        volatile long updated;
+        volatile int failures;
         final CompletableFuture<BazaarHistory> result;
-        Cached(CompletableFuture<BazaarHistory> result) { this.result = result; }
+
+        Cached(Cached previous, CompletableFuture<BazaarHistory> request) {
+            if (previous != null) {
+                history = previous.history;
+                updated = previous.updated;
+                failures = previous.failures;
+            }
+            result = request.handle((value, error) -> {
+                if (error != null) {
+                    failures++;
+                    throw new CompletionException(error);
+                }
+                history = value;
+                updated = System.nanoTime();
+                failures = 0;
+                return value;
+            });
+        }
+
+        boolean stale(long now) { return history != null && now - updated > Duration.ofHours(1).toNanos(); }
+        boolean warn(long now) { return failures >= 2 && stale(now); }
     }
     private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     private static final LinkedHashMap<String, Cached> CACHE = new LinkedHashMap<>(32, 0.75f, true);
@@ -98,7 +121,23 @@ public final class BazaarHistoryClient {
 
     public static synchronized BazaarHistory cached(BazaarGraphTarget target, Range range) {
         var entry = CACHE.get(key(target, range));
-        return entry == null || !entry.result.isDone() || entry.result.isCompletedExceptionally() ? null : entry.result.getNow(null);
+        return entry == null ? null : entry.history;
+    }
+
+    public static synchronized boolean stale(BazaarGraphTarget target, Range range) {
+        var entry = CACHE.get(key(target, range));
+        return entry != null && entry.stale(System.nanoTime());
+    }
+
+    public static synchronized boolean refreshFailed(BazaarGraphTarget target, Range range) {
+        var entry = CACHE.get(key(target, range));
+        return entry != null && entry.warn(System.nanoTime());
+    }
+
+    public static boolean retryable(Throwable error) {
+        while (error instanceof CompletionException && error.getCause() != null) error = error.getCause();
+        if (error instanceof HttpFailure failure) return failure.status >= 500;
+        return error instanceof IOException || error instanceof java.util.concurrent.TimeoutException;
     }
 
     public static synchronized CompletableFuture<BazaarHistory> load(BazaarGraphTarget target, Range range) {
@@ -110,10 +149,10 @@ public final class BazaarHistoryClient {
         Instant end = Instant.now().truncatedTo(ChronoUnit.MINUTES);
         String prefix = "/bazaar/" + target.id();
         var response = get(prefix + range.path(end));
-        var entry = new Cached(response.thenComposeAsync(value -> BazaarHistoryRecovery.recover(
+        var entry = new Cached(previous, response.thenComposeAsync(value -> BazaarHistoryRecovery.recover(
                 BazaarHistory.parse(value.body()), range, end,
                 (from, to) -> recoveryGet(prefix + "/history?start=" + from + "&end=" + to))));
-        if (CACHE.size() >= 32) CACHE.remove(CACHE.keySet().iterator().next());
+        if (previous == null && CACHE.size() >= 32) CACHE.remove(CACHE.keySet().iterator().next());
         CACHE.put(key, entry);
         response.thenAccept(value -> entry.result.whenComplete((history, error) -> {
             // Recovered recent tails must refresh even when the older month response is cached for an hour.

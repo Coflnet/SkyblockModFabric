@@ -1,6 +1,7 @@
 package com.coflnet.gui.bazaar;
 
 import com.coflnet.core.BazaarGraphTarget;
+import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.core.BazaarHistory;
 import com.coflnet.core.BazaarHistoryClient;
 import com.coflnet.core.BazaarHistoryRecovery;
@@ -30,7 +31,8 @@ public final class BazaarHistoryScreen extends Screen {
     private BazaarHistory.Plot plot;
     private Component status = message("loading");
     private int revision, zoom = 1;
-    private boolean started, compare;
+    private boolean started, compare, refreshFailed;
+    private Button retryButton;
 
     public BazaarHistoryScreen(AbstractContainerScreen<?> parent, BazaarGraphTarget target) {
         super(Component.literal(target.query()));
@@ -66,6 +68,9 @@ public final class BazaarHistoryScreen extends Screen {
         }
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
                 .bounds(width - 76, height - 27, 60, 20).build());
+        retryButton = addRenderableWidget(Button.builder(message("retry"), button -> load())
+                .bounds(width - 142, height - 27, 60, 20).build());
+        retryButton.visible = refreshFailed;
         if (!started) { started = true; load(); } else updatePlot();
     }
 
@@ -92,9 +97,28 @@ public final class BazaarHistoryScreen extends Screen {
         history = BazaarHistoryClient.cached(target, range);
         updatePlot();
         status = message("loading");
-        BazaarHistoryClient.load(target, range).whenComplete((result, error) -> Minecraft.getInstance().execute(() -> {
+        refreshFailed = false;
+        if (retryButton != null) retryButton.visible = false;
+        request(request, range, false);
+    }
+
+    private void request(int request, BazaarHistoryClient.Range requestedRange, boolean retry) {
+        BazaarHistoryClient.load(target, requestedRange).whenComplete((result, error) -> Minecraft.getInstance().execute(() -> {
             if (request != revision || Minecraft.getInstance().gui.screen() != this) return;
-            if (error != null) { status = message("error"); return; }
+            if (error != null) {
+                if (!retry && BazaarHistoryClient.stale(target, requestedRange) && BazaarHistoryClient.retryable(error)) {
+                    java.util.concurrent.CompletableFuture.delayedExecutor(2, java.util.concurrent.TimeUnit.SECONDS).execute(() ->
+                            Minecraft.getInstance().execute(() -> {
+                                if (request == revision && Minecraft.getInstance().gui.screen() == this)
+                                    request(request, requestedRange, true);
+                            }));
+                    return;
+                }
+                status = message("error");
+                refreshFailed = BazaarHistoryClient.refreshFailed(target, requestedRange);
+                retryButton.visible = refreshFailed;
+                return;
+            }
             history = result;
             updatePlot();
             status = message("empty");
@@ -139,7 +163,9 @@ public final class BazaarHistoryScreen extends Screen {
         var end = Instant.ofEpochMilli(plot.to()).atZone(zone);
         var date = DateTimeFormatter.ofPattern("MMM d HH:mm");
         String period = date.format(start) + " – " + date.format(end) + " " + end.getZone().getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.getDefault());
-        graphics.text(font, font.plainSubstrByWidth(period, width - 100), 16, height - 21, 0xFF99AABD, false);
+        if (refreshFailed)
+            graphics.text(font, font.plainSubstrByWidth(message("stale").getString(), width - 166), 16, height - 21, 0xFFFFCC66, false);
+        else graphics.text(font, font.plainSubstrByWidth(period, width - 100), 16, height - 21, 0xFF99AABD, false);
     }
 
     private Component valueLine(BazaarHistory.Sample sample, BazaarHistory.Metric choice) {
@@ -152,10 +178,16 @@ public final class BazaarHistoryScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() == 1 && event.y() >= 103 && event.y() < height - 34) {
+        if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT && event.y() >= 103 && event.y() < height - 34) {
             changeZoom(zoom == 8 ? 1 : zoom * 2); return true;
         }
         return super.mouseClicked(event, doubleClick);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        BazaarCharts.releaseMouse(event);
+        return super.mouseReleased(event);
     }
 
     @Override

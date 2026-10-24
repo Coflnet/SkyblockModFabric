@@ -9,6 +9,7 @@ import com.coflnet.gui.bazaar.BazaarCharts;
 import com.coflnet.gui.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.Slot;
@@ -32,6 +33,11 @@ public abstract class ItemHighlightMixin {
     @Shadow protected int imageHeight;
 
     @Shadow @Nullable protected Slot hoveredSlot;
+
+    @Shadow
+    private Slot getHoveredSlot(double mouseX, double mouseY) {
+        throw new AssertionError();
+    }
 
     // Per-screen-instance cache for extractSlots (called every frame): a slot's
     // highlight is only recomputed when its ItemStack identity changed or the
@@ -59,6 +65,22 @@ public abstract class ItemHighlightMixin {
         } catch (Exception e) {
             System.out.println("[ItemHighlightMixin] keyPressed failed: " + e.getMessage());
         }
+    }
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void onGraphMouseClicked(MouseButtonEvent input, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
+        try {
+            Slot slot = getHoveredSlot(input.x(), input.y());
+            if (BazaarCharts.handleMouse((AbstractContainerScreen<?>) (Object) this, input,
+                    slot == null ? ItemStack.EMPTY : slot.getItem())) cir.setReturnValue(true);
+        } catch (Exception e) {
+            System.out.println("[ItemHighlightMixin] mouseClicked failed: " + e.getMessage());
+        }
+    }
+
+    @Inject(method = "mouseReleased", at = @At("HEAD"))
+    private void onGraphMouseReleased(MouseButtonEvent input, CallbackInfoReturnable<Boolean> cir) {
+        BazaarCharts.releaseMouse(input);
     }
 
     @Inject(method = "extractSlots", at = @At("HEAD"))

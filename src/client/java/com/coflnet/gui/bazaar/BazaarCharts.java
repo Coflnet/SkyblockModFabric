@@ -13,15 +13,18 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemLore;
+import org.lwjgl.sdl.SDLMouse;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
+import java.util.function.Predicate;
 
 public final class BazaarCharts {
     private static final Map<ItemStack, Cached> CACHE = new WeakHashMap<>();
@@ -40,15 +43,28 @@ public final class BazaarCharts {
     public static void tick(Minecraft client) {
         if (!graphsKey.isUnbound()) {
             var bound = InputConstants.getKey(graphsKey.saveString());
-            if (bound.getType() == InputConstants.Type.KEYBOARD && !InputConstants.isKeyDown(bound.getValue())) held = false;
+            if (bound.getType() == InputConstants.Type.KEYBOARD && !InputConstants.isKeyDown(bound.getValue())
+                    || bound.getType() == InputConstants.Type.MOUSE
+                    && (SDLMouse.SDL_GetMouseState(null, null) & (1 << (bound.getValue() - 1))) == 0) held = false;
         }
         while (graphsKey.consumeClick()) { }
     }
 
     public static boolean handleKey(AbstractContainerScreen<?> screen, KeyEvent event, ItemStack hovered) {
+        return open(screen, hovered, graphsKey.matches(event) && !conflicts(key -> key.matches(event)));
+    }
+
+    public static boolean handleMouse(AbstractContainerScreen<?> screen, MouseButtonEvent event, ItemStack hovered) {
+        return open(screen, hovered, graphsKey.matchesMouse(event) && !conflicts(key -> key.matchesMouse(event)));
+    }
+
+    public static void releaseMouse(MouseButtonEvent event) {
+        if (graphsKey.matchesMouse(event)) held = false;
+    }
+
+    private static boolean open(AbstractContainerScreen<?> screen, ItemStack hovered, boolean matches) {
         Minecraft client = Minecraft.getInstance();
-        if (!graphsKey.matches(event) || conflicts(event)
-                || screen.getFocused() instanceof EditBox edit && edit.canConsumeInput()
+        if (!matches || screen.getFocused() instanceof EditBox edit && edit.canConsumeInput()
                 || client.player == null || client.gameMode == null || client.getConnection() == null
                 || client.player.containerMenu != screen.getMenu() || !screen.getMenu().getCarried().isEmpty()) return false;
         if (held) return true;
@@ -59,11 +75,11 @@ public final class BazaarCharts {
         return true;
     }
 
-    private static boolean conflicts(KeyEvent event) {
-        return CoflModClient.bestflipsKeyBinding.matches(event)
-                || CoflModClient.uploadItemKeyBinding.matches(event)
-                || CoflModClient.openSettingsKeyBinding.matches(event)
-                || CoflModClient.additionalKeyBindings.stream().anyMatch(key -> key.matches(event));
+    private static boolean conflicts(Predicate<KeyMapping> matches) {
+        return matches.test(CoflModClient.bestflipsKeyBinding)
+                || matches.test(CoflModClient.uploadItemKeyBinding)
+                || matches.test(CoflModClient.openSettingsKeyBinding)
+                || CoflModClient.additionalKeyBindings.stream().anyMatch(matches);
     }
 
     private static BazaarGraphTarget target(ItemStack stack) {
