@@ -5,9 +5,11 @@ import com.coflnet.CoflModClient;
 import com.coflnet.PerfTracer;
 import com.coflnet.core.HighlightColor;
 import com.coflnet.gui.HighlightRegistry;
+import com.coflnet.gui.bazaar.BazaarCharts;
 import com.coflnet.gui.RenderUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.Slot;
@@ -32,6 +34,11 @@ public abstract class ItemHighlightMixin {
 
     @Shadow @Nullable protected Slot hoveredSlot;
 
+    @Shadow
+    private Slot getHoveredSlot(double mouseX, double mouseY) {
+        throw new AssertionError();
+    }
+
     // Per-screen-instance cache for extractSlots (called every frame): a slot's
     // highlight is only recomputed when its ItemStack identity changed or the
     // shared descriptionsVersion counter moved, instead of re-scanning tooltip
@@ -44,6 +51,11 @@ public abstract class ItemHighlightMixin {
     @Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
     private void onKeyPressed(KeyEvent input, CallbackInfoReturnable<Boolean> cir) {
         try {
+            if (BazaarCharts.handleKey((AbstractContainerScreen<?>) (Object) this, input,
+                    hoveredSlot == null ? ItemStack.EMPTY : hoveredSlot.getItem())) {
+                cir.setReturnValue(true);
+                return;
+            }
             // The keyPressed method now receives a KeyInput record object.
             if (CoflModClient.uploadItemKeyBinding.matches(input)) {
                 if (hoveredSlot != null && hoveredSlot.hasItem()) {
@@ -53,6 +65,22 @@ public abstract class ItemHighlightMixin {
         } catch (Exception e) {
             System.out.println("[ItemHighlightMixin] keyPressed failed: " + e.getMessage());
         }
+    }
+
+    @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
+    private void onGraphMouseClicked(MouseButtonEvent input, boolean doubleClick, CallbackInfoReturnable<Boolean> cir) {
+        try {
+            Slot slot = getHoveredSlot(input.x(), input.y());
+            if (BazaarCharts.handleMouse((AbstractContainerScreen<?>) (Object) this, input,
+                    slot == null ? ItemStack.EMPTY : slot.getItem())) cir.setReturnValue(true);
+        } catch (Exception e) {
+            System.out.println("[ItemHighlightMixin] mouseClicked failed: " + e.getMessage());
+        }
+    }
+
+    @Inject(method = "mouseReleased", at = @At("HEAD"))
+    private void onGraphMouseReleased(MouseButtonEvent input, CallbackInfoReturnable<Boolean> cir) {
+        BazaarCharts.releaseMouse(input);
     }
 
     @Inject(method = "extractSlots", at = @At("HEAD"))
