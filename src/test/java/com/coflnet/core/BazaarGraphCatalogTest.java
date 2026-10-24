@@ -22,6 +22,25 @@ class BazaarGraphCatalogTest {
         assertNull(catalog.resolve(null));
     }
 
+    @Test void malformedRowsAndEnchantmentAliasesDoNotDiscardValidProducts() {
+        var catalog = BazaarGraphCatalog.parse("""
+                [{"tag":"COAL","name":"Coal","flags":1},
+                 null, [], 3,
+                 {"tag":null,"name":"Null tag","flags":1},
+                 {"tag":"BAD_FLAGS","name":"Bad flags","flags":{}},
+                 {"tag":"NULL_FLAGS","name":"Null flags","flags":null},
+                 {"tag":"ENCHANTMENT_X","name":"Nonstandard book","flags":1},
+                 {"tag":"ENCHANTMENT_TEST__KEY_1","name":"Double underscore","flags":1},
+                 {"tag":"DIAMOND","name":"Diamond","flags":"BAZAAR"}]
+                """);
+        assertEquals("COAL", catalog.resolve(new BazaarGraphTarget("", "Coal")).id());
+        assertEquals("DIAMOND", catalog.resolve(new BazaarGraphTarget("DIAMOND", "Diamond")).id());
+        assertNull(catalog.resolve(new BazaarGraphTarget("BAD_FLAGS", "Bad flags")));
+        assertNull(catalog.resolve(new BazaarGraphTarget("NULL_FLAGS", "Null flags")));
+        assertEquals("ENCHANTMENT_X", catalog.resolve(new BazaarGraphTarget("ENCHANTMENT_X", "Nonstandard book")).id(),
+                "A failed derived alias must not discard an explicitly Bazaar-tradeable ID");
+    }
+
     @Test void resolvesEnchantmentMenuNamesAndKeepsLevelsSeparate() {
         var catalog = BazaarGraphCatalog.parse("""
                 [{"tag":"ENCHANTMENT_ULTIMATE_REND_4","name":"rend 4 enchant","flags":"BAZAAR"},

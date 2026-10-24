@@ -14,24 +14,28 @@ public record BazaarGraphCatalog(Map<String, BazaarGraphTarget> ids, Map<String,
         var names = new HashMap<String, BazaarGraphTarget>();
         var ambiguous = new HashSet<String>();
         for (var row : JsonParser.parseString(json).getAsJsonArray()) {
-            var item = row.getAsJsonObject();
-            if (!item.has("flags") || item.get("flags").isJsonNull()) continue;
-            var flags = item.get("flags");
-            boolean bazaar = flags.getAsJsonPrimitive().isNumber() ? (flags.getAsInt() & 1) != 0
-                    : java.util.Arrays.asList(flags.getAsString().split(",\\s*")).contains("BAZAAR");
-            if (!bazaar || !item.has("tag") || !item.has("name") || item.get("name").isJsonNull()) continue;
-            String id = item.get("tag").getAsString();
-            if (!id.matches("[A-Za-z0-9_:.-]{1,150}")) continue;
-            var target = new BazaarGraphTarget(id, BazaarChart.clean(item.get("name").getAsString()));
-            ids.put(id, target);
-            alias(names, ambiguous, target.query(), target);
-            if (id.startsWith("ENCHANTMENT_")) {
-                int last = id.lastIndexOf('_');
-                try {
-                    var book = BazaarGraphTarget.from("ENCHANTED_BOOK", "Enchanted Book",
-                            Map.of(id.substring(12, last).toLowerCase(Locale.ROOT), Integer.parseInt(id.substring(last + 1))));
-                    if (book != null) alias(names, ambiguous, book.query(), target);
-                } catch (IllegalArgumentException ignored) { }
+            try {
+                var item = row.getAsJsonObject();
+                if (!item.has("flags") || item.get("flags").isJsonNull()) continue;
+                var flags = item.get("flags");
+                boolean bazaar = flags.getAsJsonPrimitive().isNumber() ? (flags.getAsInt() & 1) != 0
+                        : java.util.Arrays.asList(flags.getAsString().split(",\\s*")).contains("BAZAAR");
+                if (!bazaar || !item.has("tag") || !item.has("name") || item.get("name").isJsonNull()) continue;
+                String id = item.get("tag").getAsString();
+                if (!id.matches("[A-Za-z0-9_:.-]{1,150}")) continue;
+                var target = new BazaarGraphTarget(id, BazaarChart.clean(item.get("name").getAsString()));
+                ids.put(id, target);
+                alias(names, ambiguous, target.query(), target);
+                if (id.startsWith("ENCHANTMENT_")) {
+                    int last = id.lastIndexOf('_');
+                    try {
+                        var book = BazaarGraphTarget.from("ENCHANTED_BOOK", "Enchanted Book",
+                                Map.of(id.substring(12, last).toLowerCase(Locale.ROOT), Integer.parseInt(id.substring(last + 1))));
+                        if (book != null) alias(names, ambiguous, book.query(), target);
+                    } catch (RuntimeException ignored) { }
+                }
+            } catch (RuntimeException ignored) {
+                // A malformed entry must not disable graphs for the remaining products.
             }
         }
         ambiguous.forEach(names::remove);

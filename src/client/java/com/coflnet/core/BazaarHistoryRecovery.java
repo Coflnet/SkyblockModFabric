@@ -122,7 +122,7 @@ public final class BazaarHistoryRecovery {
         }
 
         CompletableFuture<Void> batch(List<Interval> windows, int offset) {
-            if (offset >= windows.size()) return CompletableFuture.completedFuture(null);
+            if (offset >= windows.size() || remaining == 0) return CompletableFuture.completedFuture(null);
             int limit = Math.min(windows.size(), offset + PARALLEL_REQUESTS);
             var requests = new ArrayList<CompletableFuture<BazaarHistory>>();
             for (int i = offset; i < limit; i++) {
@@ -130,10 +130,12 @@ public final class BazaarHistoryRecovery {
                 remaining--;
                 requests.add(fetcher.fetch(window.from(), window.to()));
             }
-            return CompletableFuture.allOf(requests.toArray(CompletableFuture[]::new)).thenCompose(ignored -> {
-                for (var request : requests) merge(request.join());
-                return batch(windows, limit);
-            });
+            return CompletableFuture.allOf(requests.toArray(CompletableFuture[]::new)).handle((ignored, error) -> {
+                for (var request : requests) if (!request.isCompletedExceptionally()) merge(request.join());
+                // Keep the initial history and successful in-flight replies, then stop further recovery.
+                if (error != null) remaining = 0;
+                return null;
+            }).thenCompose(ignored -> batch(windows, limit));
         }
     }
 }

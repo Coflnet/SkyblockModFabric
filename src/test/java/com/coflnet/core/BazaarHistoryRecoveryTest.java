@@ -138,6 +138,28 @@ class BazaarHistoryRecoveryTest {
         assertEquals(BazaarHistoryRecovery.MAX_REQUESTS, pending.size());
     }
 
+    @Test void aFailedRecoveryKeepsInitialAndSuccessfulInflightSamplesAndStopsFurtherRequests() {
+        var range = BazaarHistoryClient.Range.MONTH;
+        var initial = new BazaarHistory(List.of(sample(END.minus(range.duration)), sample(END)));
+        var pending = new ArrayList<CompletableFuture<BazaarHistory>>();
+        var recovered = BazaarHistoryRecovery.recover(initial, range, END, (from, to) -> {
+            var request = new CompletableFuture<BazaarHistory>();
+            pending.add(request);
+            return request;
+        });
+        assertEquals(BazaarHistoryRecovery.PARALLEL_REQUESTS, pending.size());
+        pending.getFirst().completeExceptionally(new java.io.IOException("HTTP 429"));
+        assertFalse(recovered.isDone(), "Retain successful responses already in flight");
+        pending.get(1).complete(new BazaarHistory(List.of(sample(END.minusSeconds(3600)))));
+        pending.get(2).complete(new BazaarHistory(List.of(sample(END.minusSeconds(7200)))));
+        var history = recovered.join();
+        assertEquals(4, history.samples().size());
+        assertTrue(history.samples().containsAll(initial.samples()));
+        assertEquals(END, history.requestedEnd());
+        assertTrue(BazaarHistoryRecovery.incomplete(history, range, END));
+        assertEquals(BazaarHistoryRecovery.PARALLEL_REQUESTS, pending.size(), "No later batches after failure");
+    }
+
     @Test void overlappingRepliesAreSortedDeduplicatedAndRetainKnownTradeCounters() {
         var initial = new BazaarHistory(List.of(sample(END)));
         var recovered = BazaarHistoryRecovery.recover(initial, BazaarHistoryClient.Range.HOUR, END, (from, to) -> {

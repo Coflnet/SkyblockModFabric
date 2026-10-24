@@ -46,6 +46,15 @@ class BazaarHistoryClientTest {
         assertFalse(coldRetry.warn(hour + 1), "No cache uses the existing unavailable state");
     }
 
+    @Test void rateLimitDelayHonorsSecondsAndHttpDatesWithABoundedFallback() {
+        var now = Instant.parse("2026-10-24T15:00:00Z");
+        assertEquals(120_000, BazaarHistoryClient.retryDelayMillis("120", now));
+        assertEquals(300_000, BazaarHistoryClient.retryDelayMillis("Sat, 24 Oct 2026 15:05:00 GMT", now));
+        assertEquals(0, BazaarHistoryClient.retryDelayMillis("Sat, 24 Oct 2026 14:59:00 GMT", now));
+        assertEquals(60_000, BazaarHistoryClient.retryDelayMillis(null, now));
+        assertEquals(60_000, BazaarHistoryClient.retryDelayMillis("invalid", now));
+    }
+
     @Test void successfulRefreshReplacesOldDataAndClearsFailures() {
         var saved = new BazaarHistoryClient.Cached(null, CompletableFuture.completedFuture(history(12)));
         var failed = new BazaarHistoryClient.Cached(saved, CompletableFuture.failedFuture(new IOException("Offline")));

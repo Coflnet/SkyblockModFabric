@@ -69,6 +69,7 @@ public final class BazaarHistoryClient {
     private static volatile BazaarGraphCatalog catalog;
     private static Path catalogFile;
     private static long nextCatalogAttempt;
+    private static volatile Instant retryAt = Instant.MIN;
 
     private BazaarHistoryClient() { }
 
@@ -174,11 +175,30 @@ public final class BazaarHistoryClient {
         });
     }
 
+    static long retryDelayMillis(String header, Instant now) {
+        try {
+            return Math.max(0, Math.multiplyExact(Long.parseLong(header), 1000));
+        } catch (RuntimeException ignored) {
+            try {
+                var until = java.time.ZonedDateTime.parse(header, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+                return Math.max(0, Duration.between(now, until).toMillis());
+            } catch (RuntimeException invalid) { return 60_000; }
+        }
+    }
+
+    private static synchronized void pauseRequests(String header) {
+        Instant now = Instant.now();
+        Instant until = now.plusMillis(retryDelayMillis(header, now));
+        if (until.isAfter(retryAt)) retryAt = until;
+    }
+
     private static CompletableFuture<Response> get(String path) {
+        if (Instant.now().isBefore(retryAt)) return CompletableFuture.failedFuture(new HttpFailure(429));
         var request = HttpRequest.newBuilder(URI.create("https://sky.coflnet.com/api" + path))
                 .timeout(Duration.ofSeconds(10)).header("Accept", "application/json")
                 .header("Accept-Encoding", "gzip").header("User-Agent", "SkyCofl/2.0.0").GET().build();
         return HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray()).orTimeout(12, TimeUnit.SECONDS).thenApplyAsync(response -> {
+            if (response.statusCode() == 429) pauseRequests(response.headers().firstValue("Retry-After").orElse(null));
             if (response.statusCode() != 200) throw new CompletionException(new HttpFailure(response.statusCode()));
             try {
                 byte[] bytes = response.body();

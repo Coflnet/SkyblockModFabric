@@ -121,7 +121,7 @@ public final class BazaarHistoryScreen extends Screen {
             }
             history = result;
             updatePlot();
-            status = message("empty");
+            status = message(result.samples().isEmpty() ? "empty" : "empty_metric");
         }));
     }
 
