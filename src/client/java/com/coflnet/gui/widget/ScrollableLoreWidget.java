@@ -4,6 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractScrollArea;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -13,14 +14,17 @@ import java.util.List;
 
 /**
  * A scrollable widget that renders multi-line lore text with clipping.
- * Only consumes clicks on the scrollbar; other clicks pass through
- * so the "click anywhere" buy widget can handle them.
+ * Only consumes clicks on the scrollbar; other clicks are forwarded to the
+ * click-through target so the "click anywhere" buy widget can handle them.
+ * The screen routes clicks and wheel scrolls to the same child, so the text
+ * area has to stay hoverable for scrolling and forward clicks itself.
  */
 public class ScrollableLoreWidget extends AbstractScrollArea {
     private final Font font;
     private Component message;
     private List<FormattedCharSequence> lines = List.of();
     private final int textColor;
+    private GuiEventListener clickThrough;
 
     public ScrollableLoreWidget(int x, int y, int width, int height, Component message, int textColor) {
         super(x, y, width, height, Component.empty(), defaultSettings(height));
@@ -47,7 +51,12 @@ public class ScrollableLoreWidget extends AbstractScrollArea {
         if (updateScrolling(click)) {
             return true;
         }
-        return false;
+        return clickThrough != null && clickThrough.mouseClicked(click, fromScreen);
+    }
+
+    /** Sets the widget that receives clicks on the text, i.e. outside the scrollbar. */
+    public void setClickThrough(GuiEventListener clickThrough) {
+        this.clickThrough = clickThrough;
     }
 
     @Override
