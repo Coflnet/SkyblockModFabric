@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.coflnet.CoflModClient;
 import CoflCore.CoflSkyCommand;
 import com.coflnet.core.ExpectedCommandState;
+import com.coflnet.core.FlipMessages;
 import com.coflnet.core.GhostText;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -70,6 +71,7 @@ public class ChatScreenMixin {
     @Inject(method = "handleChatInput", at = @At("HEAD"))
     private void coflnet$clearExpectedCommand(String message, boolean addToHistory, CallbackInfo ci) {
         ExpectedCommandState.consume(message, System.currentTimeMillis());
+        FlipMessages.commandSent(message);
     }
 
     @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)
