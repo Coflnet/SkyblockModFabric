@@ -158,6 +158,16 @@ public class CoflSettingsScreen {
                 .name(Component.literal("SkyCofl"));
 
         categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.translatable("option.coflmod.readableBazaarCharts"))
+                .description(OptionDescription.of(Component.translatable("option.coflmod.readableBazaarCharts.description")))
+                .binding(true, () -> cfg.readableBazaarCharts, value -> {
+                    cfg.readableBazaarCharts = value;
+                    cfg.save();
+                })
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        categoryBuilder.option(Option.<Boolean>createBuilder()
                 .name(Component.literal("Developer Mode"))
                 .description(OptionDescription.of(Component.literal(
                         "Adds a \"Copy Dump\" button to container screens for diagnostics.")))

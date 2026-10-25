@@ -26,6 +26,7 @@ import CoflCore.commands.models.HotkeyRegister;
 import CoflCore.configuration.Config;
 import CoflCore.configuration.GUIType;
 import com.coflnet.gui.BinGUI;
+import com.coflnet.gui.bazaar.BazaarCharts;
 import com.coflnet.core.DescriptionEndpointOverride;
 import com.mojang.brigadier.CommandDispatcher;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -80,6 +81,7 @@ import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -295,10 +297,13 @@ public class CoflModClient implements ClientModInitializer {
             InputConstants.KEY_O,
             SKYCOFL_CATEGORY));
 
+        BazaarCharts.initialize(SKYCOFL_CATEGORY);
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             // Feeds the dev-mode render-thread stall watchdog; cheap even when off.
             PerfTracer.recordFrame();
             goalProgressTick(client);
+            BazaarCharts.tick(client);
 
             // Process scoreboard updates if dirty flag is set (set by ScoreboardMixin)
             if (scoreboardDirty && client.player != null) {
@@ -365,29 +370,7 @@ public class CoflModClient implements ClientModInitializer {
             }
         });
 
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            com.coflnet.config.TradeGuiManager.clearAccountTier();
-            ServerContext detectedServerContext = detectServerContext(null);
-            applyServerContext(detectedServerContext);
-            lastScoreboardProcessMs = 0L;
-            if (detectedServerContext.isSupported()) {
-                System.out.println("Connected to " + detectedServerContext.name().toLowerCase(Locale.ROOT));
-
-                // Ensure the SkyCofl tunnel is present in text_Tunnels' config before
-                // text_Tunnels loads its server-specific config.
-                if (detectedServerContext == ServerContext.SKYBLOCK) {
-                    ensureTextTunnelsConfig();
-                }
-
-                // Delay startup slightly so the join flow can finish before background
-                // initialization begins.
-                scheduleAutoStartAfterJoin();
-            }
-            // reset cached data for different island
-            resetDescriptions();
-            uploadedScoreboard = false;
-            EventSubscribers.positions = null;
-        });
+        ClientPlayConnectionEvents.JOIN.register(this::onWorldJoin);
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             com.coflnet.config.TradeGuiManager.clearAccountTier();
@@ -672,19 +655,11 @@ public class CoflModClient implements ClientModInitializer {
             captureTradePartner(messageText);
             // Skip backend processing for our own display messages to avoid a feedback loop.
             if (!messageText.startsWith(TEXT_TUNNELS_MESSAGE_PREFIX)) {
-                EventRegistry.onChatMessage(messageText);
-                // iterate over all components of the message
-                String previousHover = null;
-                for (Component component : message.getSiblings()) {
-                    if(component.getStyle().getHoverEvent() != null
-                            && component.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest) {
-                        String text = hest.value().getString();
-                        if (text.equals(previousHover))
-                            continue; // skip if the text is the same as the previous one, different colored text often has the same hover text
-                        previousHover = text;
-                        EventRegistry.onChatMessage(hest.value().getString());
-                    }
-                }
+                List<String> lines = chatLinesForBackend(message, messageText);
+                Runnable forward = () -> lines.forEach(EventRegistry::onChatMessage);
+                // The backend stores a trade from the last trade-window upload before this line.
+                if (!com.coflnet.gui.trade.TradePriceCache.holdUntilUploaded(messageText, forward))
+                    forward.run();
                 if(EventRegistry.shouldBlockChatMessage(messageText))
                     return false;
             }
@@ -728,6 +703,34 @@ public class CoflModClient implements ClientModInitializer {
 
             return InteractionResult.PASS;
         });
+    }
+
+    /**
+     * Fabric {@code ClientPlayConnectionEvents.JOIN} hook. Island switches and lobby hops
+     * fire it again without a new backend session, so the account tier set by the last
+     * loggedIn command is kept; only a closed backend session clears it.
+     */
+    void onWorldJoin(ClientPacketListener handler, PacketSender sender, Minecraft client) {
+        ServerContext detectedServerContext = detectServerContext(null);
+        applyServerContext(detectedServerContext);
+        lastScoreboardProcessMs = 0L;
+        if (detectedServerContext.isSupported()) {
+            System.out.println("Connected to " + detectedServerContext.name().toLowerCase(Locale.ROOT));
+
+            // Ensure the SkyCofl tunnel is present in text_Tunnels' config before
+            // text_Tunnels loads its server-specific config.
+            if (detectedServerContext == ServerContext.SKYBLOCK) {
+                ensureTextTunnelsConfig();
+            }
+
+            // Delay startup slightly so the join flow can finish before background
+            // initialization begins.
+            scheduleAutoStartAfterJoin();
+        }
+        // reset cached data for different island
+        resetDescriptions();
+        uploadedScoreboard = false;
+        EventSubscribers.positions = null;
     }
 
     /**
@@ -814,17 +817,7 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     private static String getStringFromDouble(double seconds, int currentPrecision) {
-        String render;
-
-        if (seconds > 100) {
-            render = String.valueOf((int) seconds);
-        } else {
-            render = String.format(Locale.US, "%.3f", seconds).substring(0, currentPrecision);
-            if(render.charAt(render.length() - 1) == '.')
-                render = render.substring(0, currentPrecision -1);
-        }
-
-        return render + "s";
+        return com.coflnet.core.CountdownFormatter.format(seconds, currentPrecision);
     }
 
     // ===== Hypixel trade window (confirmed via dev Copy Dump) =====
@@ -898,6 +891,23 @@ public class CoflModClient implements ClientModInitializer {
                 .map(tip -> tip == null ? null : tip.value).toArray(String[]::new);
         return com.coflnet.core.TradeValuation.parseWorthFromTips(values,
                 com.coflnet.core.TradeValuation.WorthBasis.valueOf(basis.name()));
+    }
+
+    /** The chat line followed by its distinct hover texts, as the backend receives them. */
+    private static List<String> chatLinesForBackend(Component message, String messageText) {
+        List<String> lines = new ArrayList<>();
+        lines.add(messageText);
+        String previousHover = null;
+        for (Component component : message.getSiblings()) {
+            if (component.getStyle().getHoverEvent() instanceof HoverEvent.ShowText hest) {
+                String text = hest.value().getString();
+                if (text.equals(previousHover))
+                    continue; // skip if the text is the same as the previous one, different colored text often has the same hover text
+                previousHover = text;
+                lines.add(text);
+            }
+        }
+        return lines;
     }
 
     /**
@@ -1555,7 +1565,9 @@ public class CoflModClient implements ClientModInitializer {
         return fd;
     }
 
-    public static SoundEvent findByName(String name) {
+    /** Resolves a sound name sent by the backend; unknown names play the bell. */
+    public static SoundEvent findByName(String backendName) {
+        String name = com.coflnet.core.BackendSounds.soundEventField(backendName);
         SoundEvent result = SoundEvents.NOTE_BLOCK_BELL.value();
 
         for (Field f : SoundEvents.class.getDeclaredFields()) {
@@ -1702,7 +1714,17 @@ public class CoflModClient implements ClientModInitializer {
             return;
         }
         if (!shouldTriggerDescriptionLoad(screen)) return;
-        refreshOpenDescriptions(screen);
+        // Hypixel sends slot contents after the open packet: an all-empty chest part is deferred to
+        // the debouncer (one upload after the quiet period, empty or filled) instead of uploaded now.
+        var slots = screen.getMenu().slots;
+        boolean[] slotEmpty = new boolean[slots.size()];
+        for (int i = 0; i < slotEmpty.length; i++) slotEmpty[i] = slots.get(i).getItem().isEmpty();
+        boolean playerInv = screen instanceof net.minecraft.client.gui.screens.inventory.InventoryScreen;
+        boolean trade = com.coflnet.core.MenuClassifier.isTradeTitle(slots.size() - 36, title);
+        if (com.coflnet.core.ChestOpenPolicy.shouldUploadOnOpen(slotEmpty, playerInv, trade))
+            refreshOpenDescriptions(screen);
+        else
+            onChestContentChanged(screen);
     }
 
     /** Full content packets can populate any container after its screen has already opened. */
@@ -1739,6 +1761,8 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static void onBackendDisconnected() {
+        // The tier belongs to the backend session; the next loggedIn sets it again.
+        com.coflnet.config.TradeGuiManager.clearAccountTier();
         runOnClientThread(() -> {
             goalTrigger.reset();
             com.coflnet.core.ExpectedCommandState.clear();
@@ -1928,7 +1952,7 @@ public class CoflModClient implements ClientModInitializer {
 
     /** A confirmed lore upload invalidates cached descriptions for the next inventory refresh. */
     public static void invalidateLoreDescriptions() {
-        DescriptionHandler.emptyTooltipData();
+        com.coflnet.core.DescriptionState.reset();
         knownIds.clear();
         descriptionQueue.reserveResponse();
         descriptionsVersion.incrementAndGet();
