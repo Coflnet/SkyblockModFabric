@@ -5,7 +5,7 @@ It provides in-game access to [sky.coflnet.com](https://sky.coflnet.com) auction
 
 For the Forge edition, see [Coflnet/Skyblockmod](https://github.com/Coflnet/Skyblockmod).
 
-Current version: **2.0.0** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
+Current version: **2.0.1** | [Releases](https://github.com/Coflnet/SkyblockModFabric/releases)
 
 ## License
 

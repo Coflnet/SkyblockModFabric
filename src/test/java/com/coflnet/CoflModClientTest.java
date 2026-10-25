@@ -2,6 +2,7 @@ package com.coflnet;
 
 import CoflCore.commands.CommandType;
 import CoflCore.commands.JsonStringCommand;
+import CoflCore.configuration.LocalConfig;
 import CoflCore.events.ReceiveCommand;
 import CoflCore.events.SocketClose;
 import com.coflnet.config.TradeGuiManager;
@@ -65,6 +66,11 @@ class CoflModClientTest {
         // World joins no longer clear the tier, so the closed backend session has to.
         subscribers.onSocketClose(new SocketClose());
         assertFalse(TradeGuiManager.hasPremium());
+    }
+
+    @Test void bundledCommandAutocompleteOffersShareitem() {
+        // /cofl suggestions read CoflCore.config.knownCommands, which starts from the core's bundled defaults.
+        assertTrue(LocalConfig.createDefaultConfig().knownCommands.containsKey("shareitem"));
     }
 
     private static EventSubscribers logInWithTier(String tier) {
