@@ -75,6 +75,11 @@ class DescriptionFlowContractTest {
                 CoflCore.configuration.Config.BaseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
                 var request = new DescriptionRequest("Chest", new String[]{"outgoing-item"},
                         "outgoing-inventory", "scenario-user", new Position(12, 64, 34));
+                var cached = CoflCore.network.WSClient.gson.fromJson(
+                        "[{\"type\":\"APPEND\",\"value\":\"cached summary\"}]", DescriptionHandler.DescModification[].class);
+                DescriptionState.apply(request, new DescriptionHandler.DescModification[][]{null, cached});
+                DescriptionState.openPanel("Other menu", new Object());
+                DescriptionState.openPanel("Chest", new Object());
                 Thread.startVirtualThread(() -> {
                     new DescriptionQueue(Runnable::run, delayMs).submit(request, response -> {
                         DescriptionState.apply(request, response);
@@ -86,12 +91,15 @@ class DescriptionFlowContractTest {
                 assertTrue(received.await(2, TimeUnit.SECONDS), "request did not reach the backend");
                 assertTrue(returned.await(1, TimeUnit.SECONDS), "caller blocked waiting for the response");
                 assertEquals(1, loaded.getCount(), "completion ran before the response arrived");
+                assertEquals("cached summary", DescriptionState.panel()[0].value,
+                        "the matching panel must remain visible while the backend is stalled");
                 releaseResponse.countDown();
                 assertTrue(loaded.await(2, TimeUnit.SECONDS), "response was not applied");
                 assertEquals("Chest", captured.get().get("chestName").getAsString());
                 assertEquals("outgoing-inventory", captured.get().get("fullInventoryNbt").getAsString());
                 assertEquals(JsonParser.parseString("{\"x\":12,\"y\":64,\"z\":34}"), captured.get().get("position"));
                 assertEquals("loaded", DescriptionHandler.getTooltipData("outgoing-item")[0].value);
+                assertEquals(0, DescriptionState.panel().length, "the fresh empty panel replaces the cached summary");
             } finally {
                 releaseResponse.countDown();
                 server.stop(0);

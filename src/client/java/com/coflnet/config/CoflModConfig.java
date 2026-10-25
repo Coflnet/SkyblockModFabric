@@ -21,6 +21,9 @@ public class CoflModConfig {
     // Text widget position settings
     public int textWidgetOffsetX = -5;
     public int textWidgetOffsetY = 5;
+
+    // Render the native Bazaar graph samples as a readable chart. Shift keeps the original tooltip.
+    public boolean readableBazaarCharts = true;
     
     // Sell protection settings
     public boolean sellProtectionEnabled = true;

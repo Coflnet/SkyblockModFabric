@@ -53,3 +53,10 @@ and fails its assertions because `settings.gradle` has no `testserver` project a
 not the mutable implementation workspace, owns the exact-base execution and evidence.
 
 On the pinned base commit these tests fail during `compileTestJava`, because the asserted `com.coflnet.core` classes do not exist and the logic is still inline in `CoflModClient`. With this extraction, the core regression suite compiles and passes under `./gradlew --no-daemon test`.
+
+## Bazaar charts
+
+The chart parser and hovered-item navigation use the same plain JUnit style as the other core helpers.
+For a client check, hover a Bazaar item in inventory and press G, then repeat from a Bazaar search
+result. On Graphs, check price/volume tooltips and native span/zoom controls. Hold Shift or disable
+Readable Bazaar charts to see the original plot. Unknown formats retain the native tooltip.
