@@ -28,7 +28,6 @@ import net.minecraft.network.chat.Component;
 import java.net.URI;
 
 public class EventSubscribers {
-    public static volatile FlipData flipData = null;
     public static volatile Countdown countdownData = null;
     public static volatile long countdownExpiryTime = 0L; // Target time when countdown expires (in milliseconds)
     public static volatile boolean showCountdown = false;
@@ -188,7 +187,7 @@ public class EventSubscribers {
     @Subscribe
     public void onOpenAuctionGUI(OnOpenAuctionGUI event){
         Minecraft.getInstance().execute(() -> {
-            flipData = event.flip;
+            com.coflnet.core.FlipMessages.opened(event.flip, System.currentTimeMillis());
             if (Minecraft.getInstance().getConnection() != null) {
                 Minecraft.getInstance().getConnection().sendChat(event.openAuctionCommand);
             }
