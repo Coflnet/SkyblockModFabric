@@ -153,6 +153,7 @@ public class CoflBinGUI extends BinGUI {
                 lore == null ? Component.literal("") : lore,
                 CoflColConfig.TEXT_PRIMARY
         );
+        loreScrollableTextWidget.setClickThrough(rightClickableWidget);
 
         if(auctionStatus.compareTo(AuctionStatus.AUCTION_CONFIRMING) == 0) setRightButtonConfig(auctionStatus);
         else if (BinActions.secondaryCancelsOwnAuction(auctionStatus)) setRightButtonConfig(auctionStatus); // keep labels after a resize
