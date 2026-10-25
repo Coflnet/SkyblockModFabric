@@ -42,6 +42,11 @@ public class CoflBinGUI extends BinGUI {
     }
 
     @Override
+    protected void showFlipMessage(Component message) {
+        titleTextWidget.setMessage(message);
+    }
+
+    @Override
     protected void clearAndInitWidgets(int screenWidth, int screenHeight) {
         this.clearWidgets();
         itemWidget = new ItemWidget(
@@ -140,7 +145,7 @@ public class CoflBinGUI extends BinGUI {
                 screenWidth / 2 - width / 2 + p + 3,
                 screenHeight / 2 - height / 2 + p + 2,
                 width - p*2 - 4, 10,
-                Component.literal(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
+                flipMessage(),
                 Minecraft.getInstance().font
         );
 
