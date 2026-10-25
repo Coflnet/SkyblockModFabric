@@ -82,6 +82,7 @@ import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
@@ -370,29 +371,7 @@ public class CoflModClient implements ClientModInitializer {
             }
         });
 
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            com.coflnet.config.TradeGuiManager.clearAccountTier();
-            ServerContext detectedServerContext = detectServerContext(null);
-            applyServerContext(detectedServerContext);
-            lastScoreboardProcessMs = 0L;
-            if (detectedServerContext.isSupported()) {
-                System.out.println("Connected to " + detectedServerContext.name().toLowerCase(Locale.ROOT));
-
-                // Ensure the SkyCofl tunnel is present in text_Tunnels' config before
-                // text_Tunnels loads its server-specific config.
-                if (detectedServerContext == ServerContext.SKYBLOCK) {
-                    ensureTextTunnelsConfig();
-                }
-
-                // Delay startup slightly so the join flow can finish before background
-                // initialization begins.
-                scheduleAutoStartAfterJoin();
-            }
-            // reset cached data for different island
-            resetDescriptions();
-            uploadedScoreboard = false;
-            EventSubscribers.positions = null;
-        });
+        ClientPlayConnectionEvents.JOIN.register(this::onWorldJoin);
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             com.coflnet.config.TradeGuiManager.clearAccountTier();
@@ -725,6 +704,34 @@ public class CoflModClient implements ClientModInitializer {
 
             return InteractionResult.PASS;
         });
+    }
+
+    /**
+     * Fabric {@code ClientPlayConnectionEvents.JOIN} hook. Island switches and lobby hops
+     * fire it again without a new backend session, so the account tier set by the last
+     * loggedIn command is kept; only a closed backend session clears it.
+     */
+    void onWorldJoin(ClientPacketListener handler, PacketSender sender, Minecraft client) {
+        ServerContext detectedServerContext = detectServerContext(null);
+        applyServerContext(detectedServerContext);
+        lastScoreboardProcessMs = 0L;
+        if (detectedServerContext.isSupported()) {
+            System.out.println("Connected to " + detectedServerContext.name().toLowerCase(Locale.ROOT));
+
+            // Ensure the SkyCofl tunnel is present in text_Tunnels' config before
+            // text_Tunnels loads its server-specific config.
+            if (detectedServerContext == ServerContext.SKYBLOCK) {
+                ensureTextTunnelsConfig();
+            }
+
+            // Delay startup slightly so the join flow can finish before background
+            // initialization begins.
+            scheduleAutoStartAfterJoin();
+        }
+        // reset cached data for different island
+        resetDescriptions();
+        uploadedScoreboard = false;
+        EventSubscribers.positions = null;
     }
 
     /**
@@ -1755,6 +1762,8 @@ public class CoflModClient implements ClientModInitializer {
     }
 
     public static void onBackendDisconnected() {
+        // The tier belongs to the backend session; the next loggedIn sets it again.
+        com.coflnet.config.TradeGuiManager.clearAccountTier();
         runOnClientThread(() -> {
             goalTrigger.reset();
             com.coflnet.core.ExpectedCommandState.clear();
