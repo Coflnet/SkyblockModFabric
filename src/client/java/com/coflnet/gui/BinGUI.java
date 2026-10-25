@@ -2,6 +2,7 @@ package com.coflnet.gui;
 
 import CoflCore.commands.models.FlipData;
 import com.coflnet.CoflModClient;
+import com.coflnet.core.FlipMessages;
 import com.coflnet.gui.widget.ItemWidget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -64,8 +65,7 @@ public abstract class BinGUI extends Screen {
 
         if (isAuctionConfirming(gcs)) this.auctionStatus = AuctionStatus.AUCTION_CONFIRMING;
         else if (isAuctionInit(gcs)) this.auctionStatus = AuctionStatus.INIT;
-
-        flipData = CoflModClient.popFlipData();
+        FlipMessages.containerOpened(gcsh, true);
 
         screenWidth = Minecraft.getInstance().screen.width;
         screenHeight = Minecraft.getInstance().screen.height;
@@ -112,8 +112,25 @@ public abstract class BinGUI extends Screen {
         }
 
         setItem(auctionItem);
+        updateFlipData(auctionItem);
         return true;
     }
+
+    /** Looks up the flip of the auction showing this item; an unknown auction shows no flip message. */
+    private void updateFlipData(ItemStack auctionItem) {
+        FlipData found = FlipMessages.forScreen(gcsh, CoflModClient.getUuidFromStack(auctionItem),
+                System.currentTimeMillis());
+        if (found == flipData) return;
+        flipData = found;
+        showFlipMessage(flipMessage());
+    }
+
+    protected Component flipMessage() {
+        return Component.literal(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", ""));
+    }
+
+    /** Puts the flip message of the shown auction into the overlay's text widget. */
+    protected abstract void showFlipMessage(Component message);
 
     protected AuctionStatus syncAuctionStatusFromContainer() {
         int actionSlot = getCurrentActionSlot();
