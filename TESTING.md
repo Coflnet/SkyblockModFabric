@@ -40,9 +40,11 @@ including a partial fill and a cancelled replacement order, against the matching
 
 The core lifecycle fix was smoke-tested with a 2.0.0 build in Prism's Minecraft 26.3 instance. All 11 target
 classes loaded, auction ownership and pre-player login-refresh assertions passed, and Minecraft
-exited without its shutdown watchdog. The temporary test helper was removed afterward. Bundled
-CoflSkyCore commit `911eb057e4` fixes the background workers that previously prevented shutdown;
-its regression tests also cover first-message batching and worker reuse after disconnect.
+exited without its shutdown watchdog. The temporary test helper was removed afterward. CoflSkyCore
+commit `911eb057e4` fixed the background workers that previously prevented shutdown; its regression
+tests also cover first-message batching and worker reuse after disconnect. The bundled core is now
+pinned to `de6d0e7b2b`, which reports socket protocol version 2.0.1 and adds `shareitem` to the
+bundled command autocomplete.
 
 ## Regression baseline
 
