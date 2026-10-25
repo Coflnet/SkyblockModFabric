@@ -29,6 +29,11 @@ public class TfmBinGUI extends BinGUI {
     }
 
     @Override
+    protected void showFlipMessage(Component message) {
+        loreMultilineTextWidget.setMessage(message);
+    }
+
+    @Override
     protected void clearAndInitWidgets(int screenWidth, int screenHeight) {
         clearWidgets();
         itemWidget = new ItemWidget(
@@ -48,7 +53,7 @@ public class TfmBinGUI extends BinGUI {
         loreMultilineTextWidget = new MultiLineTextWidget(
                 screenWidth / 2 - width / 2 + 12,
                 screenHeight / 2 - height / 2 + 8 + 8 + 6,
-                Component.literal(flipData == null ? "" : flipData.getMessageAsString().replace("sellers ah", "")),
+                flipMessage(),
                 Minecraft.getInstance().font
         ){
             @Override

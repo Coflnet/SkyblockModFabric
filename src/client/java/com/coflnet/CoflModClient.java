@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import com.coflnet.core.BackgroundQueue;
 import com.coflnet.core.BoundedLruMap;
+import com.coflnet.core.FlipMessages;
 import com.coflnet.core.DescriptionRequest;
 import com.coflnet.core.SynchronizedHashMap;
 
@@ -64,7 +65,6 @@ import CoflCore.CoflSkyCommand;
 import CoflCore.commands.Command;
 import CoflCore.commands.CommandType;
 import CoflCore.commands.RawCommand;
-import CoflCore.commands.models.FlipData;
 import CoflCore.commands.models.ModListData;
 import CoflCore.handlers.DescriptionHandler;
 import CoflCore.handlers.EventRegistry;
@@ -497,6 +497,10 @@ public class CoflModClient implements ClientModInitializer {
         }));
 
         ScreenEvents.AFTER_INIT.register(perfWrapAfterInit("afterInit.binPurchaseOverlay", (client, screen, scaledWidth, scaledHeight) -> {
+            if (screen instanceof AbstractContainerScreen<?> acs) {
+                boolean auctionScreen = screen instanceof ContainerScreen cs && cs.getTitle() != null && isBINAuction(cs);
+                FlipMessages.containerOpened(acs.getMenu(), auctionScreen);
+            }
             if (screen instanceof ContainerScreen gcs && CoflCore.config.purchaseOverlay != null && gcs.getTitle() != null ) {
                 // System.out.println(gcs.getTitle().getString());
                 if (!(client.screen instanceof BinGUI) && isBINAuction(gcs)) {
@@ -1557,12 +1561,6 @@ public class CoflModClient implements ClientModInitializer {
             uploadScoreboard();
             uploadTabList();
         });
-    }
-
-    public static FlipData popFlipData() {
-        FlipData fd = EventSubscribers.flipData;
-        EventSubscribers.flipData = null;
-        return fd;
     }
 
     /** Resolves a sound name sent by the backend; unknown names play the bell. */
