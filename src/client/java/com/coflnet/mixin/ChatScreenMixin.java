@@ -74,6 +74,9 @@ public class ChatScreenMixin {
 
     @Inject(method = "handleChatInput", at = @At("HEAD"), cancellable = true)
     private void onSendMessage(String message, boolean addToHistory, CallbackInfo ci) {
+        // This hook runs before vanilla's empty-input check; an empty /cofl chat toggles chat.
+        if (message.isBlank()) return;
+
         // Commands are never redirected here.
         if (message.startsWith("/")) return;
 

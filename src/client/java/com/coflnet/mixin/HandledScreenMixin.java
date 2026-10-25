@@ -121,6 +121,9 @@ public abstract class HandledScreenMixin extends Screen {
             CoflModClient.resendStorageOnClose(this);
         } catch (Exception e) {
             System.out.println("[HandledScreenMixin] resend on removed failed: " + e.getMessage());
+        } finally {
+            com.coflnet.core.DescriptionState.closePanel(this);
+            CoflModClient.invalidateDescriptionRequest();
         }
     }
 
@@ -130,13 +133,8 @@ public abstract class HandledScreenMixin extends Screen {
             // Load saved position
             positionConfig = TextWidgetPositionConfig.load();
 
-            // init to whatever text is present
-            DescriptionHandler.DescModification[] extraSlotDesc = CoflModClient.getExtraSlotDescMod();
-            updateText(extraSlotDesc);
             String currentTitle = ((AbstractContainerScreen<?>) (Object) this).getTitle().getString();
-            if(sideTextWidget != null && !currentTitle.equals("Crafting")) {
-                sideTextWidget.setAlpha(0.3f); // make it transparent until properly loaded
-            }
+            updateText(com.coflnet.core.DescriptionState.openPanel(currentTitle, this));
             com.coflnet.core.DescriptionState.setRefreshCallback((lines, title) -> {
                 try {
                     // Ensure UI update runs on the client (render) thread

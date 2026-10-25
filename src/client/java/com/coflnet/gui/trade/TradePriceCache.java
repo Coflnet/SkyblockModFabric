@@ -23,9 +23,11 @@ public final class TradePriceCache {
     private static final AtomicReference<Request> queued = new AtomicReference<>();
 
     private static List<PricedItem> prices = List.of();
-    private static List<ItemStack> lastOffered = List.of();
+    private static final com.coflnet.core.TradeUploadGate<ItemStack> uploadGate =
+            new com.coflnet.core.TradeUploadGate<>(ItemStack::matches, ItemStack::copy);
+    private static final com.coflnet.core.TradeChatHold completionHold = new com.coflnet.core.TradeChatHold();
+    private static volatile boolean flush;
     private static long revision;
-    private static long retryAfter;
 
     private TradePriceCache() {
     }
@@ -35,8 +37,7 @@ public final class TradePriceCache {
         sequence.incrementAndGet();
         queued.set(null);
         prices = List.of();
-        lastOffered = List.of();
-        retryAfter = 0L;
+        uploadGate.reset();
         revision++;
     }
 
@@ -46,7 +47,7 @@ public final class TradePriceCache {
 
     /** Retry transient failures only while the trade screen remains open. */
     public static void retryIfNeeded(ContainerScreen screen) {
-        if (retryAfter != 0L && System.currentTimeMillis() >= retryAfter) {
+        if (uploadGate.isRetryDue(System.currentTimeMillis())) {
             requestCurrentTrade(screen.getMenu().containerId);
         }
     }
@@ -70,30 +71,49 @@ public final class TradePriceCache {
         request(screen);
     }
 
-    /** Only changed offers require copying the inventory or queuing a description request. */
+    /**
+     * Every changed offer (either side, coins included) is uploaded so the backend stores the final
+     * trade; an unchanged offer is not re-sent. Bursts of slot packets coalesce in the debounce.
+     */
     public static void request(ContainerScreen screen) {
         if (screen == null || !CoflModClient.isTradeScreen(screen)) return;
         List<ItemStack> offered = tradeItems(screen.getMenu().getItems());
-        boolean unchanged = offered.size() == lastOffered.size();
-        for (int i = 0; unchanged && i < offered.size(); i++) {
-            unchanged = ItemStack.matches(offered.get(i), lastOffered.get(i));
-        }
-        if (unchanged && (retryAfter == 0L || System.currentTimeMillis() < retryAfter)) return;
+        if (!uploadGate.shouldUpload(offered, System.currentTimeMillis())) return;
 
-        lastOffered = offered.stream().map(ItemStack::copy).toList();
-        retryAfter = 0L;
         // Removals must invalidate in-flight responses too. Retain only exact, still-offered quotes.
         long requestSequence = sequence.incrementAndGet();
         queued.set(null);
         prices = prices.stream().filter(price -> containsExact(offered, price.stack)).toList();
         revision++;
-        if (offered.stream().noneMatch(item -> shouldPrice(item) && findPrice(item) == null)) return;
 
         NonNullList<ItemStack> items = copyItems(screen.getMenu().getItems());
         queued.set(new Request(CoflModClient.captureDescriptionRequest(screen.getTitle().getString(), items), items,
                 screen.getMenu(), Minecraft.getInstance().player, CoflModClient.reserveDescriptionResponse(),
                 generation.get(), requestSequence));
+        completionHold.uploadQueued(requestSequence);
         drain();
+    }
+
+    /**
+     * Holds a "Trade completed" chat line until the queued trade upload is sent (skipping the rest
+     * of its debounce), so the backend stores the final trade instead of an earlier window.
+     *
+     * @return true if the line was held; {@code forward} then runs later on a background thread
+     */
+    public static boolean holdUntilUploaded(String chat, Runnable forward) {
+        long token = completionHold.hold(chat, forward);
+        if (token == com.coflnet.core.TradeChatHold.NOT_HELD) return false;
+        flush = true;
+        Thread.startVirtualThread(() -> {
+            try {
+                Thread.sleep(com.coflnet.core.TradeChatHold.MAX_HOLD_MS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            Runnable line = completionHold.timeout(token);
+            if (line != null) line.run();
+        });
+        return true;
     }
 
     public static Long worth(ItemStack stack, WorthBasis basis) {
@@ -107,7 +127,7 @@ public final class TradePriceCache {
 
     /** Offered items must use their own quote, never another same-name item's shared tooltip. */
     public static DescriptionHandler.DescModification[] tooltipData(ItemStack stack, String stackId) {
-        if (!containsExact(lastOffered, stack)) return CoflModClient.getMappedTooltipData(stackId);
+        if (!containsExact(uploadGate.lastOffered(), stack)) return CoflModClient.getMappedTooltipData(stackId);
         PricedItem price = findPrice(stack);
         return price == null ? null : price.tips;
     }
@@ -181,7 +201,7 @@ public final class TradePriceCache {
         Request request = queued.getAndSet(null);
         while (request != null) {
             try {
-                Thread.sleep(DEBOUNCE_MS);
+                if (!flush) Thread.sleep(DEBOUNCE_MS);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
                 return request;
@@ -196,6 +216,15 @@ public final class TradePriceCache {
     }
 
     private static void load(Request request) {
+        try {
+            upload(request);
+        } finally {
+            completionHold.uploadFinished(request.sequence).forEach(Runnable::run);
+            flush = completionHold.isHolding();
+        }
+    }
+
+    private static void upload(Request request) {
         try {
             if (!isCurrent(request)) return;
             var tips = request.description.fetch();
@@ -216,7 +245,7 @@ public final class TradePriceCache {
         } catch (Exception exception) {
             System.out.println("[trade] description refresh failed, " + exception);
             Minecraft.getInstance().execute(() -> {
-                if (isCurrent(request)) retryAfter = System.currentTimeMillis() + 2_000L;
+                if (isCurrent(request)) uploadGate.failed(System.currentTimeMillis());
             });
         }
     }

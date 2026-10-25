@@ -91,4 +91,17 @@ class InfoDisplayPayloadParserTest {
         assertThrows(InfoDisplayPayloadParser.ParseException.class,
                 () -> InfoDisplayPayloadParser.parse("{\"id\":1,\"lines\":[[1,2]]}"));
     }
+
+    @Test void rejectsNonStringTextFieldsAndKeepsOversizedNumbersOutOfRange() throws InfoDisplayPayloadParser.ParseException {
+        // Gson throws unchecked exceptions for these shapes; callers only handle ParseException.
+        assertThrows(InfoDisplayPayloadParser.ParseException.class,
+                () -> InfoDisplayPayloadParser.parse("{\"id\":1,\"title\":{}}"));
+        assertThrows(InfoDisplayPayloadParser.ParseException.class,
+                () -> InfoDisplayPayloadParser.parse("{\"id\":1,\"lines\":[{\"text\":[1,2]}]}"));
+        // 2^32 + 1 used to be narrowed to the valid id 1.
+        assertThrows(InfoDisplayPayloadParser.ParseException.class,
+                () -> InfoDisplayPayloadParser.parse("{\"id\":4294967297}"));
+        // 3e9 seconds used to wrap negative and become 0, which means permanent.
+        assertEquals(Integer.MAX_VALUE, InfoDisplayPayloadParser.parse("{\"id\":1,\"ttl\":3000000000}").ttlSeconds);
+    }
 }
