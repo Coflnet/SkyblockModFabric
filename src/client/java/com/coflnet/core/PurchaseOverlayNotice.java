@@ -7,7 +7,7 @@ public final class PurchaseOverlayNotice {
     private PurchaseOverlayNotice() {}
 
     public static final String MESSAGE = "§e[SkyCofl] Note: replacing Hypixel's purchase menu with a custom overlay"
-            + " may be against the Hypixel rules. Use §a/cofl setgui off §eto turn it off again.";
+            + " may be against the Hypixel rules. Use §a/cofl setgui off §eto turn it off again. Use it at your own risk.";
 
     /** @param args the {@code /cofl} arguments split on spaces */
     public static Optional<String> forCommand(String[] args) {
