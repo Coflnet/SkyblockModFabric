@@ -8,15 +8,23 @@ import CoflCore.events.SocketClose;
 import com.coflnet.config.TradeGuiManager;
 import net.fabricmc.fabric.api.networking.v1.PacketSender;
 import net.minecraft.SharedConstants;
+import com.mojang.brigadier.CommandDispatcher;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Gui;
+import net.minecraft.client.multiplayer.chat.ChatListener;
+import net.minecraft.network.chat.Component;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.sounds.SoundEvents;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -71,6 +79,73 @@ class CoflModClientTest {
     @Test void bundledCommandAutocompleteOffersShareitem() {
         // /cofl suggestions read CoflCore.config.knownCommands, which starts from the core's bundled defaults.
         assertTrue(LocalConfig.createDefaultConfig().knownCommands.containsKey("shareitem"));
+    }
+
+    @Test void enablingACustomPurchaseOverlayWarnsAboutHypixelRules() throws Exception {
+        assertTrue(chatAfter("cofl setgui cofl").stream().anyMatch(line -> line.contains("Hypixel rules")),
+                "no Hypixel rules note after /cofl setgui cofl");
+        assertTrue(chatAfter("cofl setgui off").isEmpty(), "disabling the overlay should not warn");
+    }
+
+    /** Runs a client command against a headless client whose chat records every system message. */
+    private static List<String> chatAfter(String command) throws Exception {
+        Minecraft previous = Minecraft.getInstance();
+        List<String> chat = new ArrayList<>();
+        Minecraft minecraft = allocate(Minecraft.class);
+        Gui gui = allocate(Gui.class);
+        setFieldOfType(Gui.class, gui, ChatListener.class, allocate(RecordingChatListener.class));
+        RecordingChatListener.lines = chat;
+        set(Minecraft.class, minecraft, "gui", gui);
+        set(Minecraft.class, minecraft, "gameThread", Thread.currentThread()); // execute() runs inline
+        set(Minecraft.class, null, "instance", minecraft);
+        try {
+            CommandDispatcher<FabricClientCommandSource> dispatcher = new CommandDispatcher<>();
+            Method register = CoflModClient.class.getDeclaredMethod("registerDefaultCommands", CommandDispatcher.class, String.class);
+            register.setAccessible(true);
+            register.invoke(new CoflModClient(), dispatcher, "cofl");
+            dispatcher.execute(command, null);
+        } finally {
+            set(Minecraft.class, null, "instance", previous);
+        }
+        return chat;
+    }
+
+    /** Collects the chat lines the mod displays; created without its constructor, which needs a client. */
+    static class RecordingChatListener extends ChatListener {
+        static List<String> lines;
+
+        RecordingChatListener() {
+            super(null);
+        }
+
+        @Override
+        public void handleSystemMessage(Component message, boolean overlay) {
+            lines.add(message.getString());
+        }
+    }
+
+    private static <T> T allocate(Class<T> type) throws Exception {
+        Class<?> unsafeType = Class.forName("sun.misc.Unsafe");
+        Field theUnsafe = unsafeType.getDeclaredField("theUnsafe");
+        theUnsafe.setAccessible(true);
+        return type.cast(unsafeType.getMethod("allocateInstance", Class.class).invoke(theUnsafe.get(null), type));
+    }
+
+    private static void set(Class<?> owner, Object target, String name, Object value) throws Exception {
+        Field field = owner.getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(target, value);
+    }
+
+    private static void setFieldOfType(Class<?> owner, Object target, Class<?> type, Object value) throws Exception {
+        for (Field field : owner.getDeclaredFields()) {
+            if (field.getType() == type) {
+                field.setAccessible(true);
+                field.set(target, value);
+                return;
+            }
+        }
+        throw new NoSuchFieldException(type.getSimpleName() + " on " + owner.getSimpleName());
     }
 
     private static EventSubscribers logInWithTier(String tier) {
