@@ -1403,6 +1403,7 @@ public class CoflModClient implements ClientModInitializer {
                     // Core stop/start clear socket listeners, so they cannot raise SocketClose.
                     if (args[0].equalsIgnoreCase("stop") || args[0].equalsIgnoreCase("start"))
                         onBackendDisconnected();
+                    com.coflnet.core.PurchaseOverlayNotice.forCommand(args).ifPresent(CoflModClient::sendChatMessage);
                     // Pass to CoflSkyCommand for other commands
                     String usernameSnapshot = username;
                     backgroundQueue.submit(() -> CoflSkyCommand.processCommand(args, usernameSnapshot));
