@@ -219,6 +219,16 @@ public class CoflSettingsScreen {
                 .build());
 
         categoryBuilder.option(Option.<Boolean>createBuilder()
+                .name(Component.literal("Default BIN Price Protection"))
+                .description(OptionDescription.of(Component.literal(
+                        "Requires holding Ctrl to create a BIN auction at the price Hypixel pre-filled (10-5000 coins).")))
+                .binding(cfg.defaultBinPriceProtectionEnabled,
+                        com.coflnet.config.DefaultBinPriceProtectionManager::isEnabled,
+                        com.coflnet.config.DefaultBinPriceProtectionManager::setEnabled)
+                .controller(TickBoxControllerBuilder::create)
+                .build());
+
+        categoryBuilder.option(Option.<Boolean>createBuilder()
                 .name(Component.literal("Show info displays while a GUI is open"))
                 .description(OptionDescription.of(Component.literal(
                         "When on, the permanent info displays stay visible over container/other screens too, "
