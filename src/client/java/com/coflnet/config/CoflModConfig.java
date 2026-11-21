@@ -31,6 +31,9 @@ public class CoflModConfig {
 
     public boolean angryCoopProtectionEnabled = true;
 
+    // Creating a BIN auction at the price Hypixel pre-filled (10-5000 coins) needs Ctrl held.
+    public boolean defaultBinPriceProtectionEnabled = true;
+
     // Developer mode: when on, container screens show a "Copy Dump" button that
     // copies the open container's title/size/slots to the clipboard. Off by default.
     public boolean devMode = false;

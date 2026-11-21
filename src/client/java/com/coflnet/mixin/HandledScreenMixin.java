@@ -4,7 +4,12 @@ import com.mojang.blaze3d.platform.InputConstants;
 import CoflCore.handlers.DescriptionHandler;
 import com.coflnet.CoflModClient;
 import com.coflnet.PerfTracer;
+import com.coflnet.config.DefaultBinPriceProtectionManager;
 import com.coflnet.config.TextWidgetPositionConfig;
+import com.coflnet.protection.auction.DefaultBinPriceGuard;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import org.spongepowered.asm.mixin.Unique;
 import com.coflnet.core.InfoDisplayLayout;
 import com.coflnet.gui.RenderUtils;
 import com.coflnet.gui.hud.InfoDisplayRenderer;
@@ -54,6 +59,12 @@ public abstract class HandledScreenMixin extends Screen {
     protected int imageWidth;
     @Shadow
     protected int imageHeight;
+    @Shadow
+    public abstract AbstractContainerMenu getMenu();
+    @Shadow
+    private Slot getHoveredSlot(double mouseX, double mouseY) {
+        throw new AssertionError();
+    }
     protected MultiLineTextWidget sideTextWidget;
     // Always keep non-null; updates replace the reference with a fresh list. Volatile for visibility across threads.
     protected volatile List<MutableComponent> interactiveTextLines = new java.util.ArrayList<>();
@@ -110,8 +121,14 @@ public abstract class HandledScreenMixin extends Screen {
     private TextWidgetPositionConfig positionConfig;
     private int currentMaxWidth = 100;
 
+    @Inject(at = @At("HEAD"), method = "onClose")
+    public void coflnet$onClose(CallbackInfo ci) {
+        DefaultBinPriceGuard.shared().onMenuClosed(); // the player left the listing themselves
+    }
+
     @Inject(at = @At("HEAD"), method = "removed")
     public void onRemoved(CallbackInfo ci){
+        DefaultBinPriceGuard.shared().onMenuRemoved(getTitle().getString());
         try {
             // Fires whenever this container view goes away for ANY reason: an ESC/close AND when
             // Hypixel replaces it with another window (e.g. switching backpacks via the nav items,
@@ -125,6 +142,22 @@ public abstract class HandledScreenMixin extends Screen {
             com.coflnet.core.DescriptionState.closePanel(this);
             CoflModClient.invalidateDescriptionRequest();
         }
+    }
+
+    @Unique
+    private boolean coflnet$blocksDefaultBinPrice(net.minecraft.client.input.MouseButtonEvent click) {
+        boolean slotClick = click.button() == InputConstants.MOUSE_BUTTON_LEFT || click.button() == InputConstants.MOUSE_BUTTON_RIGHT;
+        if (!slotClick || !DefaultBinPriceProtectionManager.isEnabled()) {
+            return false;
+        }
+        return DefaultBinPriceGuard.shared().blocksClick(getTitle().getString(), getMenu(),
+                coflnet$clickedSlot(click.x(), click.y()), click.hasControlDown());
+    }
+
+    /** The slot under the click; overridable so tests can resolve slots without a laid-out screen. */
+    @Unique
+    protected Slot coflnet$clickedSlot(double mouseX, double mouseY) {
+        return getHoveredSlot(mouseX, mouseY);
     }
 
     @Inject(at = @At("TAIL"), method = "init")
@@ -497,6 +530,12 @@ public abstract class HandledScreenMixin extends Screen {
             if (click.button() == InputConstants.MOUSE_BUTTON_LEFT && hudStyle != null && hudStyle.getClickEvent() != null) {
                 handleInfoDisplayClickEvent(hudStyle.getClickEvent());
                 cir.setReturnValue(true);
+                return;
+            }
+
+            if (coflnet$blocksDefaultBinPrice(click)) {
+                cir.setReturnValue(true);
+                CoflModClient.displayModMessage(Component.literal(DefaultBinPriceGuard.shared().blockedMessage()));
                 return;
             }
 
